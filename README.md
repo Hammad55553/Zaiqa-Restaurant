@@ -72,4 +72,4 @@ This system uses **SQLite** for robust offline stability.
 ---
 
 ## 📝 License
-Built with 🧡 for Zaiqa Mahal.
+Proprietary software built and maintained by **Asper Infotech** 🧡 for **Zaiqa Mahal**. All Rights Reserved.
