@@ -1,0 +1,17 @@
+# Node modules
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+
+# SQLite databases and WAL files
+*.db
+*.db-wal
+*.db-shm
+server/database/pos.db
+server/database/pos.db-wal
+server/database/pos.db-shm
+
+# Operating System files
+.DS_Store
+Thumbs.db

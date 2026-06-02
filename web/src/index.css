@@ -1,0 +1,139 @@
+@import "tailwindcss";
+
+body {
+  margin: 0;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6, .font-display {
+  font-family: 'Outfit', sans-serif;
+}
+
+/* Custom Scrollbar for neat UI */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent; 
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #e5e7eb; 
+  border-radius: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #d1d5db; 
+}
+
+/* Hide scrollbar for extremely clean looks where needed */
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@keyframes radio-waves {
+  0% { box-shadow: 0 0 0 0 var(--radio-color, rgba(234, 88, 12, 0.6)); }
+  100% { box-shadow: 0 0 0 25px rgba(234, 88, 12, 0); }
+}
+
+.animate-radio-waves {
+  animation: radio-waves 2s infinite;
+}
+
+@keyframes spin-wheel {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.animate-wheel {
+  animation: spin-wheel 0.8s linear infinite;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+
+@keyframes road-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-60px); }
+}
+.animate-road {
+  animation: road-scroll 0.6s linear infinite;
+}
+
+@keyframes scooter-float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-4px); }
+}
+.animate-scooter-float {
+  animation: scooter-float 1.4s ease-in-out infinite;
+}
+
+@keyframes flag-wave {
+  0%   { transform: skewY(-1.5deg) scaleX(0.98) rotate(-1deg); }
+  50%  { transform: skewY(2deg) scaleX(1.02) rotate(1deg); }
+  100% { transform: skewY(-1deg) scaleX(0.99) rotate(-0.5deg); }
+}
+.animate-flag-wave {
+  transform-origin: 100px 15px;
+  animation: flag-wave 1.4s ease-in-out infinite alternate;
+}
+
+/* Print Styles for Receipt Slip */
+@media print {
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  body > :not(.receipt-print-wrapper) {
+    display: none !important;
+  }
+  .receipt-print-wrapper {
+    display: block !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    z-index: 99999 !important;
+  }
+  @page {
+    margin: 0;
+    size: 80mm auto;
+  }
+}
+
+/* Waving Hand "Bye-Bye" Animation for Rider (Runs every 7 seconds) */
+@keyframes rider-wave {
+  0%, 70%, 100% {
+    transform: rotate(0deg);
+  }
+  75% {
+    transform: rotate(-18deg); /* Lift hand up */
+  }
+  78% {
+    transform: rotate(-10deg); /* Wave back */
+  }
+  82% {
+    transform: rotate(-18deg); /* Wave forth */
+  }
+  86% {
+    transform: rotate(-10deg); /* Wave back */
+  }
+  90% {
+    transform: rotate(-18deg); /* Wave forth */
+  }
+  94% {
+    transform: rotate(-10deg); /* Wave back */
+  }
+}
+.animate-rider-wave {
+  animation: rider-wave 7s ease-in-out infinite;
+  transform-origin: 170px 59px;
+}
