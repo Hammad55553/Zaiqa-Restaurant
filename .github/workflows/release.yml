@@ -49,6 +49,11 @@ jobs:
           zip -r ../dist.zip .
           cd ..
 
+      - name: Force Update Git Tag
+        run: |
+          git tag -f latest
+          git push origin -f latest
+
       - name: Create or Update Release
         uses: ncipollo/release-action@v1
         with:
