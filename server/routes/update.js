@@ -121,11 +121,42 @@ router.post('/download', async (req, res) => {
 // POST /api/update/restart
 router.post('/restart', (req, res) => {
   if (electronApp) {
+    console.log('Relaunch request received. Closing servers and restarting...');
+    
+    // First, close WebSocket server clients
+    if (req.app && req.app.get('wss_server')) {
+      try {
+        const wss = req.app.get('wss_server');
+        wss.clients.forEach((client) => {
+          client.terminate();
+        });
+        wss.close();
+      } catch (err) {
+        console.error('Error closing WebSocket server:', err);
+      }
+    }
+
+    // Next, close HTTP server and connections
+    if (req.app && req.app.get('http_server')) {
+      try {
+        const srv = req.app.get('http_server');
+        if (typeof srv.closeAllConnections === 'function') {
+          srv.closeAllConnections();
+        }
+        srv.close(() => {
+          console.log('HTTP server closed successfully.');
+        });
+      } catch (err) {
+        console.error('Error closing HTTP server:', err);
+      }
+    }
+
     res.json({ success: true, message: 'Relaunching Electron app...' });
+    
     setTimeout(() => {
       electronApp.relaunch();
       electronApp.exit(0);
-    }, 1000);
+    }, 1200);
   } else {
     res.status(400).json({ error: 'Not running inside Electron, cannot restart' });
   }

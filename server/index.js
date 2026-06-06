@@ -14,6 +14,9 @@ const server = http.createServer(app);
 // Setup WebSocket server
 const wss = new WebSocket.Server({ server });
 
+app.set('http_server', server);
+app.set('wss_server', wss);
+
 wss.on('connection', (ws) => {
   console.log('🔌 Client connected via WebSocket');
   ws.on('close', () => console.log('❌ Client disconnected from WebSocket'));
