@@ -35,6 +35,7 @@ const Settings = () => {
         latestVersion: null,
         downloadUrl: null,
         releaseNotes: '',
+        publishedAt: null,
         error: null
     });
 
@@ -50,14 +51,16 @@ const Settings = () => {
                     latestVersion: data.latestVersion,
                     downloadUrl: data.downloadUrl,
                     releaseNotes: data.releaseNotes,
+                    publishedAt: data.publishedAt,
                     error: null
                 });
             } else {
                 setUpdateState({
                     status: 'uptodate',
-                    latestVersion: null,
+                    latestVersion: data.latestVersion || null,
                     downloadUrl: null,
                     releaseNotes: '',
+                    publishedAt: data.publishedAt || null,
                     error: null
                 });
             }
@@ -653,7 +656,14 @@ const Settings = () => {
                                     {updateState.latestVersion && (
                                         <div>
                                             <p style={{ fontSize: '0.75rem', fontWeight: 800, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Latest Available</p>
-                                            <h4 style={{ fontSize: '1.8rem', fontWeight: 950, color: '#f97316', marginTop: '4px' }}>v{updateState.latestVersion}</h4>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                <h4 style={{ fontSize: '1.8rem', fontWeight: 950, color: '#f97316', marginTop: '4px', lineHeight: '1' }}>v{updateState.latestVersion}</h4>
+                                                {updateState.publishedAt && (
+                                                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', marginTop: '4px' }}>
+                                                        📅 Released: {new Date(updateState.publishedAt).toLocaleString([], { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
                                     )}
                                 </div>
