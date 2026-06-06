@@ -3,6 +3,12 @@ const { app, BrowserWindow, Menu } = require('electron');
 console.log('Electron imported, app =', typeof app);
 const path = require('path');
 const fs = require('fs');
+const Module = require('module');
+
+// Allow files loaded from updates directory (userData) to resolve bundled dependencies
+const bundledNodeModules = path.join(__dirname, 'node_modules');
+process.env.NODE_PATH = bundledNodeModules + (process.platform === 'win32' ? ';' : ':') + (process.env.NODE_PATH || '');
+Module._initPaths();
 
 process.env.PORT = '5005';
 
