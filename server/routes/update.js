@@ -41,6 +41,7 @@ router.get('/check', async (req, res) => {
 
     const release = await response.json();
     const latestVersion = release.tag_name.replace(/^v/, '');
+    const publishedAt = release.published_at;
     
     // Find the dist.zip asset
     const zipAsset = release.assets.find(asset => asset.name === 'dist.zip');
@@ -52,8 +53,32 @@ router.get('/check', async (req, res) => {
       });
     }
 
-    // Compare versions (simple comparison or semver)
-    const updateAvailable = latestVersion !== currentVersion;
+    const userDataPath = getUserDataPath();
+    const metaPath = path.join(userDataPath, 'updates/update_meta.json');
+    
+    let updateAvailable = false;
+    if (fs.existsSync(metaPath)) {
+      try {
+        const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+        // If the local saved publishedAt is equal to or newer than GitHub's publishedAt, then no update is available
+        if (meta.publishedAt && new Date(meta.publishedAt) >= new Date(publishedAt)) {
+          updateAvailable = false;
+        } else {
+          updateAvailable = true;
+        }
+      } catch (e) {
+        updateAvailable = true;
+      }
+    } else {
+      // If metaPath doesn't exist, we compare the GitHub release date with our baseline build date.
+      // Baseline is set to June 6, 2026 13:45 UTC.
+      const baselineDate = new Date('2026-06-06T13:45:00Z');
+      if (new Date(publishedAt) > baselineDate) {
+        updateAvailable = true;
+      } else {
+        updateAvailable = false;
+      }
+    }
 
     res.json({
       updateAvailable,
@@ -61,7 +86,7 @@ router.get('/check', async (req, res) => {
       currentVersion,
       downloadUrl: zipAsset.browser_download_url,
       releaseNotes: release.body || '',
-      publishedAt: release.published_at
+      publishedAt: publishedAt
     });
   } catch (error) {
     console.error('Update check failed:', error);
@@ -72,7 +97,7 @@ router.get('/check', async (req, res) => {
 // POST /api/update/download
 router.post('/download', async (req, res) => {
   try {
-    const { downloadUrl } = req.body;
+    const { downloadUrl, publishedAt, latestVersion } = req.body;
     if (!downloadUrl) {
       return res.status(400).json({ error: 'Download URL is required' });
     }
@@ -107,6 +132,16 @@ router.post('/download', async (req, res) => {
     // Extract everything to updates directory
     zip.extractAllTo(updatesDir, true);
     console.log('Extraction complete.');
+
+    // Save update metadata locally
+    const metaPath = path.join(updatesDir, 'update_meta.json');
+    const metaData = {
+      publishedAt: publishedAt || new Date().toISOString(),
+      version: latestVersion || 'latest',
+      downloadedAt: new Date().toISOString()
+    };
+    fs.writeFileSync(metaPath, JSON.stringify(metaData, null, 2));
+    console.log('Saved update metadata:', metaData);
 
     // Clean up temporary zip
     fs.unlinkSync(tempZipPath);

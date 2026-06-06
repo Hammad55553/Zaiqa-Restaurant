@@ -76,7 +76,11 @@ const Settings = () => {
             const res = await fetch(`${API_BASE}/update/download`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ downloadUrl: updateState.downloadUrl })
+                body: JSON.stringify({ 
+                    downloadUrl: updateState.downloadUrl,
+                    publishedAt: updateState.publishedAt,
+                    latestVersion: updateState.latestVersion
+                })
             });
             if (!res.ok) throw new Error('Download and installation failed');
             setUpdateState(prev => ({ ...prev, status: 'ready' }));
