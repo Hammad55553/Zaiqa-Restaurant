@@ -1,0 +1,47 @@
+{
+  "name": "zaiqah-desktop",
+  "version": "1.0.0",
+  "description": "Zaiqa Mahal POS Desktop App",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "node build-prep.js && electron-builder --dir",
+    "dist": "node build-prep.js && electron-builder"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "sqlite": "^5.1.1",
+    "sqlite3": "5.1.7",
+    "ws": "^8.21.0",
+    "adm-zip": "^0.5.12"
+  },
+  "devDependencies": {
+    "electron": "28.2.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.zaiqah.pos",
+    "productName": "Zaiqah POS",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "main.js",
+      "package.json",
+      "server/**/*",
+      "web-dist/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.business",
+      "target": [
+        "dmg"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    }
+  }
+}

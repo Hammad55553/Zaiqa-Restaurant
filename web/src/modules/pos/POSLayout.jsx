@@ -10,7 +10,7 @@ import CheckoutConfirmationModal from './components/CheckoutConfirmationModal';
 import ReceiptSlip from './components/ReceiptSlip';
 import Logo from '../../assets/Logo.jpg';
 // import { INITIAL_TABLES } from './data/mockTables';
-import { API_BASE } from '../../config';
+import { API_BASE, WS_URL } from '../../config';
 import { getOfflineItem, setOfflineItem, removeOfflineItem } from '../../utils/offlineDB';
 import { moveToTrash } from '../../utils/trashDB';
 
@@ -82,17 +82,26 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
     loadCustomers();
   }, [view, isNameModalOpen]);
 
-  // Click outside to close suggested customer dropdowns automatically
+  // Click outside to close suggested customer dropdowns and delivery headers automatically
   useEffect(() => {
     const handleOutsideClick = (e) => {
       if (!e.target.closest('.phone-lookup-container')) {
         setSuggestedCustomers([]);
         setSuggestedDeliveryCustomers([]);
       }
+      if (!e.target.closest('.delivery-crm-container')) {
+        setShowDeliveryCustModal(false);
+      }
+      if (!e.target.closest('.delivery-payment-container')) {
+        setShowPaymentDropdown(false);
+      }
+      if (!e.target.closest('.delivery-status-container')) {
+        setShowStatusDropdown(false);
+      }
     };
-    document.addEventListener('click', handleOutsideClick);
+    document.addEventListener('mousedown', handleOutsideClick);
     return () => {
-      document.removeEventListener('click', handleOutsideClick);
+      document.removeEventListener('mousedown', handleOutsideClick);
     };
   }, []);
 
@@ -277,8 +286,40 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
     };
 
     fetchTablesAndOrders();
+
+    // Setup WebSocket for real-time synchronization
+    let ws;
+    const connectWS = () => {
+      try {
+        ws = new WebSocket(WS_URL);
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'SYNC_TRIGGER') {
+              console.log("WebSocket sync trigger received! Refreshing floor states...");
+              fetchTablesAndOrders();
+            }
+          } catch (e) {
+            console.error("WS message parse failed:", e);
+          }
+        };
+        ws.onclose = () => {
+          setTimeout(connectWS, 3000);
+        };
+        ws.onerror = (err) => {
+          ws.close();
+        };
+      } catch (err) {
+        console.error("Failed to connect WS:", err);
+      }
+    };
+    connectWS();
+
     const interval = setInterval(fetchTablesAndOrders, 10000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      if (ws) ws.close();
+    };
   }, [selectedDelivery]);
 
   // Load & sync delivery orders from IndexedDB
@@ -694,6 +735,96 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
     setEditingStatus(false);
   };
 
+  const handleSendToKitchen = async () => {
+    if (cartItems.length === 0) return;
+
+    const newItems = cartItems.filter(item => !item.sent);
+    if (newItems.length === 0) {
+      showToast("All items have already been sent to the kitchen!", "info");
+      return;
+    }
+
+    const subtotal = cartItems.reduce((sum, item) => sum + (item.price * item.qty), 0);
+    const tax = cartItems.reduce((sum, item) => {
+      const rate = (item.taxRateOverride !== undefined && item.taxRateOverride !== null && item.taxRateOverride !== '')
+        ? Number(item.taxRateOverride)
+        : globalGstRate;
+      return sum + (item.price * item.qty) * (rate / 100);
+    }, 0);
+    const total = subtotal + tax;
+
+    if (view === 'delivery-order') {
+      saveCustomerToDirectory();
+      let bId = selectedDelivery.backendOrderId;
+
+      try {
+        if (bId) {
+          const response = await fetch(`${API_BASE}/orders/${bId}/sync`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              items: cartItems.map(i => ({ id: i.id, name: i.name, price: i.price, qty: i.qty })),
+              subtotal,
+              tax,
+              total_amount: total,
+              remarks: selectedDelivery.remarks || `Delivery Order - Phone: ${selectedDelivery.phone || 'N/A'}, Address: ${selectedDelivery.address || 'N/A'}`
+            })
+          });
+          if (!response.ok) throw new Error('Failed to update order');
+        } else {
+          const response = await fetch(`${API_BASE}/orders`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              table_number: selectedDelivery.id,
+              area: 'Delivery',
+              customer_name: selectedDelivery.name || 'Delivery Guest',
+              remarks: selectedDelivery.remarks || `Delivery Order - Phone: ${selectedDelivery.phone || 'N/A'}, Address: ${selectedDelivery.address || 'N/A'}`,
+              items: cartItems.map(i => ({ id: i.id, name: i.name, price: i.price, qty: i.qty })),
+              subtotal,
+              tax,
+              total_amount: total
+            })
+          });
+          if (!response.ok) throw new Error('Failed to place order');
+          const resData = await response.json();
+          bId = resData.orderId;
+        }
+
+        const updatedItems = cartItems.map(item => ({ ...item, sent: true }));
+        setCartItems(updatedItems);
+        
+        const updatedOrder = { ...selectedDelivery, items: updatedItems, status: 'active', backendOrderId: bId };
+        setSelectedDelivery(updatedOrder);
+
+        const updated = deliveryOrders.map(o =>
+          o.id === selectedDelivery.id ? updatedOrder : o
+        );
+        saveDeliveryOrders(updated);
+        showToast('Order successfully sent to kitchen & saved!', 'success');
+      } catch (err) {
+        console.error("Failed to sync delivery order with KDS:", err);
+        showToast('Error sending order. Please check connection.', 'error');
+      }
+    } else {
+      const orderData = {
+        subtotal,
+        tax,
+        total,
+        remarks: orderRemarks,
+        customerName: orderCustomerName || 'Walk-in Customer'
+      };
+      
+      if (activeOrderId && newItems.length === 0 && !orderRemarks && !adminUnlockRemark) {
+        showToast("No changes to save! Please add an item or provide a remark.", "error");
+        return;
+      }
+
+      setConfirmStatus('dining');
+      setOrderConfirmData(orderData);
+    }
+  };
+
   const handlePlaceOrder = (orderData) => {
     if (cartItems.length === 0) return;
 
@@ -1020,8 +1151,8 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
           {/* Middle: Sleek, Modular CRM Action Buttons */}
           <div className="flex items-center gap-3.5 flex-1 flex-wrap min-w-0">
             
-            {/* 1. Customer Info Dropdown */}
-            <div className="relative">
+             {/* 1. Customer Info Dropdown */}
+            <div className="relative delivery-crm-container">
               <button
                 type="button"
                 onClick={() => {
@@ -1050,10 +1181,9 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3.5" d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
-
+ 
               {showDeliveryCustModal && (
                 <>
-                  <div className="fixed inset-0 z-30" onClick={() => setShowDeliveryCustModal(false)} />
                   <div className="absolute left-0 mt-2.5 w-80 bg-zinc-950 border border-zinc-800/80 rounded-2xl shadow-2xl p-5 z-40 transform origin-top-left animate-dropdownScale flex flex-col gap-4">
                     <style>{`
                       @keyframes dropdownScale {
@@ -1143,8 +1273,8 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
               )}
             </div>
 
-            {/* 2. Payment Dropdown */}
-            <div className="relative">
+             {/* 2. Payment Dropdown */}
+            <div className="relative delivery-payment-container">
               <button
                 type="button"
                 onClick={() => {
@@ -1169,7 +1299,6 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
 
               {showPaymentDropdown && (
                 <>
-                  <div className="fixed inset-0 z-30" onClick={() => setShowPaymentDropdown(false)} />
                   <div className="absolute left-0 mt-2.5 w-40 bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl p-1.5 z-40 transform origin-top-left animate-dropdownScale flex flex-col gap-1">
                     <button
                       type="button"
@@ -1216,7 +1345,7 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
               const activeStyle = statusConfig[current] || statusConfig.pending;
 
               return (
-                <div className="relative">
+                 <div className="relative delivery-status-container">
                   <button
                     type="button"
                     onClick={() => {
@@ -1239,7 +1368,6 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
 
                   {showStatusDropdown && (
                     <>
-                      <div className="fixed inset-0 z-30" onClick={() => setShowStatusDropdown(false)} />
                       <div className="absolute left-0 mt-2.5 w-44 bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl p-1.5 z-40 transform origin-top-left animate-dropdownScale flex flex-col gap-1">
                         {[
                           { key: 'pending', label: 'Pending', theme: 'text-zinc-400 hover:bg-zinc-900/50 hover:text-white' },
@@ -1312,6 +1440,7 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
               onUpdateQty={updateQty}
               onRemove={removeItem}
               onContinueToBill={() => setView('billing')}
+              onSendToKitchen={handleSendToKitchen}
               activeOrderStatus={'pending'}
               adminUnlockRemark={adminUnlockRemark}
               onAdminUnlock={(remark) => setAdminUnlockRemark(remark)}
@@ -2014,6 +2143,7 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
               onUpdateQty={updateQty}
               onRemove={removeItem}
               onContinueToBill={() => setView('billing')}
+              onSendToKitchen={handleSendToKitchen}
               activeOrderStatus={activeOrderStatus}
               adminUnlockRemark={adminUnlockRemark}
               onAdminUnlock={(remark) => setAdminUnlockRemark(remark)}
@@ -2340,7 +2470,7 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
           <div
             className="absolute inset-0 z-0 opacity-[0.03] pointer-events-none"
             style={{
-              backgroundImage: `url(/src/assets/Logo.jpg)`,
+              backgroundImage: `url(./Logo.jpg)`,
               backgroundSize: 'contain',
               backgroundPosition: 'center',
               backgroundRepeat: 'no-repeat',
@@ -2639,7 +2769,7 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
                                 <div className="w-full h-full flex flex-col justify-between items-center text-center px-1 py-1.5">
                                   {/* Small Round Brand Logo Image */}
                                   <div className="w-[30px] h-[30px] rounded-full overflow-hidden border border-amber-400/40 shadow-lg">
-                                    <img src="/src/assets/Logo.jpg" alt="Zaiqah Logo" className="w-full h-full object-cover" />
+                                    <img src="./Logo.jpg" alt="Zaiqah Logo" className="w-full h-full object-cover" />
                                   </div>
 
                                   {/* Name & Phone Number clustered below the logo */}

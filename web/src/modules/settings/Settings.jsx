@@ -3,6 +3,7 @@ import { Settings as SettingsIcon, Lock, ShieldCheck, Key, AlertCircle, Loader2,
 import packageJson from '../../../package.json';
 import { getOfflineItem, setOfflineItem } from '../../utils/offlineDB';
 import { restoreFromTrash, deletePermanentlyFromTrash } from '../../utils/trashDB';
+import { API_BASE } from '../../config';
 
 const APP_VERSION = packageJson.version || '1.0.2';
 const getBuildDate = () => {
@@ -28,6 +29,66 @@ const Settings = () => {
     const [auditLogs, setAuditLogs] = useState([]);
     const [trashItems, setTrashItems] = useState([]);
     const [globalGstRate, setGlobalGstRate] = useState(16);
+
+    const [updateState, setUpdateState] = useState({
+        status: 'idle', // 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'uptodate'
+        latestVersion: null,
+        downloadUrl: null,
+        releaseNotes: '',
+        error: null
+    });
+
+    const handleCheckUpdates = async () => {
+        setUpdateState(prev => ({ ...prev, status: 'checking', error: null }));
+        try {
+            const res = await fetch(`${API_BASE}/update/check?version=${APP_VERSION}`);
+            if (!res.ok) throw new Error('Failed to contact server');
+            const data = await res.json();
+            if (data.updateAvailable) {
+                setUpdateState({
+                    status: 'available',
+                    latestVersion: data.latestVersion,
+                    downloadUrl: data.downloadUrl,
+                    releaseNotes: data.releaseNotes,
+                    error: null
+                });
+            } else {
+                setUpdateState({
+                    status: 'uptodate',
+                    latestVersion: null,
+                    downloadUrl: null,
+                    releaseNotes: '',
+                    error: null
+                });
+            }
+        } catch (err) {
+            setUpdateState(prev => ({ ...prev, status: 'idle', error: err.message }));
+        }
+    };
+
+    const handleDownloadUpdate = async () => {
+        if (!updateState.downloadUrl) return;
+        setUpdateState(prev => ({ ...prev, status: 'downloading', error: null }));
+        try {
+            const res = await fetch(`${API_BASE}/update/download`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ downloadUrl: updateState.downloadUrl })
+            });
+            if (!res.ok) throw new Error('Download and installation failed');
+            setUpdateState(prev => ({ ...prev, status: 'ready' }));
+        } catch (err) {
+            setUpdateState(prev => ({ ...prev, status: 'available', error: err.message }));
+        }
+    };
+
+    const handleRestartApp = async () => {
+        try {
+            await fetch(`${API_BASE}/update/restart`, { method: 'POST' });
+        } catch (err) {
+            alert('Failed to relaunch app. Please restart it manually.');
+        }
+    };
 
     const loadTrash = async () => {
         const trash = await getOfflineItem('zaiqa_mahal_trash', []);
@@ -134,7 +195,7 @@ const Settings = () => {
                 style={{
                     position: 'absolute',
                     inset: 0,
-                    backgroundImage: `url(/src/assets/Logo.jpg)`,
+                    backgroundImage: `url(./Logo.jpg)`,
                     backgroundSize: 'contain',
                     backgroundPosition: 'center',
                     backgroundRepeat: 'no-repeat',
@@ -209,14 +270,24 @@ const Settings = () => {
                         <Trash2 size={18} />
                         System Trash Bin
                     </button>
+                    <button
+                        onClick={() => { setActiveTab('update'); handleCheckUpdates(); }}
+                        style={{ width: '100%', padding: '14px', background: activeTab === 'update' ? '#fff7ed' : 'transparent', border: 'none', borderRadius: '10px', color: activeTab === 'update' ? '#ea580c' : '#64748b', fontWeight: 800, textAlign: 'left', display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', transition: '0.2s' }}
+                    >
+                        <RefreshCw size={18} />
+                        Software Updates
+                    </button>
 
                     {/* Inline Update Checker */}
-                    <div style={{ marginTop: '30px', padding: '16px', background: '#fafafa', borderRadius: '12px', border: '1px solid #f4f4f5' }}>
+                    <div 
+                        onClick={() => { setActiveTab('update'); handleCheckUpdates(); }}
+                        style={{ marginTop: '30px', padding: '16px', background: '#fafafa', borderRadius: '12px', border: '1px solid #f4f4f5', cursor: 'pointer' }}
+                    >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                             <RefreshCw size={14} className="text-orange-500 animate-spin" />
                             <span style={{ fontSize: '11px', fontWeight: 800, color: '#71717a', uppercase: 'true', letterSpacing: '0.5px' }}>Check for Updates</span>
                         </div>
-                        <span style={{ fontSize: '12px', fontWeight: 700, color: '#09090b' }}>v{APP_VERSION} is up to date</span>
+                        <span style={{ fontSize: '12px', fontWeight: 700, color: '#09090b' }}>v{APP_VERSION} check online</span>
                     </div>
                 </div>
 
@@ -563,6 +634,117 @@ const Settings = () => {
                                             </div>
                                         );
                                     })
+                                )}
+                            </div>
+                        </div>
+                    ) : activeTab === 'update' ? (
+                        <div style={{ animation: 'fadeIn 0.3s ease', display: 'flex', flexDirection: 'column', gap: '30px' }}>
+                            <div style={{ marginBottom: '10px', paddingBottom: '20px', borderBottom: '1px solid #f1f5f9' }}>
+                                <h3 style={{ fontSize: '1.2rem', fontWeight: 900, color: '#1e293b', marginBottom: '8px' }}>Software & System Updates</h3>
+                                <p style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>Download the latest patches, features, and fixes directly from the GitHub repository.</p>
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', background: '#f8fafc', padding: '30px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
+                                    <div>
+                                        <p style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Current Version</p>
+                                        <h4 style={{ fontSize: '1.8rem', fontWeight: 950, color: '#0f172a', marginTop: '4px' }}>v{APP_VERSION}</h4>
+                                    </div>
+                                    {updateState.latestVersion && (
+                                        <div>
+                                            <p style={{ fontSize: '0.75rem', fontWeight: 800, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Latest Available</p>
+                                            <h4 style={{ fontSize: '1.8rem', fontWeight: 950, color: '#f97316', marginTop: '4px' }}>v{updateState.latestVersion}</h4>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {updateState.status === 'idle' && (
+                                    <button
+                                        onClick={handleCheckUpdates}
+                                        style={{ marginTop: '10px', padding: '16px', background: '#ea580c', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 900, fontSize: '0.95rem', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', transition: '0.2s' }}
+                                    >
+                                        <RefreshCw size={18} />
+                                        CHECK FOR UPDATES
+                                    </button>
+                                )}
+
+                                {updateState.status === 'checking' && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: '#64748b', padding: '15px', background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                                        <Loader2 size={20} className="animate-spin text-orange-500" />
+                                        <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>Contacting GitHub update servers...</span>
+                                    </div>
+                                )}
+
+                                {updateState.status === 'available' && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                                        <div style={{ background: '#fff7ed', border: '1px solid #ffedd5', padding: '18px', borderRadius: '12px', color: '#c2410c', fontWeight: 700, fontSize: '0.9rem' }}>
+                                            🎉 A new software update (v{updateState.latestVersion}) is available!
+                                        </div>
+                                        {updateState.releaseNotes && (
+                                            <div style={{ background: 'white', border: '1px solid #e2e8f0', padding: '20px', borderRadius: '12px' }}>
+                                                <h5 style={{ fontSize: '0.8rem', fontWeight: 900, color: '#334155', textTransform: 'uppercase', marginBottom: '8px' }}>Release Notes:</h5>
+                                                <pre style={{ fontSize: '0.8rem', fontFamily: 'monospace', whiteSpace: 'pre-wrap', color: '#475569', margin: 0 }}>{updateState.releaseNotes}</pre>
+                                            </div>
+                                        )}
+                                        <button
+                                            onClick={handleDownloadUpdate}
+                                            style={{ padding: '16px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 900, fontSize: '0.95rem', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }}
+                                        >
+                                            <Database size={18} />
+                                            DOWNLOAD & INSTALL UPDATE
+                                        </button>
+                                    </div>
+                                )}
+
+                                {updateState.status === 'downloading' && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: '#64748b' }}>
+                                            <Loader2 size={20} className="animate-spin text-orange-500" />
+                                            <span style={{ fontWeight: 700 }}>Downloading and extracting updates... Please do not close the window.</span>
+                                        </div>
+                                        <div style={{ width: '100%', height: '8px', background: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
+                                            <div style={{ width: '60%', height: '100%', background: '#f97316', animation: 'pulse 1.5s infinite' }} />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {updateState.status === 'ready' && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                                        <div style={{ background: '#ecfdf5', border: '1px solid #d1fae5', padding: '18px', borderRadius: '12px', color: '#065f46', fontWeight: 700, fontSize: '0.9rem' }}>
+                                            ✅ Update downloaded and extracted successfully! Ready to apply.
+                                        </div>
+                                        <button
+                                            onClick={handleRestartApp}
+                                            style={{ padding: '16px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 900, fontSize: '0.95rem', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }}
+                                        >
+                                            <RefreshCw size={18} />
+                                            RELAUNCH APP TO APPLY
+                                        </button>
+                                    </div>
+                                )}
+
+                                {updateState.status === 'uptodate' && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#f0fdf4', border: '1px solid #d1fae5', padding: '18px', borderRadius: '12px', color: '#16a34a', fontWeight: 700, fontSize: '0.9rem' }}>
+                                            <ShieldCheck size={20} />
+                                            Your Zaiqah POS software is completely up to date!
+                                        </div>
+                                        <button
+                                            onClick={handleCheckUpdates}
+                                            style={{ padding: '12px 20px', border: '1px solid #cbd5e1', background: 'white', color: '#475569', borderRadius: '10px', fontWeight: 800, fontSize: '0.75rem', cursor: 'pointer', transition: '0.2s', alignSelf: 'flex-start' }}
+                                        >
+                                            CHECK AGAIN
+                                        </button>
+                                    </div>
+                                )}
+
+                                {updateState.error && (
+                                    <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', padding: '18px', borderRadius: '12px', color: '#dc2626', fontWeight: 700, fontSize: '0.9rem', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        <span>❌ {updateState.error}</span>
+                                        <button onClick={() => setUpdateState({ status: 'idle', latestVersion: null, downloadUrl: null, releaseNotes: '', error: null })} style={{ background: 'transparent', textDecoration: 'underline', border: 'none', color: '#b91c1c', fontWeight: 800, fontSize: '0.75rem', textAlign: 'left', cursor: 'pointer' }}>
+                                            TRY AGAIN
+                                        </button>
+                                    </div>
                                 )}
                             </div>
                         </div>

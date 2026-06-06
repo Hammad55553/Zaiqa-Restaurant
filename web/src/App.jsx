@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShoppingCart, LayoutGrid, Package, FileText, Settings, Bell, Search, Menu as MenuIcon, X, Printer, Truck, Wallet, CreditCard, ChefHat, Utensils, BookOpen, Layers, Phone, Bike } from 'lucide-react';
+import { ShoppingCart, LayoutGrid, Package, FileText, Settings, Bell, Search, Menu as MenuIcon, X, Printer, Truck, Wallet, CreditCard, ChefHat, Utensils, BookOpen, Layers, Phone, Bike, Shield, LogOut } from 'lucide-react';
 import POSLayout from './modules/pos/POSLayout';
 import KitchenDisplay from './modules/kds/KitchenDisplay';
 import SplashScreen from './components/SplashScreen';
@@ -13,11 +13,28 @@ import ExpenseTracker from './modules/expenses/ExpenseTracker';
 import CreditManagement from './modules/khata/CreditManagement';
 import SettingsView from './modules/settings/Settings';
 import DeliveryManager from './modules/delivery/DeliveryManager';
+import UserManager from './modules/users/UserManager';
 import { API_BASE } from './config';
 import { getOfflineItem, setOfflineItem, removeOfflineItem } from './utils/offlineDB';
 import { purgeExpiredTrash } from './utils/trashDB';
+import { syncService } from './services/syncService';
+import { useSyncedData } from './hooks/useSync';
 
 function App() {
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('pos_current_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [loginUsername, setLoginUsername] = useState('admin');
+  const [loginPassword, setLoginPassword] = useState('admin123');
+  const [loginError, setLoginError] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
+
   // Skip coin splash if already loaded this session (prevents re-show on refresh)
   const [isLoaded, setIsLoaded] = useState(() => {
     try { return sessionStorage.getItem('pos_session_loaded') === 'true'; }
@@ -25,6 +42,39 @@ function App() {
   });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentView, setCurrentView] = useState('pos'); // 'pos', 'kds', 'inventory', 'reports'
+
+  const handleLoginSubmit = async (e) => {
+    e.preventDefault();
+    setLoginError('');
+    setLoginLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/users/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: loginUsername, password: loginPassword })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setCurrentUser(data.user);
+        localStorage.setItem('pos_current_user', JSON.stringify(data.user));
+        const perms = data.user.permissions || [];
+        if (perms.length > 0 && !perms.includes(currentView)) {
+          setCurrentView(perms[0]);
+        }
+      } else {
+        setLoginError(data.error || 'Invalid credentials');
+      }
+    } catch (err) {
+      setLoginError('Could not connect to authentication server');
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    localStorage.removeItem('pos_current_user');
+  };
   
   // Global Search System
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
@@ -242,11 +292,82 @@ function App() {
     fetchSearchData();
   }, [isLoaded]);
 
+  // Initialize real-time sync service when app loads
+  useEffect(() => {
+    if (!isLoaded || !currentUser) return;
+    
+    console.log('🚀 Starting real-time sync service for multi-device support');
+    syncService.startSync();
+    
+    return () => {
+      syncService.stopSync();
+    };
+  }, [isLoaded, currentUser]);
+
   if (!isLoaded) {
     return <SplashScreen onComplete={() => {
       try { sessionStorage.setItem('pos_session_loaded', 'true'); } catch {}
       setIsLoaded(true);
     }} />;
+  }
+
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden font-sans">
+        <div className="absolute top-[-20%] left-[-20%] w-[60%] h-[60%] rounded-full bg-orange-600/10 blur-[120px] pointer-events-none" />
+        <div className="absolute bottom-[-20%] right-[-20%] w-[60%] h-[60%] rounded-full bg-amber-500/10 blur-[120px] pointer-events-none" />
+
+        <div className="w-full max-w-md bg-white/[0.02] border border-white/10 backdrop-blur-2xl rounded-3xl shadow-2xl p-8 space-y-8 relative z-10">
+          <div className="text-center space-y-3">
+            <div className="w-20 h-20 mx-auto rounded-2xl overflow-hidden border border-orange-500/30 shadow-lg shadow-orange-500/10">
+              <img src="./Logo.jpg" alt="Logo" className="w-full h-full object-cover" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-black text-white tracking-wide">ZAIQA MAHAL</h2>
+              <p className="text-xs text-orange-400 font-bold uppercase tracking-widest mt-1">POS Gate</p>
+            </div>
+          </div>
+
+          {loginError && (
+            <div className="bg-red-500/10 border border-red-500/20 p-3.5 rounded-xl text-center">
+              <p className="text-xs text-red-400 font-bold">{loginError}</p>
+            </div>
+          )}
+
+          <form onSubmit={handleLoginSubmit} className="space-y-5">
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Username</label>
+              <input 
+                type="text" 
+                value={loginUsername}
+                onChange={(e) => setLoginUsername(e.target.value.toLowerCase().replace(/\s/g, ''))}
+                placeholder="Enter staff username..."
+                className="w-full px-4 py-3 bg-white/[0.03] border border-white/10 rounded-xl focus:outline-none focus:border-orange-500 text-white font-medium text-sm transition-all placeholder:text-slate-600"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Access Key</label>
+              <input 
+                type="password" 
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full px-4 py-3 bg-white/[0.03] border border-white/10 rounded-xl focus:outline-none focus:border-orange-500 text-white font-medium text-sm transition-all placeholder:text-slate-600"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loginLoading}
+              className="w-full py-3.5 bg-orange-500 text-white font-bold rounded-xl shadow-lg shadow-orange-500/20 hover:bg-orange-600 transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-55"
+            >
+              {loginLoading ? 'Authenticating...' : 'Secure Login'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
   }
 
   const navigateTo = (view) => {
@@ -289,7 +410,7 @@ function App() {
           {/* Logo Section */}
           <div className="h-24 flex items-center justify-between px-6 border-b border-zinc-900/80 bg-zinc-950/50 shrink-0">
             <div className="flex items-center gap-3">
-              <img src="/src/assets/Logo.jpg" alt="Zaiqa Mahal Logo" className="w-12 h-12 rounded-xl object-cover shadow-lg border border-orange-500/30" />
+              <img src="./Logo.jpg" alt="Zaiqa Mahal Logo" className="w-12 h-12 rounded-xl object-cover shadow-lg border border-orange-500/30" />
               <span className="font-display font-black text-2xl tracking-widest text-white">
                 ZAIQA
               </span>
@@ -302,56 +423,98 @@ function App() {
           {/* Navigation */}
           <nav className="mt-6 flex flex-col gap-6 px-4 overflow-y-auto max-h-[calc(100vh-280px)] hide-scrollbar pb-6">
             {/* Section 1: FOH & Kitchen Operations */}
-            <div>
-              <p className="text-orange-500/70 text-[9px] font-black uppercase tracking-widest px-4 mb-2.5">Operations</p>
-              <div className="flex flex-col gap-1.5">
-                <NavItem icon={<LayoutGrid size={20} />} label="Point of Sale" active={currentView === 'pos'} onClick={() => navigateTo('pos')} />
-                <NavItem icon={<Phone size={20} />} label="Home Delivery" active={currentView === 'delivery'} onClick={() => navigateTo('delivery')} />
-                <NavItem icon={<Utensils size={20} />} label="Table Manager" active={currentView === 'tables'} onClick={() => navigateTo('tables')} />
-                <NavItem icon={<ChefHat size={20} />} label="Kitchen Display" active={currentView === 'kds'} onClick={() => navigateTo('kds')} />
+            {(currentUser.username === 'admin' || currentUser.permissions.some(p => ['pos', 'delivery', 'tables', 'kds'].includes(p))) && (
+              <div>
+                <p className="text-orange-500/70 text-[9px] font-black uppercase tracking-widest px-4 mb-2.5">Operations</p>
+                <div className="flex flex-col gap-1.5">
+                  {(currentUser.username === 'admin' || currentUser.permissions.includes('pos')) && (
+                    <NavItem icon={<LayoutGrid size={20} />} label="Point of Sale" active={currentView === 'pos'} onClick={() => navigateTo('pos')} />
+                  )}
+                  {(currentUser.username === 'admin' || currentUser.permissions.includes('delivery')) && (
+                    <NavItem icon={<Phone size={20} />} label="Home Delivery" active={currentView === 'delivery'} onClick={() => navigateTo('delivery')} />
+                  )}
+                  {(currentUser.username === 'admin' || currentUser.permissions.includes('tables')) && (
+                    <NavItem icon={<Utensils size={20} />} label="Table Manager" active={currentView === 'tables'} onClick={() => navigateTo('tables')} />
+                  )}
+                  {(currentUser.username === 'admin' || currentUser.permissions.includes('kds')) && (
+                    <NavItem icon={<ChefHat size={20} />} label="Kitchen Display" active={currentView === 'kds'} onClick={() => navigateTo('kds')} />
+                  )}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Section 2: Management & Stock */}
-            <div>
-              <p className="text-orange-500/70 text-[9px] font-black uppercase tracking-widest px-4 mb-2.5">Management</p>
-              <div className="flex flex-col gap-1.5">
-                <NavItem icon={<BookOpen size={20} />} label="Menu Manager" active={currentView === 'inventory'} onClick={() => navigateTo('inventory')} />
-                <NavItem icon={<Layers size={20} />} label="Kitchen Stock" active={currentView === 'stock'} onClick={() => navigateTo('stock')} />
-                <NavItem icon={<Truck size={20} />} label="Suppliers" active={currentView === 'suppliers'} onClick={() => navigateTo('suppliers')} />
+            {(currentUser.username === 'admin' || currentUser.permissions.some(p => ['inventory', 'stock', 'suppliers'].includes(p))) && (
+              <div>
+                <p className="text-orange-500/70 text-[9px] font-black uppercase tracking-widest px-4 mb-2.5">Management</p>
+                <div className="flex flex-col gap-1.5">
+                  {(currentUser.username === 'admin' || currentUser.permissions.includes('inventory')) && (
+                    <NavItem icon={<BookOpen size={20} />} label="Menu Manager" active={currentView === 'inventory'} onClick={() => navigateTo('inventory')} />
+                  )}
+                  {(currentUser.username === 'admin' || currentUser.permissions.includes('stock')) && (
+                    <NavItem icon={<Layers size={20} />} label="Kitchen Stock" active={currentView === 'stock'} onClick={() => navigateTo('stock')} />
+                  )}
+                  {(currentUser.username === 'admin' || currentUser.permissions.includes('suppliers')) && (
+                    <NavItem icon={<Truck size={20} />} label="Suppliers" active={currentView === 'suppliers'} onClick={() => navigateTo('suppliers')} />
+                  )}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Section 3: Accounts & Reports */}
-            <div>
-              <p className="text-orange-500/70 text-[9px] font-black uppercase tracking-widest px-4 mb-2.5">Accounts</p>
-              <div className="flex flex-col gap-1.5">
-                <NavItem icon={<CreditCard size={20} />} label="Khata Hub" active={currentView === 'khata'} onClick={() => navigateTo('khata')} />
-                <NavItem icon={<Wallet size={20} />} label="Expenses" active={currentView === 'expenses'} onClick={() => navigateTo('expenses')} />
-                <NavItem icon={<FileText size={20} />} label="Financial Reports" active={currentView === 'reports'} onClick={() => navigateTo('reports')} />
-                <NavItem icon={<Printer size={20} />} label="Receipt Preview" active={currentView === 'receipt'} onClick={() => navigateTo('receipt')} />
+            {(currentUser.username === 'admin' || currentUser.permissions.some(p => ['khata', 'expenses', 'reports'].includes(p))) && (
+              <div>
+                <p className="text-orange-500/70 text-[9px] font-black uppercase tracking-widest px-4 mb-2.5">Accounts</p>
+                <div className="flex flex-col gap-1.5">
+                  {(currentUser.username === 'admin' || currentUser.permissions.includes('khata')) && (
+                    <NavItem icon={<CreditCard size={20} />} label="Khata Hub" active={currentView === 'khata'} onClick={() => navigateTo('khata')} />
+                  )}
+                  {(currentUser.username === 'admin' || currentUser.permissions.includes('expenses')) && (
+                    <NavItem icon={<Wallet size={20} />} label="Expenses" active={currentView === 'expenses'} onClick={() => navigateTo('expenses')} />
+                  )}
+                  {(currentUser.username === 'admin' || currentUser.permissions.includes('reports')) && (
+                    <NavItem icon={<FileText size={20} />} label="Financial Reports" active={currentView === 'reports'} onClick={() => navigateTo('reports')} />
+                  )}
+                  {(currentUser.username === 'admin' || currentUser.permissions.includes('pos')) && (
+                    <NavItem icon={<Printer size={20} />} label="Receipt Preview" active={currentView === 'receipt'} onClick={() => navigateTo('receipt')} />
+                  )}
+                </div>
               </div>
-            </div>
+            )}
+            
             {/* Section 4: System Administration */}
-            <div>
-              <p className="text-orange-500/70 text-[9px] font-black uppercase tracking-widest px-4 mb-2.5">System</p>
-              <div className="flex flex-col gap-1.5">
-                <NavItem icon={<Settings size={20} />} label="Settings" active={currentView === 'settings'} onClick={() => navigateTo('settings')} />
+            {(currentUser.username === 'admin' || currentUser.permissions.some(p => ['settings', 'users'].includes(p))) && (
+              <div>
+                <p className="text-orange-500/70 text-[9px] font-black uppercase tracking-widest px-4 mb-2.5">System</p>
+                <div className="flex flex-col gap-1.5">
+                  {(currentUser.username === 'admin' || currentUser.permissions.includes('settings')) && (
+                    <NavItem icon={<Settings size={20} />} label="Settings" active={currentView === 'settings'} onClick={() => navigateTo('settings')} />
+                  )}
+                  {(currentUser.username === 'admin' || currentUser.permissions.includes('users')) && (
+                    <NavItem icon={<Shield size={20} />} label="User Manager" active={currentView === 'users'} onClick={() => navigateTo('users')} />
+                  )}
+                </div>
               </div>
-            </div>
+            )}
           </nav>
         </div>
 
-        <div className="p-6 mb-2 border-t border-zinc-900/80 bg-zinc-950/50">
+        <div className="p-6 mb-2 border-t border-zinc-900/80 bg-zinc-950/50 flex flex-col gap-4">
           <div className="flex items-center gap-4 p-1.5 rounded-2xl bg-zinc-900/50 border border-zinc-800 shadow-inner">
             <div className="w-12 h-12 bg-gradient-to-tr from-orange-600 to-orange-400 rounded-full flex items-center justify-center shadow-lg shadow-orange-500/20">
-              <img src="/src/assets/Logo.jpg" alt="Admin" className="w-11 h-11 rounded-full object-cover border-2 border-zinc-900" />
+              <img src="./Logo.jpg" alt="User" className="w-11 h-11 rounded-full object-cover border-2 border-zinc-900" />
             </div>
-            <div>
-              <p className="text-sm font-bold text-white tracking-wide">Admin</p>
-              <p className="text-[11px] text-orange-400 font-bold uppercase tracking-widest mt-0.5">Main Cashier</p>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-white tracking-wide truncate">{currentUser.username}</p>
+              <p className="text-[11px] text-orange-400 font-bold uppercase tracking-widest mt-0.5">{currentUser.role}</p>
             </div>
           </div>
+          <button 
+            onClick={handleLogout}
+            className="w-full py-2.5 bg-zinc-900 border border-zinc-800 text-xs font-black text-red-400 uppercase tracking-widest rounded-xl hover:bg-red-950/20 hover:border-red-900/50 transition-all flex items-center justify-center gap-2"
+          >
+            <LogOut size={14} /> Log Out
+          </button>
         </div>
       </aside>
 
@@ -381,6 +544,7 @@ function App() {
                 {currentView === 'expenses' && 'Expense Tracker'}
                 {currentView === 'khata' && 'Executive Khata Hub'}
                 {currentView === 'settings' && 'System Settings'}
+                {currentView === 'users' && 'Staff Directory'}
               </h1>
               <p className="text-xs text-orange-600 font-bold tracking-widest uppercase hidden sm:block mt-1">
                 {currentView === 'pos' && 'Point of Sale'}
@@ -392,6 +556,7 @@ function App() {
                 {currentView === 'expenses' && 'Outlet Expenditures'}
                 {currentView === 'khata' && 'Client & Company Credit Ledger'}
                 {currentView === 'settings' && 'App Configuration & Security'}
+                {currentView === 'users' && 'User Role & Permissions Control'}
               </p>
             </div>
           </div>
@@ -520,6 +685,7 @@ function App() {
           {currentView === 'expenses' && <ExpenseTracker />}
           {currentView === 'khata' && <CreditManagement initialCustomerId={globalSelectedCustomerId} />}
           {currentView === 'settings' && <SettingsView />}
+          {currentView === 'users' && <UserManager />}
         </div>
       </main>
 

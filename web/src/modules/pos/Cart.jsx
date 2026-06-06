@@ -7,6 +7,7 @@ const Cart = ({
   onUpdateQty, 
   onRemove, 
   onContinueToBill,
+  onSendToKitchen,
   activeOrderStatus = 'pending', 
   adminUnlockRemark, 
   onAdminUnlock
@@ -139,15 +140,25 @@ const Cart = ({
               </div>
             )}
 
-            <button 
-              type="button"
-              onClick={onContinueToBill}
-              disabled={!table || items.length === 0}
-              className="w-full py-3 bg-zinc-950 text-white font-black uppercase tracking-wider rounded-xl hover:bg-zinc-900 hover:text-orange-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-zinc-900/20 text-xs"
-            >
-              <CreditCard size={14} />
-              Continue to Bill
-            </button>
+            <div className="flex gap-2">
+              <button 
+                type="button"
+                onClick={onSendToKitchen}
+                disabled={!table || items.length === 0 || !items.some(item => !item.sent)}
+                className="flex-1 py-3 bg-orange-500 text-white font-black uppercase tracking-wider rounded-xl hover:bg-orange-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 shadow-lg shadow-orange-500/20 text-[11px]"
+              >
+                Send to Kitchen
+              </button>
+              <button 
+                type="button"
+                onClick={onContinueToBill}
+                disabled={!table || items.length === 0}
+                className="flex-1 py-3 bg-zinc-950 text-white font-black uppercase tracking-wider rounded-xl hover:bg-zinc-900 hover:text-orange-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 shadow-lg shadow-zinc-900/20 text-[11px]"
+              >
+                <CreditCard size={12} />
+                Continue to Bill
+              </button>
+            </div>
           </>
         )}
       </div>

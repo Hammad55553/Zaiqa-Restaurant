@@ -1,0 +1,60 @@
+name: Build and Release OTA Update
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build Frontend & Create Release Asset
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Web Dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Build Web Assets
+        working-directory: web
+        run: npm run build
+
+      - name: Prepare Payload Directory
+        run: |
+          mkdir -p dist-payload
+          # Copy compiled web build
+          cp -r web/dist dist-payload/web-dist
+          # Copy server code
+          cp -r server dist-payload/server
+          # Remove heavy development artifacts from server
+          rm -rf dist-payload/server/node_modules
+          rm -f dist-payload/server/pos.db
+          rm -f dist-payload/server/pos.db-journal
+          rm -f dist-payload/server/pos.db-wal
+
+      - name: Zip Distribution Payload
+        run: |
+          cd dist-payload
+          zip -r ../dist.zip .
+          cd ..
+
+      - name: Create or Update Release
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          tag: latest
+          name: "Latest POS Build"
+          body: "This release contains the latest automated build of Zaiqah POS. Push code to main to update this package automatically."
+          artifacts: "dist.zip"
+          token: ${{ secrets.GITHUB_TOKEN }}

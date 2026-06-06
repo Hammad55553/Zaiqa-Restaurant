@@ -2,7 +2,9 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
 // Connect to SQLite database (it will create pos.db if it doesn't exist)
-const dbPath = path.resolve(__dirname, 'pos.db');
+const dbPath = process.env.ELECTRON_USER_DATA_PATH 
+  ? path.join(process.env.ELECTRON_USER_DATA_PATH, 'pos.db')
+  : path.resolve(__dirname, 'pos.db');
 const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
     console.error('Error connecting to the SQLite database:', err.message);
@@ -31,8 +33,30 @@ const initDb = () => {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL,
-      role TEXT NOT NULL
-    )`);
+      role TEXT NOT NULL,
+      permissions TEXT
+    )`, () => {
+      // Add permissions column in case of existing installations
+      db.run(`ALTER TABLE users ADD COLUMN permissions TEXT`, () => {
+        // Seed default admin user if the table is empty
+        db.get('SELECT COUNT(*) as count FROM users', [], (err, row) => {
+          if (row && row.count === 0) {
+            const defaultPerms = JSON.stringify([
+              'pos', 'delivery', 'tables', 'kds', 'inventory', 'stock', 
+              'suppliers', 'khata', 'expenses', 'reports', 'settings', 'users'
+            ]);
+            db.run(
+              `INSERT INTO users (username, password, role, permissions) VALUES (?, ?, ?, ?)`,
+              ['admin', 'admin123', 'admin', defaultPerms],
+              (err2) => {
+                if (err2) console.error('Admin seeding error:', err2.message);
+                else console.log('🌱 Seeded default admin user.');
+              }
+            );
+          }
+        });
+      });
+    });
 
     // Tables Management Table (Recreating to add area and seats)
     db.serialize(() => {

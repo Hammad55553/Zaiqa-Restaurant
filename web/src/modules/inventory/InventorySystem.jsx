@@ -198,7 +198,7 @@ const InventorySystem = () => {
         style={{
           position: 'absolute',
           inset: 0,
-          backgroundImage: `url(/src/assets/Logo.jpg)`,
+          backgroundImage: `url(./Logo.jpg)`,
           backgroundSize: 'contain',
           backgroundPosition: 'center',
           backgroundRepeat: 'no-repeat',

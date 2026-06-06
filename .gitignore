@@ -15,3 +15,10 @@ server/database/pos.db-shm
 # Operating System files
 .DS_Store
 Thumbs.db
+.aider*
+
+# Electron build and preparation outputs
+desktop/dist-electron/
+desktop/web-dist/
+desktop/server/
+

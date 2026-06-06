@@ -57,7 +57,7 @@ const TableCard = ({ table, onClick }) => {
       style={{ borderColor: theme.border, '--radio-color': theme.shadow }}
       className={`group relative h-36 md:h-44 lg:h-48 rounded-2xl md:rounded-3xl overflow-hidden shadow-md hover:shadow-2xl transition-all duration-1000 cursor-pointer transform hover:-translate-y-1 border-2 ${isOccupied ? 'animate-radio-waves' : ''}`}
     >
-      <img src="/table.png" alt="Restaurant Table" className="absolute inset-0 w-full h-full object-cover z-0 group-hover:scale-105 transition-transform duration-500" />
+      <img src="./table.png" alt="Restaurant Table" className="absolute inset-0 w-full h-full object-cover z-0 group-hover:scale-105 transition-transform duration-500" />
       
       <div className="absolute inset-0 z-10 transition-colors duration-1000" style={isOccupied ? { background: theme.gradient } : {}} />
       {!isOccupied && <div className={`absolute inset-0 z-10 bg-gradient-to-b ${theme.gradient} transition-colors duration-1000`} />}
