@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Clock, CheckCircle, ChefHat, Timer, AlertCircle, RefreshCw, History, Play, RotateCcw, TrendingUp, Trash2, Package } from 'lucide-react';
 import lottie from 'lottie-web';
 import foodPrepData from '../../assets/foodpre.json';
-import { API_BASE } from '../../config';
+import { API_BASE, WS_URL } from '../../config';
 
 // ─── Ticket Timer ──────────────────────────────────────────────────────────────
 const TicketTimer = ({ startTime }) => {
@@ -284,8 +284,39 @@ const KitchenDisplay = () => {
 
   useEffect(() => {
     fetchActiveOrders();
-    const interval = setInterval(fetchActiveOrders, 5000);
-    return () => clearInterval(interval);
+
+    let ws;
+    const connectWS = () => {
+      try {
+        ws = new WebSocket(WS_URL);
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'SYNC_TRIGGER') {
+              console.log("KDS: WebSocket sync trigger received! Refreshing active board...");
+              fetchActiveOrders();
+            }
+          } catch (e) {
+            console.error("WS message parse failed:", e);
+          }
+        };
+        ws.onclose = () => {
+          setTimeout(connectWS, 3000);
+        };
+        ws.onerror = (err) => {
+          ws.close();
+        };
+      } catch (err) {
+        console.error("KDS: Failed to connect WS:", err);
+      }
+    };
+    connectWS();
+
+    const interval = setInterval(fetchActiveOrders, 10000);
+    return () => {
+      clearInterval(interval);
+      if (ws) ws.close();
+    };
   }, [fetchActiveOrders]);
 
   useEffect(() => {

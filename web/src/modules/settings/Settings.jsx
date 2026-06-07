@@ -22,6 +22,11 @@ const Settings = () => {
     const [confirmPassword, setConfirmPassword] = useState('');
     const [terminalPin, setTerminalPin] = useState('1234');
     const [activeTab, setActiveTab] = useState('security');
+    const [serverIp, setServerIp] = useState(
+        (typeof window !== 'undefined' ? window.localStorage.getItem('zaiqa_server_ip') : '') || ''
+    );
+    const [connectionStatus, setConnectionStatus] = useState('idle'); // 'idle', 'testing', 'success', 'failed'
+    const [serverDetails, setServerDetails] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
     const [toastMessage, setToastMessage] = useState(null);
 
@@ -94,6 +99,42 @@ const Settings = () => {
             await fetch(`${API_BASE}/update/restart`, { method: 'POST' });
         } catch (err) {
             alert('Failed to relaunch app. Please restart it manually.');
+        }
+    };
+
+    const handleTestConnection = async (ipToTest) => {
+        setConnectionStatus('testing');
+        const targetIp = ipToTest || serverIp || 'localhost';
+        try {
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), 4000);
+            const res = await fetch(`http://${targetIp.trim()}:5005/api/health`, { signal: controller.signal });
+            clearTimeout(id);
+            if (!res.ok) throw new Error('Unhealthy status');
+            const data = await res.json();
+            setServerDetails(data);
+            setConnectionStatus('success');
+            showToast("Connected to server successfully!", "success");
+        } catch (err) {
+            setConnectionStatus('failed');
+            setServerDetails(null);
+            showToast("Failed to connect to server.", "error");
+        }
+    };
+
+    const handleSaveServerIp = (e) => {
+        e.preventDefault();
+        if (typeof window !== 'undefined') {
+            const cleanedIp = serverIp.trim();
+            if (cleanedIp === '') {
+                window.localStorage.removeItem('zaiqa_server_ip');
+            } else {
+                window.localStorage.setItem('zaiqa_server_ip', cleanedIp);
+            }
+            showToast("Server Connection IP saved! Reloading application...", "success");
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
         }
     };
 
@@ -283,6 +324,13 @@ const Settings = () => {
                     >
                         <RefreshCw size={18} />
                         Software Updates
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('server')}
+                        style={{ width: '100%', padding: '14px', background: activeTab === 'server' ? '#eff6ff' : 'transparent', border: 'none', borderRadius: '10px', color: activeTab === 'server' ? '#2563eb' : '#64748b', fontWeight: 800, textAlign: 'left', display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', transition: '0.2s' }}
+                    >
+                        <Database size={18} />
+                        Server Connection
                     </button>
 
                     {/* Inline Update Checker */}
@@ -761,6 +809,85 @@ const Settings = () => {
                                     </div>
                                 )}
                             </div>
+                        </div>
+                    ) : activeTab === 'server' ? (
+                        <div style={{ animation: 'fadeIn 0.3s ease', display: 'flex', flexDirection: 'column', gap: '30px' }}>
+                            <div style={{ marginBottom: '10px', paddingBottom: '20px', borderBottom: '1px solid #f1f5f9' }}>
+                                <h3 style={{ fontSize: '1.2rem', fontWeight: 900, color: '#1e293b', marginBottom: '8px' }}>Server Connection Settings</h3>
+                                <p style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>Link this terminal to the main Server machine (Counter 1) to synchronize orders, sales, and tables in real-time.</p>
+                            </div>
+
+                            <form onSubmit={handleSaveServerIp} style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 900, color: '#475569', textTransform: 'uppercase', marginBottom: '10px' }}>Server IP Address</label>
+                                    <div style={{ position: 'relative', display: 'flex', gap: '10px' }}>
+                                        <div style={{ position: 'relative', flex: 1 }}>
+                                            <Database size={18} style={{ position: 'absolute', left: '15px', top: '50%', transform: 'translateY(-50%)', color: '#f97316' }} />
+                                            <input
+                                                type="text"
+                                                style={{ width: '100%', padding: '15px 15px 15px 45px', borderRadius: '12px', border: '1px solid #cbd5e1', fontSize: '1rem', fontWeight: 600, outline: 'none' }}
+                                                placeholder="e.g. 192.168.100.57 (Leave blank for local standalone)"
+                                                value={serverIp}
+                                                onChange={(e) => setServerIp(e.target.value)}
+                                            />
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleTestConnection()}
+                                            disabled={connectionStatus === 'testing'}
+                                            style={{ padding: '0 20px', background: '#f97316', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 800, cursor: 'pointer', fontSize: '0.85rem' }}
+                                        >
+                                            {connectionStatus === 'testing' ? "Testing..." : "Test Connection"}
+                                        </button>
+                                    </div>
+                                    <p style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '6px', fontWeight: 600 }}>
+                                        * Leave blank if this is the main server computer (Counter 1).
+                                    </p>
+                                </div>
+
+                                {connectionStatus === 'success' && serverDetails && (
+                                    <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '20px', borderRadius: '12px', color: '#166534' }}>
+                                        <h4 style={{ fontWeight: 800, fontSize: '0.9rem', marginBottom: '4px' }}>🟢 Server Connected Successfully!</h4>
+                                        <ul style={{ fontSize: '0.8rem', listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '4px', fontWeight: 600 }}>
+                                            <li>• Status: {serverDetails.status}</li>
+                                            <li>• Message: {serverDetails.message}</li>
+                                            <li>• Server IP: {serverDetails.server_ip}</li>
+                                            <li>• Port: {serverDetails.port}</li>
+                                        </ul>
+                                    </div>
+                                )}
+
+                                {connectionStatus === 'failed' && (
+                                    <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', padding: '20px', borderRadius: '12px', color: '#991b1b' }}>
+                                        <h4 style={{ fontWeight: 800, fontSize: '0.9rem', marginBottom: '4px' }}>🔴 Connection Failed</h4>
+                                        <p style={{ fontSize: '0.8rem', margin: 0, fontWeight: 600 }}>
+                                            Could not reach the server at <strong>{serverIp || 'localhost'}</strong>. Please make sure:
+                                            <br />1. Both devices are connected to the EXACT same Wi-Fi network.
+                                            <br />2. The main server computer is turned on and running the POS app.
+                                            <br />3. The IP address typed above is correct.
+                                        </p>
+                                    </div>
+                                )}
+
+                                <div style={{ background: '#eff6ff', padding: '20px', borderRadius: '12px', border: '1px solid #bfdbfe', display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
+                                    <AlertCircle size={22} color="#3b82f6" style={{ flexShrink: 0, marginTop: '2px' }} />
+                                    <div style={{ fontSize: '0.8rem', color: '#1e40af', lineHeight: 1.6, fontWeight: 600 }}>
+                                        <strong>How to connect additional screens:</strong>
+                                        <ol style={{ paddingLeft: '20px', margin: '5px 0 0 0' }}>
+                                            <li>On the main Counter 1 computer, check its IP address (you can find it in the start log or settings, e.g. <code>192.168.100.57</code>).</li>
+                                            <li>Type that IP address in this field on Counter 2 / MacBook / Windows 2.</li>
+                                            <li>Click <strong>Save & Apply Server IP</strong>. The app will reload and connect to the main database.</li>
+                                        </ol>
+                                    </div>
+                                </div>
+
+                                <button
+                                    type="submit"
+                                    style={{ padding: '18px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 900, fontSize: '0.95rem', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }}
+                                >
+                                    SAVE & APPLY SERVER IP
+                                </button>
+                            </form>
                         </div>
                     ) : (
                         <div style={{ animation: 'fadeIn 0.3s ease' }}>
