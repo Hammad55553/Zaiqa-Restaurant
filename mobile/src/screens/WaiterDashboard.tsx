@@ -11,6 +11,7 @@ import {
   Pressable,
 } from 'react-native';
 import { LogOut, Layers, Clock, ArrowLeft, MoreVertical, WifiOff } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_BASE } from '../config';
 import { useToast } from '../components/Toast';
 import { useServerStatus } from '../hooks/useServerStatus';
@@ -121,6 +122,7 @@ function DotsMenu({ onLogout }: { onLogout: () => void }) {
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 
 export default function WaiterDashboard({ username, onLogout }: WaiterDashboardProps) {
+  const insets = useSafeAreaInsets();
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<'tables' | 'history' | 'queue'>('tables');
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
@@ -275,30 +277,18 @@ export default function WaiterDashboard({ username, onLogout }: WaiterDashboardP
 
 
       {/* ── Header ── */}
-      <View style={styles.header}>
-        {selectedTable ? (
-          <>
-            <TouchableOpacity style={styles.backBtn} onPress={handleBackToFloor} activeOpacity={0.7}>
-              <ArrowLeft size={20} color="#ffffff" />
-            </TouchableOpacity>
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={styles.headerTitle}>TABLE {selectedTable.number}</Text>
-              <Text style={styles.headerSub}>{selectedTable.area.toUpperCase()} • NEW ORDER</Text>
-            </View>
-          </>
-        ) : (
-          <>
-            <View style={styles.logoBadge}>
-              <Image source={require('../../assets/Logo.jpg')} style={styles.logoBadgeImage} resizeMode="cover" />
-            </View>
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={styles.headerTitle}>ZAIQA MAHAL</Text>
-              <Text style={styles.headerSub}>WAITER WORKSPACE • {username.toUpperCase()}</Text>
-            </View>
-          </>
-        )}
-        <DotsMenu onLogout={onLogout} />
-      </View>
+      {!selectedTable && (
+        <View style={[styles.header, { paddingTop: insets.top, height: 60 + insets.top }]}>
+          <View style={styles.logoBadge}>
+            <Image source={require('../../assets/Logo.jpg')} style={styles.logoBadgeImage} resizeMode="cover" />
+          </View>
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={styles.headerTitle}>ZAIQA MAHAL</Text>
+            <Text style={styles.headerSub}>WAITER WORKSPACE • {username.toUpperCase()}</Text>
+          </View>
+          <DotsMenu onLogout={onLogout} />
+        </View>
+      )}
 
       {/* ── Main Tabs (hidden on ordering screen) ── */}
       {!selectedTable && (

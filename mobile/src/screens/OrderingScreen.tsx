@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, Dimensions } from 'react-native';
-import { Clipboard } from 'lucide-react-native';
+import { StyleSheet, Text, View, TouchableOpacity, Dimensions, Alert } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Clipboard, ArrowLeft } from 'lucide-react-native';
 import MenuSection from '../components/MenuSection';
 import CartSection from '../components/CartSection';
 import { API_BASE, GST_RATE } from '../config';
@@ -56,6 +57,7 @@ export default function OrderingScreen({
   onQueueOfflineOrder,
   initialCartItems
 }: OrderingScreenProps) {
+  const insets = useSafeAreaInsets();
   // Check screen width for responsiveness
   const { width: windowWidth } = Dimensions.get('window');
   const isTablet = windowWidth > 768;
@@ -77,10 +79,93 @@ export default function OrderingScreen({
   const [activeOrder, setActiveOrder] = useState<any | null>(null);
   const toast = useToast();
 
-  // Custom dish states
   const [customName, setCustomName] = useState('');
   const [customPrice, setCustomPrice] = useState('');
   const [showCustomForm, setShowCustomForm] = useState(false);
+
+  const handleReleaseTable = () => {
+    Alert.alert(
+      'Vacate Table',
+      `Are you sure you want to mark Table ${selectedTable.number} as vacant/available?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Yes, Vacate',
+          onPress: async () => {
+            try {
+              const res = await fetch(`${API_BASE}/tables/${selectedTable.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'available' }),
+              });
+              if (res.ok) {
+                toast.success('Table Vacated', `Table ${selectedTable.number} is now available.`);
+                onBack();
+              } else {
+                toast.error('Failed', 'Could not vacate table.');
+              }
+            } catch (err) {
+              toast.error('Connection Error', 'Could not reach server.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleRequestBill = () => {
+    if (!activeOrder) return;
+    Alert.alert(
+      'Request Bill',
+      `Do you want to request the bill for Table ${selectedTable.number}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Request Bill',
+          onPress: async () => {
+            try {
+              setPlacingOrder(true);
+              const subtotal = cartTotal;
+              const tax = Math.round(subtotal * GST_RATE);
+              const total_amount = subtotal + tax;
+
+              const cleanRemarks = remarks.replace(/^\[BILL REQUESTED\]\s*/, '');
+              const updatedRemarks = `[BILL REQUESTED] ${cleanRemarks}`;
+
+              const res = await fetch(`${API_BASE}/orders/${activeOrder.id}/sync`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  items: cartItems.map(item => ({
+                    item_id: item.id,
+                    item_name: item.name,
+                    price: item.price,
+                    quantity: item.qty,
+                    notes: item.notes || ''
+                  })),
+                  subtotal,
+                  tax,
+                  total_amount,
+                  remarks: `[Waiter: ${username}] ${updatedRemarks}`
+                })
+              });
+
+              if (res.ok) {
+                toast.success('Bill Requested!', 'Notification sent to cashier.');
+                onBack();
+              } else {
+                toast.error('Request Failed', 'Could not sync bill request.');
+              }
+            } catch (e) {
+              toast.error('Network Error', 'Check server connection.');
+            } finally {
+              setPlacingOrder(false);
+            }
+          }
+        }
+      ]
+    );
+  };
 
   useEffect(() => {
     fetchMenu();
@@ -310,14 +395,25 @@ export default function OrderingScreen({
   return (
     <View style={styles.orderScreenWrapper}>
       {/* Active Table selection header */}
-      <View style={styles.activeTableHeader}>
-        <Clipboard size={14} color="#ea580c" />
-        <Text style={styles.activeTableTitle}>
-          TABLE {selectedTable.number} ({selectedTable.area.toUpperCase()} AREA)
-        </Text>
-        <TouchableOpacity style={styles.changeTableBtn} onPress={onBack}>
-          <Text style={styles.changeTableText}>Back to Floor</Text>
+      <View style={[styles.activeTableHeader, { paddingTop: insets.top, height: 60 + insets.top }]}>
+        <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.7}>
+          <ArrowLeft size={20} color="#ffffff" />
         </TouchableOpacity>
+        <View style={{ flex: 1, marginLeft: 12 }}>
+          <Text style={styles.headerTitle}>TABLE {selectedTable.number}</Text>
+          <Text style={styles.headerSub}>
+            {selectedTable.area.toUpperCase()} AREA • {activeOrder ? 'EDITING ACTIVE ORDER' : 'NEW ORDER'}
+          </Text>
+        </View>
+        {selectedTable.status !== 'available' && (
+          <TouchableOpacity 
+            style={styles.releaseTableBtn} 
+            onPress={handleReleaseTable}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.releaseTableText}>Vacate Table</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Segmented Sub Tab selector - only visible on mobile phones */}
@@ -377,6 +473,7 @@ export default function OrderingScreen({
             handlePlaceOrder={handlePlaceOrder}
             placingOrder={placingOrder}
             activeOrder={activeOrder}
+            onRequestBill={handleRequestBill}
           />
         )}
       </View>
@@ -389,33 +486,48 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   activeTableHeader: {
+    height: 72,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff7ed',
-    borderBottomWidth: 1.2,
-    borderColor: '#ffedd5',
-    padding: 12,
-    gap: 8,
+    paddingHorizontal: 20,
+    backgroundColor: '#0f172a',
+    borderBottomWidth: 3,
+    borderColor: '#f97316',
   },
-  activeTableTitle: {
-    fontSize: 13,
-    fontWeight: '900',
-    color: '#c2410c',
-    flex: 1,
-    letterSpacing: 0.5,
-  },
-  changeTableBtn: {
+  releaseTableBtn: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    backgroundColor: '#ffffff',
-    borderWidth: 1.2,
-    borderColor: '#ffedd5',
     borderRadius: 8,
+    backgroundColor: '#ef4444',
   },
-  changeTableText: {
+  releaseTableText: {
+    color: '#ffffff',
     fontSize: 11,
     fontWeight: '900',
-    color: '#c2410c',
+    letterSpacing: 0.5,
+  },
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: '#1e293b',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#ffffff',
+    letterSpacing: 1.5,
+  },
+  headerSub: {
+    fontSize: 10,
+    color: '#94a3b8',
+    fontWeight: '800',
+    letterSpacing: 1,
+    marginTop: 2,
   },
   orderPanelContainer: {
     flex: 1,

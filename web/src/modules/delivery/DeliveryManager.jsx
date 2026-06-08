@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Phone, User, MapPin, Search, Plus, Trash2, Edit3, ShoppingBag, PhoneCall, Check, UserPlus, X } from 'lucide-react';
 import { getOfflineItem, setOfflineItem } from '../../utils/offlineDB';
 import { moveToTrash } from '../../utils/trashDB';
+import { API_BASE } from '../../config';
 
 const DeliveryManager = ({ navigateTo }) => {
   const [customers, setCustomers] = useState([]);
@@ -19,15 +20,29 @@ const DeliveryManager = ({ navigateTo }) => {
   const [toast, setToast] = useState(null);
   const [incomingCallSim, setIncomingCallSim] = useState(null);
 
-  // Load registered customers from IndexedDB
+  // Load registered customers from Server DB with Offline Fallback
   useEffect(() => {
     const loadRegistry = async () => {
-      const stored = await getOfflineItem('zaiqa_mahal_delivery_customers');
-      if (stored) {
-        setCustomers(stored);
-      } else {
-        await setOfflineItem('zaiqa_mahal_delivery_customers', []);
-        setCustomers([]);
+      try {
+        const res = await fetch(`${API_BASE}/customers`);
+        if (res.ok) {
+          const data = await res.json();
+          // Filter to only Client types for delivery
+          const filtered = data.filter(c => c.type === 'Client');
+          setCustomers(filtered);
+          await setOfflineItem('zaiqa_mahal_delivery_customers', filtered);
+        } else {
+          throw new Error();
+        }
+      } catch (err) {
+        console.warn("Failed to fetch customers from server, using offline cache", err);
+        const stored = await getOfflineItem('zaiqa_mahal_delivery_customers');
+        if (stored) {
+          setCustomers(stored);
+        } else {
+          await setOfflineItem('zaiqa_mahal_delivery_customers', []);
+          setCustomers([]);
+        }
       }
     };
     loadRegistry();
@@ -71,17 +86,42 @@ const DeliveryManager = ({ navigateTo }) => {
       phone: phoneNum,
       name: newName.trim() || 'Valued Guest',
       address: newAddress.trim(),
-      ordersCount: 0
+      type: 'Client',
+      balance: 0
     };
 
-    const updated = [newCust, ...customers];
-    setCustomers(updated);
-    await setOfflineItem('zaiqa_mahal_delivery_customers', updated);
-    showToast('New Customer Registered Successfully!');
-    
-    // Auto-fill active search
-    setSearchPhone(phoneNum);
-    setLookupResult({ status: 'found', data: newCust });
+    try {
+      const res = await fetch(`${API_BASE}/customers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newCust)
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        const mapped = { ...saved, ordersCount: 0 };
+        const updated = [mapped, ...customers];
+        setCustomers(updated);
+        await setOfflineItem('zaiqa_mahal_delivery_customers', updated);
+        showToast('New Customer Registered Successfully!');
+        
+        // Auto-fill active search
+        setSearchPhone(phoneNum);
+        setLookupResult({ status: 'found', data: mapped });
+      } else {
+        const errData = await res.json();
+        showToast(errData.error || 'Server error saving customer', 'error');
+      }
+    } catch (err) {
+      // Offline fallback: save locally
+      const offlineCust = { ...newCust, id: `CUST-OFFLINE-${Date.now()}`, ordersCount: 0 };
+      const updated = [offlineCust, ...customers];
+      setCustomers(updated);
+      await setOfflineItem('zaiqa_mahal_delivery_customers', updated);
+      showToast('Registered Offline (Saved locally)');
+      
+      setSearchPhone(phoneNum);
+      setLookupResult({ status: 'found', data: offlineCust });
+    }
 
     // Reset Form
     setNewName('');
@@ -97,14 +137,37 @@ const DeliveryManager = ({ navigateTo }) => {
       showToast('Address is required!', 'error');
       return;
     }
-
-    const updated = customers.map(c => c.phone === editingCustomer.phone ? editingCustomer : c);
-    setCustomers(updated);
-    await setOfflineItem('zaiqa_mahal_delivery_customers', updated);
-    showToast('Customer Profile Updated!');
-    
-    if (lookupResult?.data?.phone === editingCustomer.phone) {
-      setLookupResult({ status: 'found', data: editingCustomer });
+    try {
+      const res = await fetch(`${API_BASE}/customers/${editingCustomer.id || editingCustomer.phone}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editingCustomer.name,
+          phone: editingCustomer.phone,
+          address: editingCustomer.address
+        })
+      });
+      if (res.ok) {
+        const updated = customers.map(c => c.phone === editingCustomer.phone ? editingCustomer : c);
+        setCustomers(updated);
+        await setOfflineItem('zaiqa_mahal_delivery_customers', updated);
+        showToast('Customer Profile Updated!');
+        
+        if (lookupResult?.data?.phone === editingCustomer.phone) {
+          setLookupResult({ status: 'found', data: editingCustomer });
+        }
+      } else {
+        showToast('Failed to update customer on server', 'error');
+      }
+    } catch (err) {
+      const updated = customers.map(c => c.phone === editingCustomer.phone ? editingCustomer : c);
+      setCustomers(updated);
+      await setOfflineItem('zaiqa_mahal_delivery_customers', updated);
+      showToast('Updated profile offline (local only)');
+      
+      if (lookupResult?.data?.phone === editingCustomer.phone) {
+        setLookupResult({ status: 'found', data: editingCustomer });
+      }
     }
     
     setEditingCustomer(null);
@@ -115,17 +178,37 @@ const DeliveryManager = ({ navigateTo }) => {
     const matchedCustomer = customers.find(c => c.phone === phone);
     if (!matchedCustomer) return;
 
-    const success = await moveToTrash('zaiqa_mahal_delivery_customers', matchedCustomer, 'phone');
-    if (success) {
-      const updated = customers.filter(c => c.phone !== phone);
-      setCustomers(updated);
-      showToast('Customer moved to Trash bin (30 days limit).', 'warning');
-      if (lookupResult?.data?.phone === phone) {
-        setLookupResult(null);
-        setSearchPhone('');
+    try {
+      const res = await fetch(`${API_BASE}/customers/${matchedCustomer.id || matchedCustomer.phone}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        const updated = customers.filter(c => c.phone !== phone);
+        setCustomers(updated);
+        await setOfflineItem('zaiqa_mahal_delivery_customers', updated);
+        showToast('Customer Profile Deleted from Server.');
+        if (lookupResult?.data?.phone === phone) {
+          setLookupResult(null);
+          setSearchPhone('');
+        }
+      } else {
+        showToast('Failed to delete from server', 'error');
       }
-    } else {
-      showToast('Failed to delete customer.', 'error');
+    } catch (err) {
+      const matchedCustomer = customers.find(c => c.phone === phone);
+      if (!matchedCustomer) return;
+      const success = await moveToTrash('zaiqa_mahal_delivery_customers', matchedCustomer, 'phone');
+      if (success) {
+        const updated = customers.filter(c => c.phone !== phone);
+        setCustomers(updated);
+        showToast('Customer moved to local Trash bin.', 'warning');
+        if (lookupResult?.data?.phone === phone) {
+          setLookupResult(null);
+          setSearchPhone('');
+        }
+      } else {
+        showToast('Failed to delete customer locally.', 'error');
+      }
     }
   };
 
@@ -279,6 +362,18 @@ const DeliveryManager = ({ navigateTo }) => {
                               setCustomers(updated);
                               const saveUpdated = async () => {
                                 await setOfflineItem('zaiqa_mahal_delivery_customers', updated);
+                                try {
+                                  const c = lookupResult.data;
+                                  await fetch(`${API_BASE}/customers/${c.id || c.phone}`, {
+                                    method: 'PUT',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                      name: newName,
+                                      phone: c.phone,
+                                      address: c.address
+                                    })
+                                  });
+                                } catch (err) {}
                               };
                               saveUpdated();
                             }}

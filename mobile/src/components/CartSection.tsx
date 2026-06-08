@@ -21,6 +21,7 @@ interface CartSectionProps {
   handlePlaceOrder: () => void;
   placingOrder: boolean;
   activeOrder?: any;
+  onRequestBill?: () => void;
 }
 
 export default function CartSection({
@@ -32,7 +33,8 @@ export default function CartSection({
   cartTotal,
   handlePlaceOrder,
   placingOrder,
-  activeOrder
+  activeOrder,
+  onRequestBill
 }: CartSectionProps) {
   return (
     <View style={styles.cartDrawer}>
@@ -126,23 +128,37 @@ export default function CartSection({
           <Text style={styles.totalValue}>Rs. {cartTotal}</Text>
         </View>
 
-        <TouchableOpacity 
-          style={[styles.submitOrderBtn, cartItems.length === 0 && styles.submitOrderBtnDisabled]} 
-          onPress={handlePlaceOrder}
-          disabled={placingOrder || cartItems.length === 0}
-          activeOpacity={0.8}
-        >
-          {placingOrder ? (
-            <ActivityIndicator size="small" color="#ffffff" />
-          ) : (
-            <>
-              <Text style={styles.submitOrderText}>
-                {activeOrder ? 'UPDATE RUNNING ORDER' : 'SEND TO KITCHEN'}
-              </Text>
-              <Send size={12} color="#ffffff" style={{ marginLeft: 6 }} />
-            </>
+        <View style={{ gap: 8 }}>
+          <TouchableOpacity 
+            style={[styles.submitOrderBtn, cartItems.length === 0 && styles.submitOrderBtnDisabled]} 
+            onPress={handlePlaceOrder}
+            disabled={placingOrder || cartItems.length === 0}
+            activeOpacity={0.8}
+          >
+            {placingOrder ? (
+              <ActivityIndicator size="small" color="#ffffff" />
+            ) : (
+              <>
+                <Text style={styles.submitOrderText}>
+                  {activeOrder ? 'UPDATE RUNNING ORDER' : 'SEND TO KITCHEN'}
+                </Text>
+                <Send size={12} color="#ffffff" style={{ marginLeft: 6 }} />
+              </>
+            )}
+          </TouchableOpacity>
+
+          {activeOrder && (
+            <TouchableOpacity 
+              style={styles.requestBillBtn} 
+              onPress={onRequestBill}
+              disabled={placingOrder}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.requestBillText}>REQUEST BILL / CHECKOUT</Text>
+              <Receipt size={12} color="#ffffff" style={{ marginLeft: 6 }} />
+            </TouchableOpacity>
           )}
-        </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -341,6 +357,20 @@ const styles = StyleSheet.create({
     backgroundColor: '#cbd5e1',
   },
   submitOrderText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  requestBillBtn: {
+    backgroundColor: '#0284c7',
+    height: 48,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+  },
+  requestBillText: {
     color: '#ffffff',
     fontSize: 12,
     fontWeight: '900',

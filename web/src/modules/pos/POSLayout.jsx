@@ -1003,19 +1003,59 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
     if (!selectedDelivery || !selectedDelivery.phone) return;
     const customers = await getOfflineItem('zaiqa_mahal_delivery_customers', []);
     const existingIdx = customers.findIndex(c => c.phone === selectedDelivery.phone);
+    let targetCustomer = null;
     if (existingIdx >= 0) {
       // Update name/address if provided
       if (selectedDelivery.name) customers[existingIdx].name = selectedDelivery.name;
       if (selectedDelivery.address) customers[existingIdx].address = selectedDelivery.address;
+      targetCustomer = customers[existingIdx];
     } else {
-      customers.unshift({
+      targetCustomer = {
         phone: selectedDelivery.phone,
         name: selectedDelivery.name || 'Delivery Guest',
         address: selectedDelivery.address || '',
         ordersCount: 0,
-      });
+      };
+      customers.unshift(targetCustomer);
     }
     await setOfflineItem('zaiqa_mahal_delivery_customers', customers);
+
+    // Sync with central database SQLite
+    try {
+      const isExistingInDB = allDBCustomers.some(c => c.phone === selectedDelivery.phone);
+      if (isExistingInDB) {
+        const dbCust = allDBCustomers.find(c => c.phone === selectedDelivery.phone);
+        await fetch(`${API_BASE}/customers/${dbCust.id || dbCust.phone}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: targetCustomer.name,
+            phone: targetCustomer.phone,
+            address: targetCustomer.address
+          })
+        });
+      } else {
+        await fetch(`${API_BASE}/customers`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: targetCustomer.name,
+            phone: targetCustomer.phone,
+            address: targetCustomer.address,
+            type: 'Client',
+            balance: 0
+          })
+        });
+      }
+      
+      // Reload customer database list
+      fetch(`${API_BASE}/customers`)
+        .then(res => res.ok ? res.json() : [])
+        .then(data => setAllDBCustomers(data))
+        .catch(() => {});
+    } catch (e) {
+      console.warn("Failed to sync customer details to SQLite central registry", e);
+    }
   };
 
   const handleDeliveryCheckout = async (customerPhone = '') => {

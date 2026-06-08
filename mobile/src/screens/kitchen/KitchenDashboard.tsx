@@ -12,6 +12,7 @@ import {
   AppState,
 } from 'react-native';
 import { Flame, CheckCircle2, LogOut, MoreVertical, RefreshCw } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_BASE } from '../../config';
 import { useToast } from '../../components/Toast';
 import { useServerStatus } from '../../hooks/useServerStatus';
@@ -85,6 +86,7 @@ function DotsMenu({ onLogout, onRefresh }: { onLogout: () => void; onRefresh: ()
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 
 export default function KitchenDashboard({ username, onLogout }: KitchenDashboardProps) {
+  const insets = useSafeAreaInsets();
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<'live' | 'history'>('live');
 
@@ -228,7 +230,7 @@ export default function KitchenDashboard({ username, onLogout }: KitchenDashboar
 
 
       {/* ── Header ── */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top, height: 60 + insets.top }]}>
         <View style={styles.logoBadge}>
           <Image source={require('../../../assets/Logo.jpg')} style={styles.logoBadgeImg} resizeMode="cover" />
         </View>

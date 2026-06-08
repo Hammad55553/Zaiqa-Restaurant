@@ -27,6 +27,28 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const [isDownloadingUpdate, setIsDownloadingUpdate] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState('');
   const [activeJSVersion, setActiveJSVersion] = useState(LOCAL_APP_VERSION);
+  const [dbUsers, setDbUsers] = useState<any[]>([]);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const [manualInputMode, setManualInputMode] = useState(false);
+
+  const fetchUsersList = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/users`);
+      if (res.ok) {
+        const data = await res.json();
+        setDbUsers(data);
+        await AsyncStorage.setItem('CACHED_USERS', JSON.stringify(data));
+      }
+    } catch (e) {
+      console.warn('Failed to fetch users, loading cache...', e);
+      try {
+        const cached = await AsyncStorage.getItem('CACHED_USERS');
+        if (cached) {
+          setDbUsers(JSON.parse(cached));
+        }
+      } catch (err) {}
+    }
+  };
 
   useEffect(() => {
     // Load stored active JS version if any
@@ -35,19 +57,63 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         setActiveJSVersion(val);
       }
     });
+    fetchUsersList();
   }, []);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!username.trim()) {
       setError('Please enter your name');
       return;
     }
-    if (pin !== '1234' && pin !== '0000') {
-      setError('Invalid PIN code. Use 1234 or 0000.');
+    if (!pin.trim()) {
+      setError('Please enter your passcode PIN');
       return;
     }
+
     setError('');
-    onLoginSuccess(username, role);
+    setIsTestingConn(true); // use loading state for login button if desired, or just do it in-line
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+      const res = await fetch(`${API_BASE}/users/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password: pin }),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const data = await res.json();
+        const loggedInUser = data.user;
+        if (loggedInUser.role !== role) {
+          setError(`Incorrect role selection. Selected: ${role}, Database role: ${loggedInUser.role}`);
+          setIsTestingConn(false);
+          return;
+        }
+        await AsyncStorage.setItem('LOGGED_IN_USER', JSON.stringify({
+          username: loggedInUser.username,
+          role: loggedInUser.role
+        }));
+        onLoginSuccess(loggedInUser.username, loggedInUser.role);
+      } else {
+        const data = await res.json();
+        setError(data.error || 'Invalid username or passcode PIN');
+      }
+    } catch (err) {
+      console.warn('Network error during login, falling back to offline check', err);
+      // Offline fallback check: allow local bypass for demo/stuck offline situations
+      if (pin === '1234' || pin === '0000') {
+        const offlineUser = { username, role };
+        await AsyncStorage.setItem('LOGGED_IN_USER', JSON.stringify(offlineUser));
+        onLoginSuccess(username, role);
+      } else {
+        setError('Server unreachable. Offline login only works with PIN 1234 or 0000.');
+      }
+    } finally {
+      setIsTestingConn(false);
+    }
   };
 
   const handleSaveIP = async () => {
@@ -55,6 +121,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       await setServerIP(serverIPInput);
       setConnStatus(null);
       Alert.alert('Configuration Saved', `Server IP updated to: ${serverIPInput}`);
+      fetchUsersList();
     } catch (e) {
       Alert.alert('Error', 'Failed to save server IP');
     }
@@ -226,19 +293,49 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             </View>
           ) : null}
 
-          {/* Username Field */}
+          {/* Username Field / Selector */}
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Name</Text>
-            <View style={styles.inputWrapper}>
-              <Users size={18} color="#9ca3af" style={styles.inputIcon} />
-              <TextInput 
-                placeholder="e.g. Zahid Iqbal" 
-                placeholderTextColor="#9ca3af"
-                value={username}
-                onChangeText={(txt) => { setUsername(txt); setError(''); }}
-                style={styles.input}
-              />
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <Text style={styles.inputLabel}>Name</Text>
+              {dbUsers.filter(u => u.role === role).length > 0 && (
+                <TouchableOpacity onPress={() => setManualInputMode(!manualInputMode)}>
+                  <Text style={{ fontSize: 11, color: '#3b82f6', fontWeight: '700' }}>
+                    {manualInputMode ? 'Select from list' : 'Type name manually'}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
+            
+            {!manualInputMode && dbUsers.filter(u => u.role === role).length > 0 ? (
+              <TouchableOpacity 
+                style={styles.inputWrapper} 
+                onPress={() => setShowUserDropdown(true)}
+              >
+                <Users size={18} color="#9ca3af" style={styles.inputIcon} />
+                <Text style={{ 
+                  flex: 1, 
+                  color: username ? '#ffffff' : '#9ca3af', 
+                  fontSize: 14, 
+                  paddingLeft: 12,
+                  paddingVertical: 12,
+                  fontWeight: '600'
+                }}>
+                  {username || 'Select your name...'}
+                </Text>
+                <ChevronRight size={18} color="#9ca3af" style={{ marginRight: 12 }} />
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.inputWrapper}>
+                <Users size={18} color="#9ca3af" style={styles.inputIcon} />
+                <TextInput 
+                  placeholder="e.g. Zahid Iqbal" 
+                  placeholderTextColor="#9ca3af"
+                  value={username}
+                  onChangeText={(txt) => { setUsername(txt); setError(''); }}
+                  style={styles.input}
+                />
+              </View>
+            )}
           </View>
 
           {/* PIN Code Field */}
@@ -413,6 +510,50 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                 )}
               </View>
 
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* User Dropdown Selection Modal */}
+      <Modal
+        visible={showUserDropdown}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setShowUserDropdown(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '60%' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select {role === 'waiter' ? 'Waiter' : 'Kitchen Staff'}</Text>
+              <TouchableOpacity onPress={() => setShowUserDropdown(false)} style={styles.closeBtn}>
+                <X size={20} color="#ffffff" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.modalScroll}>
+              {dbUsers.filter(u => u.role === role).map((u) => (
+                <TouchableOpacity
+                  key={u.id}
+                  style={[
+                    styles.userSelectRow,
+                    username === u.username && styles.userSelectRowActive
+                  ]}
+                  onPress={() => {
+                    setUsername(u.username);
+                    setError('');
+                    setShowUserDropdown(false);
+                  }}
+                >
+                  <Text style={[
+                    styles.userSelectText,
+                    username === u.username && styles.userSelectTextActive
+                  ]}>
+                    {u.username}
+                  </Text>
+                  {username === u.username && <CheckCircle size={16} color="#22c55e" />}
+                </TouchableOpacity>
+              ))}
             </ScrollView>
           </View>
         </View>
@@ -794,5 +935,26 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     textDecorationLine: 'underline',
+  },
+  userSelectRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#334155',
+  },
+  userSelectRowActive: {
+    backgroundColor: 'rgba(59, 130, 246, 0.15)',
+  },
+  userSelectText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#e2e8f0',
+  },
+  userSelectTextActive: {
+    color: '#3b82f6',
+    fontWeight: '700',
   },
 });

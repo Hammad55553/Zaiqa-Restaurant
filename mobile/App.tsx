@@ -7,15 +7,23 @@ import KitchenDashboard from './src/screens/kitchen/KitchenDashboard';
 import SplashScreen from './src/components/SplashScreen';
 import { ToastProvider } from './src/components/Toast';
 import { loadServerIP } from './src/config';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 function App() {
   const [showSplash, setShowSplash] = useState(true);
-  const [user, setUser] = useState<{ username: string; role: 'waiter' | 'kitchen' } | null>({ username: 'Zahid Iqbal', role: 'waiter' });
+  const [user, setUser] = useState<{ username: string; role: 'waiter' | 'kitchen' } | null>(null);
   const [configLoaded, setConfigLoaded] = useState(false);
 
   useEffect(() => {
     loadServerIP().then(() => {
-      setConfigLoaded(true);
+      AsyncStorage.getItem('LOGGED_IN_USER').then((val) => {
+        if (val) {
+          try {
+            setUser(JSON.parse(val));
+          } catch (e) {}
+        }
+        setConfigLoaded(true);
+      });
     });
   }, []);
 
@@ -24,7 +32,9 @@ function App() {
   };
 
   const handleLogout = () => {
-    setUser(null);
+    AsyncStorage.removeItem('LOGGED_IN_USER').then(() => {
+      setUser(null);
+    });
   };
 
   if (showSplash || !configLoaded) {
@@ -42,7 +52,7 @@ function App() {
     <ToastProvider>
       <SafeAreaProvider>
         <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
           <View style={styles.content}>
             {user ? (
               user.role === 'kitchen' ? (
