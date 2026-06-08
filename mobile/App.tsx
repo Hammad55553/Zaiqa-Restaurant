@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StatusBar, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import LoginScreen from './src/screens/LoginScreen';
@@ -6,10 +6,18 @@ import WaiterDashboard from './src/screens/WaiterDashboard';
 import KitchenDashboard from './src/screens/kitchen/KitchenDashboard';
 import SplashScreen from './src/components/SplashScreen';
 import { ToastProvider } from './src/components/Toast';
+import { loadServerIP } from './src/config';
 
 function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [user, setUser] = useState<{ username: string; role: 'waiter' | 'kitchen' } | null>({ username: 'Zahid Iqbal', role: 'waiter' });
+  const [configLoaded, setConfigLoaded] = useState(false);
+
+  useEffect(() => {
+    loadServerIP().then(() => {
+      setConfigLoaded(true);
+    });
+  }, []);
 
   const handleLoginSuccess = (username: string, role: 'waiter' | 'kitchen') => {
     setUser({ username, role });
@@ -19,7 +27,7 @@ function App() {
     setUser(null);
   };
 
-  if (showSplash) {
+  if (showSplash || !configLoaded) {
     return (
       <ToastProvider>
         <SafeAreaProvider>

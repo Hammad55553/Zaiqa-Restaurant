@@ -74,6 +74,7 @@ export default function OrderingScreen({
   const [cartItems, setCartItems] = useState<CartItem[]>(initialCartItems || []);
   const [remarks, setRemarks] = useState('');
   const [placingOrder, setPlacingOrder] = useState(false);
+  const [activeOrder, setActiveOrder] = useState<any | null>(null);
   const toast = useToast();
 
   // Custom dish states
@@ -83,7 +84,24 @@ export default function OrderingScreen({
 
   useEffect(() => {
     fetchMenu();
+    if (selectedTable.status === 'dining' || selectedTable.status === 'reserved') {
+      fetchActiveOrder();
+    }
   }, []);
+
+  const fetchActiveOrder = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/orders/table/${selectedTable.number}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data) {
+          setActiveOrder(data);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to fetch active order:', e);
+    }
+  };
 
   const fetchWithTimeout = (url: string, options: RequestInit = {}, timeout = 2000): Promise<Response> => {
     return Promise.race([
@@ -176,31 +194,70 @@ export default function OrderingScreen({
 
     try {
       setPlacingOrder(true);
-      const orderBody = {
-        table_number: selectedTable.number,
-        area: selectedTable.area,
-        customer_name: `Table Guest`,
-        remarks: `[Waiter: ${username}] ${remarks || ''}`,
-        items: cartItems,
-        subtotal,
-        tax,
-        total_amount
-      };
 
-      const res = await fetch(`${API_BASE}/orders`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(orderBody)
-      });
+      if (activeOrder) {
+        // APPEND to existing order!
+        const updatedSubtotal = activeOrder.subtotal + subtotal;
+        const updatedTax = updatedSubtotal * (GST_RATE / 100);
+        const updatedTotal = updatedSubtotal + updatedTax;
 
-      if (res.ok) {
-        toast.success('Order Placed!', `Table ${selectedTable.number} order sent to kitchen.`);
-        setCartItems([]);
-        setRemarks('');
-        onBack();
+        const appendBody = {
+          newItems: cartItems.map(item => ({
+            id: item.id,
+            name: item.name,
+            price: item.price,
+            qty: item.qty,
+            notes: item.notes || ''
+          })),
+          subtotal: updatedSubtotal,
+          tax: updatedTax,
+          total_amount: updatedTotal,
+          remarks: `${activeOrder.remarks || ''} | [Appended: ${remarks || ''}]`
+        };
+
+        const res = await fetch(`${API_BASE}/orders/${activeOrder.id}/items`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(appendBody)
+        });
+
+        if (res.ok) {
+          toast.success('Order Appended!', `Added new items to Table ${selectedTable.number} Active Ticket.`);
+          setCartItems([]);
+          setRemarks('');
+          onBack();
+        } else {
+          const errData = await res.json();
+          toast.error('Append Failed', errData.error || 'Server error.');
+        }
       } else {
-        const errData = await res.json();
-        toast.error('Order Failed', errData.error || 'Check server status.');
+        // Normal POST for new order
+        const orderBody = {
+          table_number: selectedTable.number,
+          area: selectedTable.area,
+          customer_name: `Table Guest`,
+          remarks: `[Waiter: ${username}] ${remarks || ''}`,
+          items: cartItems,
+          subtotal,
+          tax,
+          total_amount
+        };
+
+        const res = await fetch(`${API_BASE}/orders`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(orderBody)
+        });
+
+        if (res.ok) {
+          toast.success('Order Placed!', `Table ${selectedTable.number} order sent to kitchen.`);
+          setCartItems([]);
+          setRemarks('');
+          onBack();
+        } else {
+          const errData = await res.json();
+          toast.error('Order Failed', errData.error || 'Check server status.');
+        }
       }
     } catch (err) {
       console.warn('Network failed, queueing order offline:', err);
@@ -212,13 +269,15 @@ export default function OrderingScreen({
         subtotal,
         tax,
         total_amount,
-        remarks: `[Waiter: ${username}] ${remarks || ''}`,
+        remarks: activeOrder 
+          ? `[APPEND TO #${activeOrder.id}] [Waiter: ${username}] ${remarks || ''}`
+          : `[Waiter: ${username}] ${remarks || ''}`,
         timestamp: new Date().toLocaleTimeString(),
         status: 'pending'
       };
 
       onQueueOfflineOrder(newQueuedOrder);
-      toast.warning('Saved Offline', `No connection. Order for Table ${selectedTable.number} queued — will sync when back online.`);
+      toast.warning('Saved Offline', `No connection. Order queued.`);
       setCartItems([]);
       setRemarks('');
       onBack();
@@ -305,6 +364,7 @@ export default function OrderingScreen({
             cartTotal={cartTotal}
             handlePlaceOrder={handlePlaceOrder}
             placingOrder={placingOrder}
+            activeOrder={activeOrder}
           />
         )}
       </View>

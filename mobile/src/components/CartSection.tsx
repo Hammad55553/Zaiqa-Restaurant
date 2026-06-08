@@ -20,6 +20,7 @@ interface CartSectionProps {
   cartTotal: number;
   handlePlaceOrder: () => void;
   placingOrder: boolean;
+  activeOrder?: any;
 }
 
 export default function CartSection({
@@ -30,7 +31,8 @@ export default function CartSection({
   setRemarks,
   cartTotal,
   handlePlaceOrder,
-  placingOrder
+  placingOrder,
+  activeOrder
 }: CartSectionProps) {
   return (
     <View style={styles.cartDrawer}>
@@ -58,6 +60,20 @@ export default function CartSection({
         contentContainerStyle={styles.scrollContent}
         nestedScrollEnabled={true}
       >
+        {activeOrder && activeOrder.items && activeOrder.items.length > 0 && (
+          <View style={styles.sentContainer}>
+            <Text style={styles.sentHeaderTitle}>SENT TO KITCHEN</Text>
+            {activeOrder.items.map((item: any) => (
+              <View key={'sent-' + item.id} style={styles.sentItemRow}>
+                <Text style={styles.sentItemText}>{item.item_name}  x{item.quantity}</Text>
+                <Text style={styles.sentItemSubtotal}>Rs. {item.price * item.quantity}</Text>
+              </View>
+            ))}
+            <View style={styles.sentDivider} />
+            <Text style={styles.newHeaderTitle}>ADD EXTRA TO TICKET</Text>
+          </View>
+        )}
+
         {cartItems.length === 0 ? (
           <View style={styles.emptyCartPlaceholder}>
             <View style={styles.emptyIconCircle}>
@@ -125,7 +141,9 @@ export default function CartSection({
             <ActivityIndicator size="small" color="#ffffff" />
           ) : (
             <>
-              <Text style={styles.submitOrderText}>SEND TO KITCHEN</Text>
+              <Text style={styles.submitOrderText}>
+                {activeOrder ? 'APPEND TO TICKET' : 'SEND TO KITCHEN'}
+              </Text>
               <Send size={12} color="#ffffff" style={{ marginLeft: 6 }} />
             </>
           )}
@@ -332,5 +350,48 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '900',
     letterSpacing: 0.5,
+  },
+  sentContainer: {
+    backgroundColor: '#f1f5f9',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  sentHeaderTitle: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#475569',
+    letterSpacing: 0.8,
+    marginBottom: 6,
+  },
+  newHeaderTitle: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#ea580c',
+    letterSpacing: 0.8,
+    marginTop: 6,
+    marginBottom: 6,
+  },
+  sentItemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  sentItemText: {
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '700',
+  },
+  sentItemSubtotal: {
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '800',
+  },
+  sentDivider: {
+    height: 1,
+    backgroundColor: '#cbd5e1',
+    marginVertical: 6,
   },
 });

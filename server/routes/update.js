@@ -197,4 +197,35 @@ router.post('/restart', (req, res) => {
   }
 });
 
+// GET /api/update/mobile-bundle
+router.get('/mobile-bundle', (req, res) => {
+  const userDataPath = getUserDataPath();
+  const bundlePath = path.join(userDataPath, 'updates/index.android.bundle');
+  if (fs.existsSync(bundlePath)) {
+    return res.sendFile(bundlePath);
+  }
+  // Fallback to local public/mobile bundle if it exists
+  const localBundlePath = path.join(__dirname, '../public/mobile/index.android.bundle');
+  if (fs.existsSync(localBundlePath)) {
+    return res.sendFile(localBundlePath);
+  }
+  res.status(404).json({ error: 'No mobile bundle found on server' });
+});
+
+// GET /api/update/mobile-version
+router.get('/mobile-version', (req, res) => {
+  const userDataPath = getUserDataPath();
+  const metaPath = path.join(userDataPath, 'updates/update_meta.json');
+  let version = '1.0.0';
+  let publishedAt = '';
+  if (fs.existsSync(metaPath)) {
+    try {
+      const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+      version = meta.version || '1.0.0';
+      publishedAt = meta.publishedAt || '';
+    } catch (e) {}
+  }
+  res.json({ version, publishedAt });
+});
+
 module.exports = router;
