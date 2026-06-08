@@ -41,7 +41,7 @@ router.get('/check', async (req, res) => {
 
     const release = await response.json();
     const latestVersion = release.tag_name.replace(/^v/, '');
-    const publishedAt = release.published_at;
+    const publishedAt = release.updated_at || release.published_at;
     
     // Find the dist.zip asset
     const zipAsset = release.assets.find(asset => asset.name === 'dist.zip');
