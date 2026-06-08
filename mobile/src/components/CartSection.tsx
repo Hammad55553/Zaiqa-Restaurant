@@ -60,20 +60,6 @@ export default function CartSection({
         contentContainerStyle={styles.scrollContent}
         nestedScrollEnabled={true}
       >
-        {activeOrder && activeOrder.items && activeOrder.items.length > 0 && (
-          <View style={styles.sentContainer}>
-            <Text style={styles.sentHeaderTitle}>SENT TO KITCHEN</Text>
-            {activeOrder.items.map((item: any) => (
-              <View key={'sent-' + item.id} style={styles.sentItemRow}>
-                <Text style={styles.sentItemText}>{item.item_name}  x{item.quantity}</Text>
-                <Text style={styles.sentItemSubtotal}>Rs. {item.price * item.quantity}</Text>
-              </View>
-            ))}
-            <View style={styles.sentDivider} />
-            <Text style={styles.newHeaderTitle}>ADD EXTRA TO TICKET</Text>
-          </View>
-        )}
-
         {cartItems.length === 0 ? (
           <View style={styles.emptyCartPlaceholder}>
             <View style={styles.emptyIconCircle}>
@@ -88,6 +74,15 @@ export default function CartSection({
               <View style={{ flex: 1, paddingRight: 8 }}>
                 <Text style={styles.cartItemName} numberOfLines={2}>{item.name}</Text>
                 <Text style={styles.cartItemPrice}>Rs. {item.price} x {item.qty}</Text>
+                <TextInput 
+                  placeholder="Add comments (e.g. extra gravy)..."
+                  placeholderTextColor="#94a3b8"
+                  value={item.notes || ''}
+                  onChangeText={(text) => {
+                    setCartItems((prev: any) => prev.map((i: any) => i.id === item.id ? { ...i, notes: text } : i));
+                  }}
+                  style={styles.itemNotesInput}
+                />
               </View>
               <View style={styles.rightControlRow}>
                 <Text style={styles.itemSubtotal}>Rs. {item.price * item.qty}</Text>
@@ -142,7 +137,7 @@ export default function CartSection({
           ) : (
             <>
               <Text style={styles.submitOrderText}>
-                {activeOrder ? 'APPEND TO TICKET' : 'SEND TO KITCHEN'}
+                {activeOrder ? 'UPDATE RUNNING ORDER' : 'SEND TO KITCHEN'}
               </Text>
               <Send size={12} color="#ffffff" style={{ marginLeft: 6 }} />
             </>
@@ -393,5 +388,18 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: '#cbd5e1',
     marginVertical: 6,
+  },
+  itemNotesInput: {
+    fontSize: 10,
+    color: '#334155',
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginTop: 6,
+    fontWeight: '600',
+    height: 26,
   },
 });

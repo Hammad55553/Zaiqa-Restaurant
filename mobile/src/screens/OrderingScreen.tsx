@@ -96,6 +96,22 @@ export default function OrderingScreen({
         const data = await res.json();
         if (data) {
           setActiveOrder(data);
+          if (data.items && data.items.length > 0) {
+            const mappedItems = data.items.map((item: any) => ({
+              id: item.item_id,
+              name: item.item_name,
+              price: item.price,
+              qty: item.quantity,
+              notes: item.notes || '',
+              category_name: ''
+            }));
+            setCartItems(mappedItems);
+            if (data.remarks) {
+              // Extract original remarks if any
+              const cleanRemarks = data.remarks.replace(/^\[Waiter:[^\]]+\]\s*/, '');
+              setRemarks(cleanRemarks);
+            }
+          }
         }
       }
     } catch (e) {
@@ -196,39 +212,35 @@ export default function OrderingScreen({
       setPlacingOrder(true);
 
       if (activeOrder) {
-        // APPEND to existing order!
-        const updatedSubtotal = activeOrder.subtotal + subtotal;
-        const updatedTax = updatedSubtotal * (GST_RATE / 100);
-        const updatedTotal = updatedSubtotal + updatedTax;
-
-        const appendBody = {
-          newItems: cartItems.map(item => ({
-            id: item.id,
-            name: item.name,
+        // FULL SYNC / EDIT of existing active order!
+        const syncBody = {
+          items: cartItems.map(item => ({
+            item_id: item.id,
+            item_name: item.name,
             price: item.price,
-            qty: item.qty,
+            quantity: item.qty,
             notes: item.notes || ''
           })),
-          subtotal: updatedSubtotal,
-          tax: updatedTax,
-          total_amount: updatedTotal,
-          remarks: `${activeOrder.remarks || ''} | [Appended: ${remarks || ''}]`
+          subtotal,
+          tax,
+          total_amount,
+          remarks: `[Waiter: ${username}] ${remarks || ''}`
         };
 
-        const res = await fetch(`${API_BASE}/orders/${activeOrder.id}/items`, {
-          method: 'PATCH',
+        const res = await fetch(`${API_BASE}/orders/${activeOrder.id}/sync`, {
+          method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(appendBody)
+          body: JSON.stringify(syncBody)
         });
 
         if (res.ok) {
-          toast.success('Order Appended!', `Added new items to Table ${selectedTable.number} Active Ticket.`);
+          toast.success('Order Updated!', `Table ${selectedTable.number} ticket updated successfully.`);
           setCartItems([]);
           setRemarks('');
           onBack();
         } else {
           const errData = await res.json();
-          toast.error('Append Failed', errData.error || 'Server error.');
+          toast.error('Update Failed', errData.error || 'Server error.');
         }
       } else {
         // Normal POST for new order
@@ -270,7 +282,7 @@ export default function OrderingScreen({
         tax,
         total_amount,
         remarks: activeOrder 
-          ? `[APPEND TO #${activeOrder.id}] [Waiter: ${username}] ${remarks || ''}`
+          ? `[EDIT/SYNC ORDER #${activeOrder.id}] [Waiter: ${username}] ${remarks || ''}`
           : `[Waiter: ${username}] ${remarks || ''}`,
         timestamp: new Date().toLocaleTimeString(),
         status: 'pending'
