@@ -35,6 +35,7 @@ const Settings = () => {
     const [trashItems, setTrashItems] = useState([]);
     const [globalGstRate, setGlobalGstRate] = useState(16);
     const [globalServiceCharges, setGlobalServiceCharges] = useState(0);
+    const [chatEnabled, setChatEnabled] = useState(true);
 
     const [updateState, setUpdateState] = useState({
         status: 'idle', // 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'uptodate'
@@ -158,11 +159,21 @@ const Settings = () => {
             setGlobalGstRate(gst);
             const sc = await getOfflineItem('zaiqa_mahal_global_service_charges', 0);
             setGlobalServiceCharges(sc);
+            const chatOpt = await getOfflineItem('zaiqa_mahal_enable_chat', true);
+            setChatEnabled(chatOpt);
             const logs = await getOfflineItem('zaiqa_mahal_audit_logs', []);
             setAuditLogs(logs);
         };
         loadSettings();
     }, []);
+
+    const handleToggleChat = async (enabled) => {
+        setChatEnabled(enabled);
+        await setOfflineItem('zaiqa_mahal_enable_chat', enabled);
+        showToast(enabled ? "Chat Module enabled!" : "Chat Module disabled!", "success");
+        addRealAuditLog(enabled ? "Broadcasting chat module enabled" : "Broadcasting chat module disabled", "system", "success");
+        window.dispatchEvent(new Event('chat_settings_changed'));
+    };
 
     const addRealAuditLog = async (event, category, status = 'success') => {
         const now = new Date();
@@ -535,6 +546,45 @@ const Settings = () => {
                                         UPDATE SERVICE CHARGES
                                     </button>
                                 </form>
+                            </div>
+
+                            {/* Broadcasting Chat Module Toggle */}
+                            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '30px', boxShadow: '0 4px 20px rgba(0,0,0,0.02)', marginTop: '20px' }}>
+                                <div style={{ marginBottom: '25px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div>
+                                        <h3 style={{ fontSize: '1.2rem', fontWeight: 900, color: '#f97316', marginBottom: '8px' }}>Broadcasting Group Chat</h3>
+                                        <p style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600, margin: 0 }}>Enable or disable the real-time broadcasting chat room view for all system staff and dashboards.</p>
+                                    </div>
+                                    <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', position: 'relative' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={chatEnabled}
+                                            onChange={(e) => handleToggleChat(e.target.checked)}
+                                            style={{
+                                                width: '50px',
+                                                height: '26px',
+                                                appearance: 'none',
+                                                backgroundColor: chatEnabled ? '#f97316' : '#cbd5e1',
+                                                borderRadius: '15px',
+                                                outline: 'none',
+                                                cursor: 'pointer',
+                                                transition: 'background-color 0.2s',
+                                                position: 'relative'
+                                            }}
+                                        />
+                                        <span style={{
+                                            position: 'absolute',
+                                            top: '3px',
+                                            left: chatEnabled ? '27px' : '4px',
+                                            width: '20px',
+                                            height: '20px',
+                                            borderRadius: '50%',
+                                            background: 'white',
+                                            transition: 'left 0.2s',
+                                            boxShadow: '0 1px 3px rgba(0,0,0,0.4)'
+                                        }} />
+                                    </label>
+                                </div>
                             </div>
                         </>
                     ) : activeTab === 'backup' ? (

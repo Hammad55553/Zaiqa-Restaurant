@@ -47,20 +47,76 @@ class SyncService {
         } else if (data.type === 'NOTIFICATION') {
           // Broadcast notification to all listeners
           this.emit('notification', data);
+        } else if (data.type === 'CHAT_MESSAGE') {
+          this.emit('chat_message', data);
+        } else if (data.type === 'CHAT_RECEIPT_UPDATE') {
+          this.emit('chat_receipt_update', data);
+        } else if (data.type === 'CHAT_REACTION_UPDATE') {
+          this.emit('chat_reaction_update', data);
         }
       } catch (err) {
         console.error('Error handling WS message:', err);
       }
     };
 
+    this.ws.onopen = () => {
+      console.log('🔌 WebSocket connection established.');
+      this.emit('connection_status', { online: true });
+    };
+
     this.ws.onclose = () => {
       console.warn('🔌 WebSocket connection closed. Reconnecting in 3s...');
+      this.emit('connection_status', { online: false });
       setTimeout(() => this.connectWebSocket(), 3000);
     };
 
     this.ws.onerror = (err) => {
       console.error('🔌 WebSocket connection error:', err);
+      this.emit('connection_status', { online: false });
     };
+  }
+
+  /**
+   * Send a chat message over WebSocket
+   */
+  sendChatMessage(sender_username, sender_role, text) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({
+        type: 'CHAT_MESSAGE',
+        sender_username,
+        sender_role,
+        text
+      }));
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Send delivery/read receipt over WebSocket
+   */
+  sendChatReceipt(message_id, username, status) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({
+        type: status === 'read' ? 'CHAT_MESSAGE_READ' : 'CHAT_MESSAGE_DELIVERED',
+        message_id,
+        username
+      }));
+    }
+  }
+
+  /**
+   * Send a chat reaction over WebSocket
+   */
+  sendChatReaction(message_id, username, reaction) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({
+        type: 'CHAT_MESSAGE_REACTION',
+        message_id,
+        username,
+        reaction
+      }));
+    }
   }
 
   /**

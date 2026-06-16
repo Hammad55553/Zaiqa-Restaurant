@@ -27,6 +27,121 @@ wss.on('connection', (ws) => {
       if (data.type === 'NOTIFICATION') {
         console.log(`🔔 Custom Notification received: ${data.title} - ${data.desc}`);
         broadcast(data);
+      } else if (data.type === 'CHAT_MESSAGE') {
+        const { sender_username, sender_role, text } = data;
+        const { db } = require('./database/db');
+        const { broadcastChatNotification } = require('./services/fcmHelper');
+        
+        db.run(
+          'INSERT INTO messages (sender_username, sender_role, text) VALUES (?, ?, ?)',
+          [sender_username, sender_role, text],
+          function (err) {
+            if (err) {
+              console.error('❌ Failed to save chat message from WS:', err.message);
+              return;
+            }
+            
+            const messageId = this.lastID;
+            const now = new Date().toISOString();
+
+            // Self receipt (Sender reads own message immediately)
+            db.run(
+              "INSERT INTO message_receipts (message_id, username, status) VALUES (?, ?, 'read')",
+              [messageId, sender_username],
+              (err2) => {
+                const messageObj = {
+                  id: messageId,
+                  sender_username,
+                  sender_role,
+                  text,
+                  created_at: now,
+                  receipts: [{ message_id: messageId, username: sender_username, status: 'read', updated_at: now }],
+                  reactions: []
+                };
+
+                // Broadcast message to all connected clients
+                broadcast({
+                  type: 'CHAT_MESSAGE',
+                  ...messageObj
+                });
+
+                // Trigger FCM push notifications
+                broadcastChatNotification(sender_username, text);
+              }
+            );
+          }
+        );
+      } else if (data.type === 'CHAT_MESSAGE_DELIVERED') {
+        const { message_id, username } = data;
+        const { db } = require('./database/db');
+        const now = new Date().toISOString();
+        db.run(
+          `INSERT INTO message_receipts (message_id, username, status) VALUES (?, ?, 'delivered')
+           ON CONFLICT(message_id, username) DO UPDATE SET status = 'delivered' WHERE status != 'read'`,
+          [message_id, username],
+          (err) => {
+            if (err) return;
+            broadcast({
+              type: 'CHAT_RECEIPT_UPDATE',
+              message_id,
+              username,
+              status: 'delivered',
+              updated_at: now
+            });
+          }
+        );
+      } else if (data.type === 'CHAT_MESSAGE_READ') {
+        const { message_id, username } = data;
+        const { db } = require('./database/db');
+        const now = new Date().toISOString();
+        db.run(
+          `INSERT INTO message_receipts (message_id, username, status) VALUES (?, ?, 'read')
+           ON CONFLICT(message_id, username) DO UPDATE SET status = 'read'`,
+          [message_id, username],
+          (err) => {
+            if (err) return;
+            broadcast({
+              type: 'CHAT_RECEIPT_UPDATE',
+              message_id,
+              username,
+              status: 'read',
+              updated_at: now
+            });
+          }
+        );
+      } else if (data.type === 'CHAT_MESSAGE_REACTION') {
+        const { message_id, username, reaction } = data;
+        const { db } = require('./database/db');
+        if (!reaction) {
+          db.run(
+            'DELETE FROM message_reactions WHERE message_id = ? AND username = ?',
+            [message_id, username],
+            (err) => {
+              if (err) return;
+              broadcast({
+                type: 'CHAT_REACTION_UPDATE',
+                message_id,
+                username,
+                reaction: null
+              });
+            }
+          );
+        } else {
+          db.run(
+            `INSERT INTO message_reactions (message_id, username, reaction) VALUES (?, ?, ?)
+             ON CONFLICT(message_id, username) DO UPDATE SET reaction = excluded.reaction`,
+            [message_id, username, reaction],
+            (err) => {
+              if (err) return;
+              broadcast({
+                type: 'CHAT_REACTION_UPDATE',
+                message_id,
+                username,
+                reaction
+              });
+            }
+          );
+        }
       }
     } catch (e) {
       console.warn('⚠️ Received non-JSON message over WS:', message);
@@ -134,6 +249,7 @@ app.use('/api/customers', require('./routes/customers'));
 app.use('/api/deliveries',require('./routes/deliveries'));
 app.use('/api/users',     require('./routes/users'));
 app.use('/api/update',    require('./routes/update'));
+app.use('/api/chat',      require('./routes/chat'));
 
 // ── 404 fallback ──────────────────────────────────────────────────────────────
 app.use((req, res) => {

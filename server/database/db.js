@@ -97,6 +97,35 @@ const initDb = () => {
       name TEXT UNIQUE NOT NULL
     )`);
 
+    // Chat Messages Table
+    db.run(`CREATE TABLE IF NOT EXISTS messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sender_username TEXT NOT NULL,
+      sender_role TEXT NOT NULL,
+      text TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+
+    // Chat Message Receipts Table
+    db.run(`CREATE TABLE IF NOT EXISTS message_receipts (
+      message_id INTEGER NOT NULL,
+      username TEXT NOT NULL,
+      status TEXT NOT NULL, -- 'delivered', 'read'
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (message_id, username),
+      FOREIGN KEY (message_id) REFERENCES messages (id) ON DELETE CASCADE
+    )`);
+
+    // Chat Message Reactions Table
+    db.run(`CREATE TABLE IF NOT EXISTS message_reactions (
+      message_id INTEGER NOT NULL,
+      username TEXT NOT NULL,
+      reaction TEXT NOT NULL,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (message_id, username),
+      FOREIGN KEY (message_id) REFERENCES messages (id) ON DELETE CASCADE
+    )`);
+
     // Menu Items Table
     db.run(`CREATE TABLE IF NOT EXISTS items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

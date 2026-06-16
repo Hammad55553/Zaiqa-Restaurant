@@ -1,5 +1,5 @@
-// Supabase Client Configuration
-// This file initializes the Supabase client using the credentials provided by the user.
+// ARCHITECTURE NOTE: Supabase is the primary remote database used for synchronizing all POS data (orders, stock, tables, users, etc.).
+// Firebase/FCM is ONLY used for the real-time group chat module and push notifications. Do not use Firebase for main data storage or syncing.
 
 const { createClient } = require('@supabase/supabase-js');
 

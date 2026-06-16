@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShoppingCart, LayoutGrid, Package, FileText, Settings, Bell, Search, Menu as MenuIcon, X, Printer, Truck, Wallet, CreditCard, ChefHat, Utensils, BookOpen, Layers, Phone, Bike, Shield, LogOut, Ban, Eye, EyeOff } from 'lucide-react';
+import { ShoppingCart, LayoutGrid, Package, FileText, Settings, Bell, Search, Menu as MenuIcon, X, Printer, Truck, Wallet, CreditCard, ChefHat, Utensils, BookOpen, Layers, Phone, Bike, Shield, LogOut, Ban, Eye, EyeOff, MessageSquare } from 'lucide-react';
 import POSLayout from './modules/pos/POSLayout';
 import KitchenDisplay from './modules/kds/KitchenDisplay';
 import SplashScreen from './components/SplashScreen';
@@ -15,6 +15,7 @@ import SettingsView from './modules/settings/Settings';
 import DeliveryManager from './modules/delivery/DeliveryManager';
 import UserManager from './modules/users/UserManager';
 import ReturnsPending from './modules/pos/components/ReturnsPending';
+import ChatView from './modules/chat/ChatView';
 import { API_BASE } from './config';
 import { getOfflineItem, setOfflineItem, removeOfflineItem } from './utils/offlineDB';
 import { purgeExpiredTrash } from './utils/trashDB';
@@ -44,6 +45,7 @@ function App() {
   });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentView, setCurrentView] = useState('pos'); // 'pos', 'kds', 'inventory', 'reports'
+  const [chatEnabled, setChatEnabled] = useState(true);
 
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
@@ -344,12 +346,77 @@ function App() {
     fetchSearchData();
   }, [isLoaded]);
 
+  useEffect(() => {
+    const checkChatSetting = async () => {
+      try {
+        const enabled = await getOfflineItem('zaiqa_mahal_enable_chat', true);
+        setChatEnabled(enabled);
+      } catch (err) {
+        console.warn('Error reading chat settings:', err);
+      }
+    };
+    checkChatSetting();
+
+    const handleSettingsChange = () => {
+      checkChatSetting();
+    };
+
+    window.addEventListener('chat_settings_changed', handleSettingsChange);
+    return () => {
+      window.removeEventListener('chat_settings_changed', handleSettingsChange);
+    };
+  }, []);
+
   // Initialize real-time sync service when app loads
   useEffect(() => {
     if (!isLoaded || !currentUser) return;
     
     console.log('🚀 Starting real-time sync service for multi-device support');
     syncService.startSync();
+
+    let unsubscribeFcm = () => {};
+
+    // Load Firebase FCM dynamically
+    import('./services/firebase').then(({ requestFcmToken, onMessageListener }) => {
+      requestFcmToken();
+      unsubscribeFcm = onMessageListener((payload) => {
+        setNotifications(prev => [
+          {
+            id: `fcm-${Date.now()}`,
+            title: payload.notification?.title || 'Push Notification',
+            desc: payload.notification?.body || '',
+            time: new Date().toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' }),
+            read: false
+          },
+          ...prev
+        ]);
+        
+        try {
+          const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = 'sine';
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          
+          osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
+          gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+          osc.start();
+          
+          setTimeout(() => {
+            osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+            setTimeout(() => {
+              try {
+                osc.stop();
+                audioCtx.close();
+              } catch(e){}
+            }, 150);
+          }, 100);
+        } catch (err) {}
+      });
+    }).catch(err => {
+      console.warn('FCM initialization skipped or failed:', err);
+    });
 
     const unsubscribe = syncService.subscribe('notification', (notif) => {
       // 1. Add notification to state
@@ -395,6 +462,7 @@ function App() {
     return () => {
       syncService.stopSync();
       unsubscribe();
+      try { unsubscribeFcm(); } catch(e){}
     };
   }, [isLoaded, currentUser]);
 
@@ -602,6 +670,16 @@ function App() {
                 </div>
               </div>
             )}
+
+            {/* Section 5: Communication */}
+            {chatEnabled && (
+              <div>
+                <p className="text-orange-500/70 text-[9px] font-black uppercase tracking-widest px-4 mb-2.5">Communication</p>
+                <div className="flex flex-col gap-1.5">
+                  <NavItem icon={<MessageSquare size={20} />} label="Broadcast Chat" active={currentView === 'chat'} onClick={() => navigateTo('chat')} />
+                </div>
+              </div>
+            )}
           </nav>
         </div>
 
@@ -793,6 +871,7 @@ function App() {
           {currentView === 'settings' && <SettingsView />}
           {currentView === 'users' && <UserManager />}
           {currentView === 'returns' && <ReturnsPending onBack={() => navigateTo('pos')} />}
+          {currentView === 'chat' && <ChatView currentUser={currentUser} />}
         </div>
       </main>
 

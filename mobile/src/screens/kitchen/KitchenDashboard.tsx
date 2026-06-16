@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { Flame, CheckCircle2, LogOut, MoreVertical, RefreshCw } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE } from '../../config';
 import { useToast } from '../../components/Toast';
 import { useServerStatus } from '../../hooks/useServerStatus';
@@ -21,6 +22,7 @@ import NetworkStatusBar from '../../components/NetworkStatusBar';
 import KitchenLiveScreen from './KitchenLiveScreen';
 import KitchenHistoryScreen from './KitchenHistoryScreen';
 import { KitchenOrder, OrderStatus } from './types';
+import ChatScreen from '../ChatScreen';
 
 interface KitchenDashboardProps {
   username: string;
@@ -29,7 +31,14 @@ interface KitchenDashboardProps {
 
 // ─── Dots Menu ────────────────────────────────────────────────────────────────
 
-function DotsMenu({ onLogout, onRefresh }: { onLogout: () => void; onRefresh: () => void }) {
+interface DotsMenuProps {
+  onLogout: () => void;
+  onRefresh: () => void;
+  chatEnabled: boolean;
+  onToggleChat: (val: boolean) => void;
+}
+
+function DotsMenu({ onLogout, onRefresh, chatEnabled, onToggleChat }: DotsMenuProps) {
   const [open, setOpen] = useState(false);
   const scaleAnim = useRef(new Animated.Value(0.85)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
@@ -69,7 +78,18 @@ function DotsMenu({ onLogout, onRefresh }: { onLogout: () => void; onRefresh: ()
                 </View>
                 <Text style={styles.menuLabel}>Refresh Orders</Text>
               </TouchableOpacity>
+              
               <View style={styles.menuDivider} />
+
+              <TouchableOpacity style={styles.menuItem} onPress={() => hideMenu(() => onToggleChat(!chatEnabled))}>
+                <View style={[styles.menuIcon, { backgroundColor: '#1e293b' }]}>
+                  <Text style={{ color: '#ffffff', fontWeight: 'bold', fontSize: 10 }}>💬</Text>
+                </View>
+                <Text style={styles.menuLabel}>{chatEnabled ? 'Hide Chat Room' : 'Show Chat Room'}</Text>
+              </TouchableOpacity>
+
+              <View style={styles.menuDivider} />
+
               <TouchableOpacity style={styles.menuItem} onPress={() => hideMenu(onLogout)}>
                 <View style={[styles.menuIcon, { backgroundColor: '#2a0a0a' }]}>
                   <LogOut size={16} color="#ef4444" />
@@ -90,6 +110,24 @@ export default function KitchenDashboard({ username, onLogout }: KitchenDashboar
   const insets = useSafeAreaInsets();
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<'live' | 'history'>('live');
+  const [chatEnabled, setChatEnabled] = useState(true);
+  const [showChat, setShowChat] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem('chat_module_enabled').then((val) => {
+      if (val !== null) {
+        setChatEnabled(val === 'true');
+      }
+    });
+  }, []);
+
+  const handleToggleChat = async (enabled: boolean) => {
+    setChatEnabled(enabled);
+    await AsyncStorage.setItem('chat_module_enabled', enabled ? 'true' : 'false');
+    if (!enabled) {
+      setShowChat(false);
+    }
+  };
 
   // ── Network Status ──
   const { status: netStatus, ping: pingServer } = useServerStatus({
@@ -246,8 +284,16 @@ export default function KitchenDashboard({ username, onLogout }: KitchenDashboar
           <Text style={styles.headerTitle}>KITCHEN DISPLAY</Text>
           <Text style={styles.headerSub}>CHEF • {username.toUpperCase()}</Text>
         </View>
-        <DotsMenu onLogout={onLogout} onRefresh={() => fetchLive(true)} />
+        {chatEnabled && (
+          <TouchableOpacity style={[styles.dotsBtn, { marginRight: 8 }]} onPress={() => setShowChat(true)} activeOpacity={0.7}>
+            <Text style={{ fontSize: 18 }}>💬</Text>
+          </TouchableOpacity>
+        )}
+        <DotsMenu onLogout={onLogout} onRefresh={() => fetchLive(true)} chatEnabled={chatEnabled} onToggleChat={handleToggleChat} />
       </View>
+
+      {!showChat ? (
+        <>
 
       {/* ── Live Stats Bar ── */}
       <View style={styles.statsBar}>
@@ -308,6 +354,10 @@ export default function KitchenDashboard({ username, onLogout }: KitchenDashboar
           refreshing={refreshingHistory}
           onRefresh={() => fetchHistory(true)}
         />
+      )}
+        </>
+      ) : (
+        <ChatScreen username={username} role="kitchen" onBack={() => setShowChat(false)} />
       )}
     </View>
   );

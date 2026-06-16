@@ -12,7 +12,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useToast } from './src/components/Toast';
 import { WS_URL } from './src/config';
-import { DeviceEventEmitter, Vibration, useRef } from 'react-native';
+import { DeviceEventEmitter, Vibration } from 'react-native';
+import { useRef } from 'react';
 
 function WebSocketManager() {
   const toast = useToast();
@@ -28,11 +29,22 @@ function WebSocketManager() {
       const ws = new WebSocket(WS_URL);
       wsRef.current = ws;
 
+      ws.onopen = () => {
+        console.log('🔌 Mobile WS connected');
+        DeviceEventEmitter.emit('CHAT_CONNECTION_STATUS', { online: true });
+      };
+
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
           if (data.type === 'SYNC_TRIGGER') {
             DeviceEventEmitter.emit('SYNC_TRIGGER', data);
+          } else if (data.type === 'CHAT_MESSAGE') {
+            DeviceEventEmitter.emit('CHAT_MESSAGE', data);
+          } else if (data.type === 'CHAT_RECEIPT_UPDATE') {
+            DeviceEventEmitter.emit('CHAT_RECEIPT_UPDATE', data);
+          } else if (data.type === 'CHAT_REACTION_UPDATE') {
+            DeviceEventEmitter.emit('CHAT_REACTION_UPDATE', data);
           } else if (data.type === 'NOTIFICATION') {
             toast.info(data.title, data.desc);
             Vibration.vibrate([0, 400, 100, 400]);
@@ -44,19 +56,28 @@ function WebSocketManager() {
 
       ws.onclose = () => {
         console.warn('🔌 Mobile WS disconnected. Reconnecting in 4s...');
+        DeviceEventEmitter.emit('CHAT_CONNECTION_STATUS', { online: false });
         reconnectTimer = setTimeout(connect, 4000);
       };
 
       ws.onerror = (err) => {
         console.error('🔌 Mobile WS error:', err);
+        DeviceEventEmitter.emit('CHAT_CONNECTION_STATUS', { online: false });
       };
     }
 
     connect();
 
+    const sendPayloadListener = DeviceEventEmitter.addListener('SEND_WS_PAYLOAD', (payload) => {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify(payload));
+      }
+    });
+
     return () => {
       active = false;
       if (wsRef.current) wsRef.current.close();
+      sendPayloadListener.remove();
       clearTimeout(reconnectTimer);
     };
   }, []);
@@ -75,7 +96,7 @@ function App() {
         if (val) {
           try {
             setUser(JSON.parse(val));
-          } catch (e) {}
+          } catch (e) { }
         }
         setConfigLoaded(true);
       });
@@ -92,14 +113,14 @@ function App() {
       "Are you sure you want to log out?",
       [
         { text: "Cancel", style: "cancel" },
-        { 
-          text: "Logout", 
+        {
+          text: "Logout",
           style: "destructive",
           onPress: () => {
             AsyncStorage.removeItem('LOGGED_IN_USER').then(() => {
               setUser(null);
             });
-          } 
+          }
         }
       ]
     );

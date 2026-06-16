@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { LogOut, Layers, Clock, ArrowLeft, MoreVertical, WifiOff } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE } from '../config';
 import { useToast } from '../components/Toast';
 import { useServerStatus } from '../hooks/useServerStatus';
@@ -22,6 +23,7 @@ import TablesScreen from './TablesScreen';
 import HistoryScreen from './HistoryScreen';
 import OrderingScreen from './OrderingScreen';
 import OfflineQueueScreen from './OfflineQueueScreen';
+import ChatScreen from './ChatScreen';
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 interface Table {
@@ -65,7 +67,13 @@ interface WaiterDashboardProps {
 
 // ─── Three-dot Dropdown Menu ──────────────────────────────────────────────────
 
-function DotsMenu({ onLogout }: { onLogout: () => void }) {
+interface DotsMenuProps {
+  onLogout: () => void;
+  chatEnabled: boolean;
+  onToggleChat: (val: boolean) => void;
+}
+
+function DotsMenu({ onLogout, chatEnabled, onToggleChat }: DotsMenuProps) {
   const [open, setOpen] = useState(false);
   const scaleAnim = useRef(new Animated.Value(0.85)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
@@ -105,6 +113,13 @@ function DotsMenu({ onLogout }: { onLogout: () => void }) {
                 { transform: [{ scale: scaleAnim }], opacity: opacityAnim },
               ]}
             >
+              <TouchableOpacity style={styles.menuItem} onPress={() => hideMenu(() => onToggleChat(!chatEnabled))}>
+                <View style={[styles.menuIcon, { backgroundColor: '#1e293b' }]}>
+                  <Text style={{ color: '#ffffff', fontWeight: 'bold', fontSize: 10 }}>💬</Text>
+                </View>
+                <Text style={styles.menuLabel}>{chatEnabled ? 'Hide Chat Room' : 'Show Chat Room'}</Text>
+              </TouchableOpacity>
+
               <TouchableOpacity style={styles.menuItem} onPress={() => hideMenu(onLogout)}>
                 <View style={[styles.menuIcon, { backgroundColor: '#2a0a0a' }]}>
                   <LogOut size={16} color="#ef4444" />
@@ -124,7 +139,25 @@ function DotsMenu({ onLogout }: { onLogout: () => void }) {
 export default function WaiterDashboard({ username, onLogout }: WaiterDashboardProps) {
   const insets = useSafeAreaInsets();
   const toast = useToast();
-  const [activeTab, setActiveTab] = useState<'tables' | 'history' | 'queue'>('tables');
+  const [activeTab, setActiveTab] = useState<'tables' | 'history' | 'queue' | 'chat'>('tables');
+  const [chatEnabled, setChatEnabled] = useState(true);
+
+  useEffect(() => {
+    AsyncStorage.getItem('chat_module_enabled').then((val) => {
+      if (val !== null) {
+        setChatEnabled(val === 'true');
+      }
+    });
+  }, []);
+
+  const handleToggleChat = async (enabled: boolean) => {
+    setChatEnabled(enabled);
+    await AsyncStorage.setItem('chat_module_enabled', enabled ? 'true' : 'false');
+    if (!enabled && activeTab === 'chat') {
+      setActiveTab('tables');
+    }
+  };
+
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
   const [initialCartItems, setInitialCartItems] = useState<CartItem[]>([]);
 
@@ -286,7 +319,7 @@ export default function WaiterDashboard({ username, onLogout }: WaiterDashboardP
             <Text style={styles.headerTitle}>ZAIQA MAHAL</Text>
             <Text style={styles.headerSub}>WAITER WORKSPACE • {username.toUpperCase()}</Text>
           </View>
-          <DotsMenu onLogout={onLogout} />
+          <DotsMenu onLogout={onLogout} chatEnabled={chatEnabled} onToggleChat={handleToggleChat} />
         </View>
       )}
 
@@ -338,6 +371,17 @@ export default function WaiterDashboard({ username, onLogout }: WaiterDashboardP
               </View>
             )}
           </TouchableOpacity>
+
+          {/* Chat Tab */}
+          {chatEnabled && (
+            <TouchableOpacity
+              style={[styles.tabBtn, activeTab === 'chat' && styles.activeTabBtn]}
+              onPress={() => setActiveTab('chat')}
+            >
+              <Text style={{ fontSize: 14, marginBottom: 2 }}>💬</Text>
+              <Text style={[styles.tabLabel, activeTab === 'chat' && styles.activeTabLabel]}>CHAT</Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
 
@@ -352,6 +396,8 @@ export default function WaiterDashboard({ username, onLogout }: WaiterDashboardP
           />
         ) : activeTab === 'history' ? (
           <HistoryScreen username={username} onReorder={handleReorder} />
+        ) : activeTab === 'chat' ? (
+          <ChatScreen username={username} role="waiter" onBack={() => setActiveTab('tables')} />
         ) : (
           <OfflineQueueScreen
             queue={queue}

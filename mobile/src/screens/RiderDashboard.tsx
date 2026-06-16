@@ -18,11 +18,13 @@ import {
 } from 'react-native';
 import { Bike, LogOut, RefreshCw, Clock, MapPin, Phone, User, FileText, CheckCircle2, MoreVertical, X, AlertCircle } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE } from '../config';
 import { useToast } from '../components/Toast';
 import { useServerStatus } from '../hooks/useServerStatus';
 import NetworkStatusBar from '../components/NetworkStatusBar';
 import LogoLoader from '../components/LogoLoader';
+import ChatScreen from './ChatScreen';
 
 interface OrderItem {
   id: number;
@@ -51,9 +53,94 @@ interface RiderDashboardProps {
   onLogout: () => void;
 }
 
+interface DotsMenuProps {
+  onLogout: () => void;
+  chatEnabled: boolean;
+  onToggleChat: (val: boolean) => void;
+}
+
+function DotsMenu({ onLogout, chatEnabled, onToggleChat }: DotsMenuProps) {
+  const [open, setOpen] = useState(false);
+  const scaleAnim = useRef(new Animated.Value(0.85)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  const showMenu = () => {
+    setOpen(true);
+    Animated.parallel([
+      Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, tension: 80, friction: 10 }),
+      Animated.timing(opacityAnim, { toValue: 1, duration: 180, useNativeDriver: true }),
+    ]).start();
+  };
+
+  const hideMenu = (cb?: () => void) => {
+    Animated.parallel([
+      Animated.timing(scaleAnim, { toValue: 0.85, duration: 150, useNativeDriver: true }),
+      Animated.timing(opacityAnim, { toValue: 0, duration: 150, useNativeDriver: true }),
+    ]).start(() => {
+      setOpen(false);
+      scaleAnim.setValue(0.85);
+      opacityAnim.setValue(0);
+      cb?.();
+    });
+  };
+
+  return (
+    <>
+      <TouchableOpacity style={styles.dotsBtn} onPress={showMenu} activeOpacity={0.7}>
+        <MoreVertical size={20} color="#ffffff" />
+      </TouchableOpacity>
+
+      <Modal transparent visible={open} animationType="none" onRequestClose={() => hideMenu()}>
+        <Pressable style={styles.modalOverlay} onPress={() => hideMenu()}>
+          <Pressable onPress={(e) => e.stopPropagation()}>
+            <Animated.View
+              style={[
+                styles.dropdownCard,
+                { transform: [{ scale: scaleAnim }], opacity: opacityAnim },
+              ]}
+            >
+              <TouchableOpacity style={styles.menuItem} onPress={() => hideMenu(() => onToggleChat(!chatEnabled))}>
+                <View style={[styles.menuIcon, { backgroundColor: '#1e293b' }]}>
+                  <Text style={{ color: '#ffffff', fontWeight: 'bold', fontSize: 10 }}>💬</Text>
+                </View>
+                <Text style={styles.menuLabel}>{chatEnabled ? 'Hide Chat Room' : 'Show Chat Room'}</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.menuItem} onPress={() => hideMenu(onLogout)}>
+                <View style={[styles.menuIcon, { backgroundColor: '#2a0a0a' }]}>
+                  <LogOut size={16} color="#ef4444" />
+                </View>
+                <Text style={[styles.menuLabel, { color: '#ef4444' }]}>Logout</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
+  );
+}
+
 export default function RiderDashboard({ username, onLogout }: RiderDashboardProps) {
   const insets = useSafeAreaInsets();
   const toast = useToast();
+  const [chatEnabled, setChatEnabled] = useState(true);
+  const [showChat, setShowChat] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem('chat_module_enabled').then((val) => {
+      if (val !== null) {
+        setChatEnabled(val === 'true');
+      }
+    });
+  }, []);
+
+  const handleToggleChat = async (enabled: boolean) => {
+    setChatEnabled(enabled);
+    await AsyncStorage.setItem('chat_module_enabled', enabled ? 'true' : 'false');
+    if (!enabled) {
+      setShowChat(false);
+    }
+  };
   const [orders, setOrders] = useState<DeliveryOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -167,232 +254,242 @@ export default function RiderDashboard({ username, onLogout }: RiderDashboardPro
           <Text style={styles.headerTitle}>RIDER PORTAL</Text>
           <Text style={styles.headerSub}>RIDER • {username.toUpperCase()}</Text>
         </View>
-        <TouchableOpacity style={styles.logoutBtn} onPress={onLogout} activeOpacity={0.7}>
-          <LogOut size={18} color="#ffffff" />
-        </TouchableOpacity>
+        {chatEnabled && (
+          <TouchableOpacity style={[styles.logoutBtn, { marginRight: 8 }]} onPress={() => setShowChat(true)} activeOpacity={0.7}>
+            <Text style={{ fontSize: 18 }}>💬</Text>
+          </TouchableOpacity>
+        )}
+        <DotsMenu onLogout={onLogout} chatEnabled={chatEnabled} onToggleChat={handleToggleChat} />
       </View>
 
-      {/* Stats Bar */}
-      <View style={styles.statsBar}>
-        <View style={styles.statItem}>
-          <Text style={[styles.statNum, { color: '#f97316' }]}>{pendingDeliveries.length}</Text>
-          <Text style={styles.statLabel}>NEW</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}>
-          <Text style={[styles.statNum, { color: '#3b82f6' }]}>{preparingDeliveries.length}</Text>
-          <Text style={styles.statLabel}>PREPARING</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}>
-          <Text style={[styles.statNum, { color: '#16a34a' }]}>{readyDeliveries.length}</Text>
-          <Text style={styles.statLabel}>READY FOR DELIVERY</Text>
-        </View>
-      </View>
+      {!showChat ? (
+        <>
 
-      {/* Deliveries List */}
-      {loading ? (
-        <View style={styles.centerLoading}>
-          <LogoLoader />
-        </View>
-      ) : orders.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <View style={styles.emptyIcon}>
-            <Bike size={44} color="#64748b" />
-          </View>
-          <Text style={styles.emptyTitle}>No active deliveries</Text>
-          <Text style={styles.emptySub}>Home delivery orders ready for delivery will appear here.</Text>
-        </View>
-      ) : (
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={styles.scrollContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchOrders(true)} tintColor="#f97316" />}
-          showsVerticalScrollIndicator={false}
-        >
-          {orders.map(order => {
-            const isReady = order.status === 'ready';
-            const isPreparing = order.status === 'preparing';
-            const isPending = order.status === 'pending';
-
-            return (
-              <View key={order.id} style={[styles.card, isReady && styles.readyCard]}>
-                {/* Header of Card */}
-                <View style={styles.cardHeader}>
-                  <View style={styles.orderIdBadge}>
-                    <Text style={styles.orderIdText}>Order #{order.id}</Text>
-                  </View>
-                  <View style={{ flex: 1 }} />
-                  <View style={[
-                    styles.statusPill,
-                    isReady ? styles.statusReady : isPreparing ? styles.statusPreparing : styles.statusPending
-                  ]}>
-                    <Text style={[
-                      styles.statusPillText,
-                      isReady ? { color: '#16a34a' } : isPreparing ? { color: '#3b82f6' } : { color: '#f97316' }
-                    ]}>
-                      {order.status.toUpperCase()}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Customer Info */}
-                <View style={styles.customerInfo}>
-                  <View style={styles.infoRow}>
-                    <User size={14} color="#64748b" />
-                    <Text style={styles.customerName}>{order.customer_name || 'Walk-in Guest'}</Text>
-                  </View>
-
-                  {order.table_number && order.table_number !== 'Delivery' && (
-                    <View style={styles.infoRow}>
-                      <Phone size={14} color="#64748b" />
-                      <Text style={styles.customerPhone} onPress={() => handleCallCustomer(order.table_number)}>
-                        📞 Call Customer: {order.table_number}
-                      </Text>
-                    </View>
-                  )}
-
-                  {order.remarks && (
-                    <View style={[styles.infoRow, { alignItems: 'flex-start' }]}>
-                      <MapPin size={14} color="#64748b" style={{ marginTop: 2 }} />
-                      <Text style={styles.customerAddress} numberOfLines={2}>
-                        {order.remarks || 'No Address Listed'}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-
-                {/* Bill Row */}
-                <View style={styles.billSummaryRow}>
-                  <Text style={styles.billLabel}>Total Bill:</Text>
-                  <Text style={styles.billValue}>Rs. {order.total_amount.toFixed(0)}</Text>
-                </View>
-
-                {/* Actions */}
-                <View style={styles.actionRow}>
-                  <TouchableOpacity
-                    style={styles.detailBtn}
-                    onPress={() => setSelectedOrder(order)}
-                    activeOpacity={0.7}
-                  >
-                    <FileText size={14} color="#64748b" />
-                    <Text style={styles.detailBtnText}>View Bill Details</Text>
-                  </TouchableOpacity>
-
-                  {isReady ? (
-                    <TouchableOpacity
-                      style={styles.deliverBtn}
-                      onPress={() => handleUpdateStatus(order.id, 'completed')}
-                      disabled={updatingId === order.id}
-                      activeOpacity={0.8}
-                    >
-                      {updatingId === order.id ? (
-                        <ActivityIndicator size="small" color="#ffffff" />
-                      ) : (
-                        <>
-                          <CheckCircle2 size={14} color="#ffffff" />
-                          <Text style={styles.deliverBtnText}>Mark Delivered</Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
-                  ) : (
-                    <View style={styles.waitBadge}>
-                      <Clock size={12} color="#64748b" />
-                      <Text style={styles.waitBadgeText}>Waiting for kitchen...</Text>
-                    </View>
-                  )}
-                </View>
-              </View>
-            );
-          })}
-        </ScrollView>
-      )}
-
-      {/* Bill Detail Modal */}
-      {selectedOrder && (
-        <Modal
-          visible={true}
-          transparent={true}
-          animationType="slide"
-          onRequestClose={() => setSelectedOrder(null)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Bill Invoice #{selectedOrder.id}</Text>
-                <TouchableOpacity onPress={() => setSelectedOrder(null)} style={styles.closeBtn}>
-                  <X size={20} color="#ffffff" />
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView contentContainerStyle={styles.modalScroll}>
-                <View style={styles.receiptContainer}>
-                  <Text style={styles.receiptTitle}>ZAIQA MAHAL</Text>
-                  <Text style={styles.receiptSub}> Hasilpur, Ph: 0300-3910101</Text>
-                  <View style={styles.dividerDashed} />
-
-                  {/* Customer Block */}
-                  <View style={styles.receiptSection}>
-                    <Text style={styles.receiptRow}>Customer: {selectedOrder.customer_name}</Text>
-                    {selectedOrder.table_number && (
-                      <Text style={styles.receiptRow}>Phone: {selectedOrder.table_number}</Text>
-                    )}
-                    {selectedOrder.remarks && (
-                      <Text style={styles.receiptRow}>Address: {selectedOrder.remarks}</Text>
-                    )}
-                  </View>
-                  <View style={styles.dividerDashed} />
-
-                  {/* Items list */}
-                  <Text style={styles.receiptHeader}>ITEMS INVOICE</Text>
-                  {selectedOrder.items.map((item, idx) => (
-                    <View key={idx} style={styles.receiptItem}>
-                      <Text style={styles.receiptItemName}>{item.quantity}x {item.item_name}</Text>
-                      <Text style={styles.receiptItemPrice}>Rs. {(item.price * item.quantity).toFixed(0)}</Text>
-                    </View>
-                  ))}
-                  <View style={styles.dividerSolid} />
-
-                  {/* Totals */}
-                  <View style={styles.receiptItem}>
-                    <Text style={styles.receiptItemName}>Subtotal:</Text>
-                    <Text style={styles.receiptItemPrice}>Rs. {selectedOrder.subtotal.toFixed(0)}</Text>
-                  </View>
-                  {selectedOrder.tax > 0 && (
-                    <View style={styles.receiptItem}>
-                      <Text style={styles.receiptItemName}>GST / Tax:</Text>
-                      <Text style={styles.receiptItemPrice}>Rs. {selectedOrder.tax.toFixed(0)}</Text>
-                    </View>
-                  )}
-                  <View style={styles.receiptItem}>
-                    <Text style={[styles.receiptItemName, { fontWeight: '900', fontSize: 16 }]}>Grand Total:</Text>
-                    <Text style={[styles.receiptItemPrice, { fontWeight: '900', fontSize: 16, color: '#f97316' }]}>
-                      Rs. {selectedOrder.total_amount.toFixed(0)}
-                    </Text>
-                  </View>
-                </View>
-              </ScrollView>
-
-              <View style={styles.modalFooter}>
-                <TouchableOpacity
-                  style={styles.modalCloseBtn}
-                  onPress={() => setSelectedOrder(null)}
-                >
-                  <Text style={styles.modalCloseText}>Close Bill</Text>
-                </TouchableOpacity>
-                {selectedOrder.status === 'ready' && (
-                  <TouchableOpacity
-                    style={styles.modalDeliverBtn}
-                    onPress={() => handleUpdateStatus(selectedOrder.id, 'completed')}
-                    disabled={updatingId === selectedOrder.id}
-                  >
-                    <Text style={styles.modalDeliverText}>Mark Delivered</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+          {/* Stats Bar */}
+          <View style={styles.statsBar}>
+            <View style={styles.statItem}>
+              <Text style={[styles.statNum, { color: '#f97316' }]}>{pendingDeliveries.length}</Text>
+              <Text style={styles.statLabel}>NEW</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Text style={[styles.statNum, { color: '#3b82f6' }]}>{preparingDeliveries.length}</Text>
+              <Text style={styles.statLabel}>PREPARING</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Text style={[styles.statNum, { color: '#16a34a' }]}>{readyDeliveries.length}</Text>
+              <Text style={styles.statLabel}>READY FOR DELIVERY</Text>
             </View>
           </View>
-        </Modal>
+
+          {/* Deliveries List */}
+          {loading ? (
+            <View style={styles.centerLoading}>
+              <LogoLoader />
+            </View>
+          ) : orders.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <View style={styles.emptyIcon}>
+                <Bike size={44} color="#64748b" />
+              </View>
+              <Text style={styles.emptyTitle}>No active deliveries</Text>
+              <Text style={styles.emptySub}>Home delivery orders ready for delivery will appear here.</Text>
+            </View>
+          ) : (
+            <ScrollView
+              style={{ flex: 1 }}
+              contentContainerStyle={styles.scrollContent}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchOrders(true)} tintColor="#f97316" />}
+              showsVerticalScrollIndicator={false}
+            >
+              {orders.map(order => {
+                const isReady = order.status === 'ready';
+                const isPreparing = order.status === 'preparing';
+                const isPending = order.status === 'pending';
+
+                return (
+                  <View key={order.id} style={[styles.card, isReady && styles.readyCard]}>
+                    {/* Header of Card */}
+                    <View style={styles.cardHeader}>
+                      <View style={styles.orderIdBadge}>
+                        <Text style={styles.orderIdText}>Order #{order.id}</Text>
+                      </View>
+                      <View style={{ flex: 1 }} />
+                      <View style={[
+                        styles.statusPill,
+                        isReady ? styles.statusReady : isPreparing ? styles.statusPreparing : styles.statusPending
+                      ]}>
+                        <Text style={[
+                          styles.statusPillText,
+                          isReady ? { color: '#16a34a' } : isPreparing ? { color: '#3b82f6' } : { color: '#f97316' }
+                        ]}>
+                          {order.status.toUpperCase()}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Customer Info */}
+                    <View style={styles.customerInfo}>
+                      <View style={styles.infoRow}>
+                        <User size={14} color="#64748b" />
+                        <Text style={styles.customerName}>{order.customer_name || 'Walk-in Guest'}</Text>
+                      </View>
+
+                      {order.table_number && order.table_number !== 'Delivery' && (
+                        <View style={styles.infoRow}>
+                          <Phone size={14} color="#64748b" />
+                          <Text style={styles.customerPhone} onPress={() => handleCallCustomer(order.table_number)}>
+                            📞 Call Customer: {order.table_number}
+                          </Text>
+                        </View>
+                      )}
+
+                      {order.remarks && (
+                        <View style={[styles.infoRow, { alignItems: 'flex-start' }]}>
+                          <MapPin size={14} color="#64748b" style={{ marginTop: 2 }} />
+                          <Text style={styles.customerAddress} numberOfLines={2}>
+                            {order.remarks || 'No Address Listed'}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Bill Row */}
+                    <View style={styles.billSummaryRow}>
+                      <Text style={styles.billLabel}>Total Bill:</Text>
+                      <Text style={styles.billValue}>Rs. {order.total_amount.toFixed(0)}</Text>
+                    </View>
+
+                    {/* Actions */}
+                    <View style={styles.actionRow}>
+                      <TouchableOpacity
+                        style={styles.detailBtn}
+                        onPress={() => setSelectedOrder(order)}
+                        activeOpacity={0.7}
+                      >
+                        <FileText size={14} color="#64748b" />
+                        <Text style={styles.detailBtnText}>View Bill Details</Text>
+                      </TouchableOpacity>
+
+                      {isReady ? (
+                        <TouchableOpacity
+                          style={styles.deliverBtn}
+                          onPress={() => handleUpdateStatus(order.id, 'completed')}
+                          disabled={updatingId === order.id}
+                          activeOpacity={0.8}
+                        >
+                          {updatingId === order.id ? (
+                            <ActivityIndicator size="small" color="#ffffff" />
+                          ) : (
+                            <>
+                              <CheckCircle2 size={14} color="#ffffff" />
+                              <Text style={styles.deliverBtnText}>Mark Delivered</Text>
+                            </>
+                          )}
+                        </TouchableOpacity>
+                      ) : (
+                        <View style={styles.waitBadge}>
+                          <Clock size={12} color="#64748b" />
+                          <Text style={styles.waitBadgeText}>Waiting for kitchen...</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </ScrollView>
+          )}
+
+          {/* Bill Detail Modal */}
+          {selectedOrder && (
+            <Modal
+              visible={true}
+              transparent={true}
+              animationType="slide"
+              onRequestClose={() => setSelectedOrder(null)}
+            >
+              <View style={styles.modalOverlay}>
+                <View style={styles.modalContent}>
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>Bill Invoice #{selectedOrder.id}</Text>
+                    <TouchableOpacity onPress={() => setSelectedOrder(null)} style={styles.closeBtn}>
+                      <X size={20} color="#ffffff" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <ScrollView contentContainerStyle={styles.modalScroll}>
+                    <View style={styles.receiptContainer}>
+                      <Text style={styles.receiptTitle}>ZAIQA MAHAL</Text>
+                      <Text style={styles.receiptSub}> Hasilpur, Ph: 0300-3910101</Text>
+                      <View style={styles.dividerDashed} />
+
+                      {/* Customer Block */}
+                      <View style={styles.receiptSection}>
+                        <Text style={styles.receiptRow}>Customer: {selectedOrder.customer_name}</Text>
+                        {selectedOrder.table_number && (
+                          <Text style={styles.receiptRow}>Phone: {selectedOrder.table_number}</Text>
+                        )}
+                        {selectedOrder.remarks && (
+                          <Text style={styles.receiptRow}>Address: {selectedOrder.remarks}</Text>
+                        )}
+                      </View>
+                      <View style={styles.dividerDashed} />
+
+                      {/* Items list */}
+                      <Text style={styles.receiptHeader}>ITEMS INVOICE</Text>
+                      {selectedOrder.items.map((item, idx) => (
+                        <View key={idx} style={styles.receiptItem}>
+                          <Text style={styles.receiptItemName}>{item.quantity}x {item.item_name}</Text>
+                          <Text style={styles.receiptItemPrice}>Rs. {(item.price * item.quantity).toFixed(0)}</Text>
+                        </View>
+                      ))}
+                      <View style={styles.dividerSolid} />
+
+                      {/* Totals */}
+                      <View style={styles.receiptItem}>
+                        <Text style={styles.receiptItemName}>Subtotal:</Text>
+                        <Text style={styles.receiptItemPrice}>Rs. {selectedOrder.subtotal.toFixed(0)}</Text>
+                      </View>
+                      {selectedOrder.tax > 0 && (
+                        <View style={styles.receiptItem}>
+                          <Text style={styles.receiptItemName}>GST / Tax:</Text>
+                          <Text style={styles.receiptItemPrice}>Rs. {selectedOrder.tax.toFixed(0)}</Text>
+                        </View>
+                      )}
+                      <View style={styles.receiptItem}>
+                        <Text style={[styles.receiptItemName, { fontWeight: '900', fontSize: 16 }]}>Grand Total:</Text>
+                        <Text style={[styles.receiptItemPrice, { fontWeight: '900', fontSize: 16, color: '#f97316' }]}>
+                          Rs. {selectedOrder.total_amount.toFixed(0)}
+                        </Text>
+                      </View>
+                    </View>
+                  </ScrollView>
+
+                  <View style={styles.modalFooter}>
+                    <TouchableOpacity
+                      style={styles.modalCloseBtn}
+                      onPress={() => setSelectedOrder(null)}
+                    >
+                      <Text style={styles.modalCloseText}>Close Bill</Text>
+                    </TouchableOpacity>
+                    {selectedOrder.status === 'ready' && (
+                      <TouchableOpacity
+                        style={styles.modalDeliverBtn}
+                        onPress={() => handleUpdateStatus(selectedOrder.id, 'completed')}
+                        disabled={updatingId === selectedOrder.id}
+                      >
+                        <Text style={styles.modalDeliverText}>Mark Delivered</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              </View>
+            </Modal>
+          )}
+        </>
+      ) : (
+        <ChatScreen username={username} role="rider" onBack={() => setShowChat(false)} />
       )}
     </View>
   );
@@ -420,6 +517,47 @@ const styles = StyleSheet.create({
   logoutBtn: {
     width: 38, height: 38, borderRadius: 12, backgroundColor: '#1e293b',
     alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#334155',
+  },
+  dotsBtn: {
+    width: 38, height: 38, borderRadius: 12, backgroundColor: '#1e293b',
+    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#334155',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end',
+    paddingTop: 80,
+    paddingRight: 20,
+  },
+  dropdownCard: {
+    width: 180,
+    backgroundColor: '#1e293b',
+    borderRadius: 12,
+    padding: 6,
+    borderWidth: 1,
+    borderColor: '#334155',
+    elevation: 5,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  menuIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  menuLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#ffffff',
   },
   statsBar: {
     flexDirection: 'row', backgroundColor: '#0f172a',
@@ -600,11 +738,11 @@ const styles = StyleSheet.create({
     color: '#64748b',
   },
   // Modal Styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
+  // modalOverlay: {
+  //   flex: 1,
+  //   backgroundColor: 'rgba(0,0,0,0.6)',
+  //   justifyContent: 'flex-end',
+  // },
   modalContent: {
     backgroundColor: '#0f172a',
     borderTopLeftRadius: 28,

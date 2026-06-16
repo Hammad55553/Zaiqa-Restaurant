@@ -27,3 +27,5 @@ desktop/server/
 *.env
 .env.*
 
+# Firebase service account
+server/config/firebase-service-account.json
