@@ -490,6 +490,8 @@ router.delete('/:id', (req, res) => {
       if (this.changes === 0) {
         return res.status(404).json({ error: 'Order not found' });
       }
+      // Sync deleted order from Supabase
+      queueOrderChange(id, 'delete');
       res.json({ success: true, deletedId: id });
     });
   });

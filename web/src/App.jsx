@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShoppingCart, LayoutGrid, Package, FileText, Settings, Bell, Search, Menu as MenuIcon, X, Printer, Truck, Wallet, CreditCard, ChefHat, Utensils, BookOpen, Layers, Phone, Bike, Shield, LogOut, Ban, Eye, EyeOff, MessageSquare } from 'lucide-react';
+import { ShoppingCart, LayoutGrid, Package, FileText, Settings, Bell, Search, Menu as MenuIcon, X, Printer, Truck, Wallet, CreditCard, ChefHat, Utensils, BookOpen, Layers, Phone, Bike, Shield, LogOut, Ban, Eye, EyeOff, MessageSquare, Globe, Wifi, WifiOff } from 'lucide-react';
 import POSLayout from './modules/pos/POSLayout';
 import KitchenDisplay from './modules/kds/KitchenDisplay';
 import SplashScreen from './components/SplashScreen';
@@ -46,6 +46,37 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentView, setCurrentView] = useState('pos'); // 'pos', 'kds', 'inventory', 'reports'
   const [chatEnabled, setChatEnabled] = useState(true);
+  const [sysStatus, setSysStatus] = useState('online');
+
+  useEffect(() => {
+    const checkStatus = () => {
+      const wsConnected = syncService.ws && syncService.ws.readyState === WebSocket.OPEN;
+      if (wsConnected) {
+        if (navigator.onLine) {
+          setSysStatus('online');
+        } else {
+          setSysStatus('local');
+        }
+      } else {
+        setSysStatus('offline');
+      }
+    };
+
+    checkStatus();
+    const interval = setInterval(checkStatus, 3000);
+
+    window.addEventListener('online', checkStatus);
+    window.addEventListener('offline', checkStatus);
+
+    const unsubscribeStatus = syncService.subscribe('connection_status', checkStatus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('online', checkStatus);
+      window.removeEventListener('offline', checkStatus);
+      unsubscribeStatus();
+    };
+  }, []);
 
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
@@ -762,6 +793,45 @@ function App() {
                 >
                   <X size={16} />
                 </button>
+              )}
+            </div>
+
+            {/* System Connection Status Badge */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '6px 14px',
+              borderRadius: '14px',
+              border: '1.5px solid',
+              fontSize: '0.75rem',
+              fontWeight: 800,
+              backgroundColor: sysStatus === 'online' ? '#f0fdf4' : sysStatus === 'local' ? '#fffbeb' : '#fef2f2',
+              color: sysStatus === 'online' ? '#16a34a' : sysStatus === 'local' ? '#d97706' : '#ef4444',
+              borderColor: sysStatus === 'online' ? '#bbf7d0' : sysStatus === 'local' ? '#fde68a' : '#fca5a5',
+              transition: 'all 0.3s ease',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+            }}>
+              {sysStatus === 'online' && (
+                <>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#16a34a', boxShadow: '0 0 8px #16a34a' }} className="animate-pulse" />
+                  <Globe size={14} style={{ marginRight: 2 }} />
+                  Online (Cloud)
+                </>
+              )}
+              {sysStatus === 'local' && (
+                <>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#d97706', boxShadow: '0 0 8px #d97706' }} className="animate-pulse" />
+                  <Wifi size={14} style={{ marginRight: 2 }} />
+                  Local (WiFi Only)
+                </>
+              )}
+              {sysStatus === 'offline' && (
+                <>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#ef4444', boxShadow: '0 0 8px #ef4444' }} className="animate-pulse" />
+                  <WifiOff size={14} style={{ marginRight: 2 }} />
+                  Offline
+                </>
               )}
             </div>
 
