@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../database/db');
+const { queueDeliveryChange } = require('../services/syncHelper');
 
 // @route   GET /api/deliveries
 // @desc    Get all delivery orders
@@ -60,8 +61,12 @@ router.post('/', (req, res) => {
       });
     }
 
-    res.status(201).json({ success: true, deliveryId });
-  });
+      // Sync new delivery order to Supabase
+      queueDeliveryChange(deliveryId, 'insert');
+
+      res.status(201).json({ success: true, deliveryId });
+    }
+  );
 });
 
 // @route   PATCH /api/deliveries/:id/status
@@ -84,6 +89,9 @@ router.patch('/:id/status', (req, res) => {
   params.push(id);
   db.run(`UPDATE delivery_orders SET ${fields.join(', ')} WHERE id = ?`, params, function(err) {
     if (err) return res.status(500).json({ error: 'Failed to update delivery status' });
+    // Sync updated delivery status to Supabase
+    queueDeliveryChange(id, 'update');
+
     res.json({ success: true, id, delivery_status, is_completed });
   });
 });
@@ -97,6 +105,9 @@ router.delete('/:id', (req, res) => {
       if (err) return res.status(500).json({ error: 'Failed to delete delivery items' });
       db.run(`DELETE FROM delivery_orders WHERE id = ?`, [id], function(err2) {
         if (err2) return res.status(500).json({ error: 'Failed to delete delivery order' });
+        // Sync deleted delivery order from Supabase
+        queueDeliveryChange(id, 'delete');
+
         res.json({ success: true, deletedId: id });
       });
     });

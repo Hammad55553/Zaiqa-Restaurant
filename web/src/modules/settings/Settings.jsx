@@ -34,6 +34,7 @@ const Settings = () => {
     const [auditLogs, setAuditLogs] = useState([]);
     const [trashItems, setTrashItems] = useState([]);
     const [globalGstRate, setGlobalGstRate] = useState(16);
+    const [globalServiceCharges, setGlobalServiceCharges] = useState(0);
 
     const [updateState, setUpdateState] = useState({
         status: 'idle', // 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'uptodate'
@@ -155,6 +156,8 @@ const Settings = () => {
             setTerminalPin(pin);
             const gst = await getOfflineItem('zaiqa_mahal_global_gst_rate', 16);
             setGlobalGstRate(gst);
+            const sc = await getOfflineItem('zaiqa_mahal_global_service_charges', 0);
+            setGlobalServiceCharges(sc);
             const logs = await getOfflineItem('zaiqa_mahal_audit_logs', []);
             setAuditLogs(logs);
         };
@@ -233,6 +236,18 @@ const Settings = () => {
         await setOfflineItem('zaiqa_mahal_global_gst_rate', rate);
         showToast("Global Default GST Rate updated successfully!", "success");
         addRealAuditLog(`Global default GST rate updated to ${rate}%`, "system", "success");
+    };
+
+    const handleUpdateServiceCharges = async (e) => {
+        e.preventDefault();
+        const amt = parseFloat(globalServiceCharges);
+        if (isNaN(amt) || amt < 0) {
+            showToast("Invalid Service Charges! Please enter a valid number.", "error");
+            return;
+        }
+        await setOfflineItem('zaiqa_mahal_global_service_charges', amt);
+        showToast("Global Default Service Charges updated successfully!", "success");
+        addRealAuditLog(`Global default service charges updated to Rs. ${amt}`, "system", "success");
     };
 
     return (
@@ -485,6 +500,39 @@ const Settings = () => {
                                     </div>
                                     <button type="submit" style={{ padding: '18px 35px', background: '#f97316', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 900, cursor: 'pointer', fontSize: '0.95rem' }}>
                                         UPDATE TAX RATE
+                                    </button>
+                                </form>
+                            </div>
+                            {/* Global Default Service Charges */}
+                            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '30px', boxShadow: '0 4px 20px rgba(0,0,0,0.02)', marginTop: '20px' }}>
+                                <div style={{ marginBottom: '25px' }}>
+                                    <h3 style={{ fontSize: '1.2rem', fontWeight: 900, color: '#f97316', marginBottom: '8px' }}>Global Default Service Charges</h3>
+                                    <p style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>Set the default Service Charges amount (in Rs.) applied to checkouts. This can be edited during POS billing.</p>
+                                </div>
+
+                                <form onSubmit={handleUpdateServiceCharges} style={{
+                                    display: 'flex',
+                                    flexDirection: window.innerWidth <= 480 ? 'column' : 'row',
+                                    alignItems: window.innerWidth <= 480 ? 'stretch' : 'flex-end',
+                                    gap: '20px'
+                                }}>
+                                    <div style={{ flex: 1 }}>
+                                        <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 900, color: '#475569', textTransform: 'uppercase', marginBottom: '10px' }}>Global Service Charges (Rs.)</label>
+                                        <div style={{ position: 'relative' }}>
+                                            <span style={{ position: 'absolute', left: '15px', top: '50%', transform: 'translateY(-50%)', fontWeight: '900', color: '#f97316', fontSize: '1.2rem' }}>Rs.</span>
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                style={{ width: '100%', padding: '15px 15px 15px 55px', borderRadius: '12px', border: '1px solid #cbd5e1', fontSize: '1.2rem', fontWeight: 900, outline: 'none' }}
+                                                placeholder="0"
+                                                value={globalServiceCharges}
+                                                onChange={(e) => setGlobalServiceCharges(e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+                                    <button type="submit" style={{ padding: '18px 35px', background: '#f97316', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 900, cursor: 'pointer', fontSize: '0.95rem' }}>
+                                        UPDATE SERVICE CHARGES
                                     </button>
                                 </form>
                             </div>

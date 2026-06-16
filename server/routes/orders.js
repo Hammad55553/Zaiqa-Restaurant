@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../database/db');
+const { queueOrderChange } = require('../services/syncHelper');
 
 // @route   POST /api/orders
 // @desc    Create a new order (from POS)
@@ -32,23 +33,23 @@ router.post('/', (req, res) => {
         if (err) console.error("Error inserting item:", err);
       });
 
-      // Auto-deduct ingredients (BOM / Recipe)
-      if (item.id) {
-        db.all(`SELECT stock_item_id, quantity_required FROM item_ingredients WHERE menu_item_id = ?`, [item.id], (err, ingredients) => {
-          if (!err && ingredients && ingredients.length > 0) {
-            ingredients.forEach(ing => {
-              const totalRequired = ing.quantity_required * item.qty;
-              db.run(`UPDATE stock_items SET quantity = quantity - ? WHERE id = ?`, [totalRequired, ing.stock_item_id], (err2) => {
-                if (!err2) {
-                  db.run(`INSERT INTO stock_logs (item_id, action, qty_changed, remarks) VALUES (?, ?, ?, ?)`, 
-                    [ing.stock_item_id, 'remove', totalRequired, `Used in Order #${orderId} (${item.name} x${item.qty})`]);
-                }
-              });
-            });
+      // ONLY decrement from prepared_waste immediately, do NOT deduct ingredients for pending orders
+      if (item.isFromPreparedWaste) {
+        db.get(`SELECT id, quantity FROM prepared_waste WHERE item_name = ? LIMIT 1`, [item.name], (errW, rowW) => {
+          if (!errW && rowW) {
+            const newQty = rowW.quantity - item.qty;
+            if (newQty <= 0) {
+              db.run(`DELETE FROM prepared_waste WHERE id = ?`, [rowW.id]);
+            } else {
+              db.run(`UPDATE prepared_waste SET quantity = ? WHERE id = ?`, [newQty, rowW.id]);
+            }
           }
         });
       }
     });
+
+    // Sync order to Supabase
+    queueOrderChange(orderId, 'insert');
 
     res.status(201).json({ success: true, orderId });
   });
@@ -103,20 +104,58 @@ router.patch('/:id/status', (req, res) => {
   const { id } = req.params;
   const { status, clear_updates } = req.body;
 
-  let query = `UPDATE orders SET status = ?`;
-  let params = [status];
-
-  if (clear_updates) {
-    query += `, has_new_updates = 0`;
-  }
-  query += ` WHERE id = ?`;
-  params.push(id);
-
-  db.run(query, params, function(err) {
-    if (err) {
-      return res.status(500).json({ error: 'Failed to update order status' });
+  db.get(`SELECT status FROM orders WHERE id = ?`, [id], (errOrd, orderRow) => {
+    if (errOrd || !orderRow) {
+      return res.status(404).json({ error: 'Order not found' });
     }
-    res.json({ success: true, id, status });
+
+    const wasPending = orderRow.status === 'pending';
+    const becameActive = ['preparing', 'ready', 'completed'].includes(status);
+
+    let query = `UPDATE orders SET status = ?`;
+    let params = [status];
+
+    if (clear_updates) {
+      query += `, has_new_updates = 0`;
+    }
+    query += ` WHERE id = ?`;
+    params.push(id);
+
+    db.run(query, params, function(err) {
+      if (err) {
+        return res.status(500).json({ error: 'Failed to update order status' });
+      }
+
+      // If transitioning from pending to active (preparing or later), deduct stock for all items
+      if (wasPending && becameActive) {
+        db.all(`SELECT * FROM order_items WHERE order_id = ?`, [id], (errItems, orderItems) => {
+          if (!errItems && orderItems) {
+            orderItems.forEach(item => {
+              if (item.item_id && !item.isFromPreparedWaste) {
+                db.all(`SELECT stock_item_id, quantity_required FROM item_ingredients WHERE menu_item_id = ?`, [item.item_id], (errIng, ingredients) => {
+                  if (!errIng && ingredients) {
+                    ingredients.forEach(ing => {
+                      const totalRequired = ing.quantity_required * item.quantity;
+                      db.run(`UPDATE stock_items SET quantity = quantity - ? WHERE id = ?`, [totalRequired, ing.stock_item_id], (err2) => {
+                        if (!err2) {
+                          db.run(`INSERT INTO stock_logs (item_id, action, qty_changed, remarks) VALUES (?, 'remove', ?, ?)`, 
+                            [ing.stock_item_id, totalRequired, `Preparing started for Order #${id} (${item.item_name} x${item.quantity})`]);
+                        }
+                      });
+                    });
+                  }
+                });
+              }
+            });
+          }
+        });
+      }
+
+      // Sync order update to Supabase
+      queueOrderChange(id, 'update');
+
+      res.json({ success: true, id, status });
+    });
   });
 });
 
@@ -131,6 +170,9 @@ router.patch('/:id/customer', (req, res) => {
       console.error('Error updating order customer name:', err.message);
       return res.status(500).json({ error: 'Failed to update customer name' });
     }
+    // Sync order update to Supabase
+    queueOrderChange(id, 'update');
+
     res.json({ success: true, id, customer_name });
   });
 });
@@ -186,22 +228,39 @@ router.patch('/:id/items', (req, res) => {
       
       newItems.forEach((item) => {
         // Automatically deduct stock for NEW appended items
-        db.all(`SELECT stock_item_id, quantity_required FROM item_ingredients WHERE menu_item_id = ?`, [item.item_id || item.id], (err, ingredients) => {
-          if (!err && ingredients && ingredients.length > 0) {
-            ingredients.forEach(ing => {
-              const totalRequired = ing.quantity_required * (item.quantity || item.qty);
-              db.run(`UPDATE stock_items SET quantity = quantity - ? WHERE id = ?`, [totalRequired, ing.stock_item_id]);
-              db.run(`INSERT INTO stock_logs (item_id, action, qty_changed, remarks) VALUES (?, 'remove', ?, ?)`,
-                [ing.stock_item_id, totalRequired, `Appended to Order #${id} (${item.item_name || item.name})`]
-              );
-            });
-          }
-        });
+        if (!item.isFromPreparedWaste) {
+          db.all(`SELECT stock_item_id, quantity_required FROM item_ingredients WHERE menu_item_id = ?`, [item.item_id || item.id], (err, ingredients) => {
+            if (!err && ingredients && ingredients.length > 0) {
+              ingredients.forEach(ing => {
+                const totalRequired = ing.quantity_required * (item.quantity || item.qty);
+                db.run(`UPDATE stock_items SET quantity = quantity - ? WHERE id = ?`, [totalRequired, ing.stock_item_id]);
+                db.run(`INSERT INTO stock_logs (item_id, action, qty_changed, remarks) VALUES (?, 'remove', ?, ?)`,
+                  [ing.stock_item_id, totalRequired, `Appended to Order #${id} (${item.item_name || item.name})`]
+                );
+              });
+            }
+          });
+        } else {
+          // Decrement prepared_waste
+          db.get(`SELECT id, quantity FROM prepared_waste WHERE item_name = ? LIMIT 1`, [item.item_name || item.name], (errW, rowW) => {
+            if (!errW && rowW) {
+              const newQty = rowW.quantity - (item.quantity || item.qty);
+              if (newQty <= 0) {
+                db.run(`DELETE FROM prepared_waste WHERE id = ?`, [rowW.id]);
+              } else {
+                db.run(`UPDATE prepared_waste SET quantity = ? WHERE id = ?`, [newQty, rowW.id]);
+              }
+            }
+          });
+        }
 
         db.run(itemSql, [id, item.item_id || item.id, item.item_name || item.name, item.price, item.quantity || item.qty, item.notes || '', 'preparing'], (err) => {
           if (err) console.error("Error inserting appended item:", err);
         });
       });
+
+      // Sync order update to Supabase
+      queueOrderChange(id, 'update');
 
       res.json({ success: true, orderId: id });
     });
@@ -245,7 +304,8 @@ router.put('/:id/sync', (req, res) => {
               qty: 0, 
               name: item.item_name || item.name, 
               price: item.price, 
-              notes: item.notes || '' 
+              notes: item.notes || '',
+              isFromPreparedWaste: item.isFromPreparedWaste
             };
           }
           incomingMap[itemId].qty += (item.quantity || item.qty);
@@ -255,6 +315,9 @@ router.put('/:id/sync', (req, res) => {
         });
 
         // 1. Process Updates & Deletions
+        const isPreparingOrLater = order && ['preparing', 'ready', 'completed'].includes(order.status);
+
+        // 1. Process Updates & Deletions
         Object.keys(existingMap).forEach(itemIdStr => {
           const itemId = parseInt(itemIdStr, 10);
           const existing = existingMap[itemId];
@@ -262,15 +325,17 @@ router.put('/:id/sync', (req, res) => {
           
           if (!incoming) {
             // Item was DELETED completely
-            db.all(`SELECT stock_item_id, quantity_required FROM item_ingredients WHERE menu_item_id = ?`, [itemId], (err, ingredients) => {
-              if (!err && ingredients) {
-                ingredients.forEach(ing => {
-                  const totalRequired = ing.quantity_required * existing.qty;
-                  db.run(`UPDATE stock_items SET quantity = quantity + ? WHERE id = ?`, [totalRequired, ing.stock_item_id]);
-                  db.run(`INSERT INTO stock_logs (item_id, action, qty_changed, remarks) VALUES (?, 'add', ?, ?)`, [ing.stock_item_id, totalRequired, `Refund from Order #${id} (Deleted)`]);
-                });
-              }
-            });
+            if (isPreparingOrLater) {
+              db.all(`SELECT stock_item_id, quantity_required FROM item_ingredients WHERE menu_item_id = ?`, [itemId], (err, ingredients) => {
+                if (!err && ingredients) {
+                  ingredients.forEach(ing => {
+                    const totalRequired = ing.quantity_required * existing.qty;
+                    db.run(`UPDATE stock_items SET quantity = quantity + ? WHERE id = ?`, [totalRequired, ing.stock_item_id]);
+                    db.run(`INSERT INTO stock_logs (item_id, action, qty_changed, remarks) VALUES (?, 'add', ?, ?)`, [ing.stock_item_id, totalRequired, `Refund from Order #${id} (Deleted)`]);
+                  });
+                }
+              });
+            }
             existing.ids.forEach(orderItemId => {
               db.run(`DELETE FROM order_items WHERE id = ?`, [orderItemId]);
             });
@@ -278,7 +343,7 @@ router.put('/:id/sync', (req, res) => {
             // Item exists in both, check for qty changes
             const diff = incoming.qty - existing.qty;
             
-            if (diff !== 0) {
+            if (diff !== 0 && isPreparingOrLater) {
               db.all(`SELECT stock_item_id, quantity_required FROM item_ingredients WHERE menu_item_id = ?`, [itemId], (err, ingredients) => {
                 if (!err && ingredients) {
                   ingredients.forEach(ing => {
@@ -313,19 +378,38 @@ router.put('/:id/sync', (req, res) => {
           
           if (!existingMap[itemId]) {
             // NEW ITEM
-            db.all(`SELECT stock_item_id, quantity_required FROM item_ingredients WHERE menu_item_id = ?`, [itemId], (err, ingredients) => {
-              if (!err && ingredients) {
-                ingredients.forEach(ing => {
-                  const totalRequired = ing.quantity_required * incoming.qty;
-                  db.run(`UPDATE stock_items SET quantity = quantity - ? WHERE id = ?`, [totalRequired, ing.stock_item_id]);
-                  db.run(`INSERT INTO stock_logs (item_id, action, qty_changed, remarks) VALUES (?, 'remove', ?, ?)`, [ing.stock_item_id, totalRequired, `Added to Order #${id}`]);
+            if (!incoming.isFromPreparedWaste) {
+              if (isPreparingOrLater) {
+                db.all(`SELECT stock_item_id, quantity_required FROM item_ingredients WHERE menu_item_id = ?`, [itemId], (err, ingredients) => {
+                  if (!err && ingredients) {
+                    ingredients.forEach(ing => {
+                      const totalRequired = ing.quantity_required * incoming.qty;
+                      db.run(`UPDATE stock_items SET quantity = quantity - ? WHERE id = ?`, [totalRequired, ing.stock_item_id]);
+                      db.run(`INSERT INTO stock_logs (item_id, action, qty_changed, remarks) VALUES (?, 'remove', ?, ?)`, [ing.stock_item_id, totalRequired, `Added to Order #${id}`]);
+                    });
+                  }
                 });
               }
-            });
+            } else {
+              // Decrement prepared_waste
+              db.get(`SELECT id, quantity FROM prepared_waste WHERE item_name = ? LIMIT 1`, [incoming.name], (errW, rowW) => {
+                if (!errW && rowW) {
+                  const newQty = rowW.quantity - incoming.qty;
+                  if (newQty <= 0) {
+                    db.run(`DELETE FROM prepared_waste WHERE id = ?`, [rowW.id]);
+                  } else {
+                    db.run(`UPDATE prepared_waste SET quantity = ? WHERE id = ?`, [newQty, rowW.id]);
+                  }
+                }
+              });
+            }
             db.run(`INSERT INTO order_items (order_id, item_id, item_name, price, quantity, notes, status) VALUES (?, ?, ?, ?, ?, ?, ?)`, 
               [id, itemId, incoming.name, incoming.price, incoming.qty, incoming.notes, 'preparing']);
           }
         });
+
+        // Sync order update to Supabase
+        queueOrderChange(id, 'update');
 
         res.json({ success: true, orderId: id });
       });
@@ -408,6 +492,167 @@ router.delete('/:id', (req, res) => {
       }
       res.json({ success: true, deletedId: id });
     });
+  });
+});
+
+// @route   PATCH /api/orders/:id/cancel
+// @desc    Cancel an order, refund stock if selected, and log waste if selected
+router.patch('/:id/cancel', (req, res) => {
+  const { id } = req.params;
+  const { refund_raw, log_waste, reason = 'Customer Cancelled' } = req.body;
+
+  // Get the order first to know the items and table number
+  db.get(`SELECT * FROM orders WHERE id = ?`, [id], (err, order) => {
+    if (err || !order) {
+      return res.status(500).json({ error: 'Order not found' });
+    }
+
+    db.all(`SELECT * FROM order_items WHERE order_id = ?`, [id], (err, orderItems) => {
+      if (err) {
+        return res.status(500).json({ error: 'Failed to fetch order items' });
+      }
+
+      // Update order status to 'cancelled'
+      db.run(`UPDATE orders SET status = 'cancelled' WHERE id = ?`, [id], function(err) {
+        if (err) {
+          return res.status(500).json({ error: 'Failed to cancel order' });
+        }
+
+        // Set table to available if it is a table
+        if (order.table_number && order.area !== 'Delivery') {
+          db.run(`UPDATE tables SET status = 'available' WHERE table_number = ?`, [order.table_number]);
+        }
+
+        // 1. If refund raw is true, refund ingredient stock only if it was previously deducted (status preparing or later)
+        const wasDeducted = order && ['preparing', 'ready', 'completed'].includes(order.status);
+        if (refund_raw && wasDeducted && orderItems.length > 0) {
+          orderItems.forEach(item => {
+            if (item.item_id) {
+              db.all(`SELECT stock_item_id, quantity_required FROM item_ingredients WHERE menu_item_id = ?`, [item.item_id], (err2, ingredients) => {
+                if (!err2 && ingredients) {
+                  ingredients.forEach(ing => {
+                    const totalRequired = ing.quantity_required * item.quantity;
+                    db.run(`UPDATE stock_items SET quantity = quantity + ? WHERE id = ?`, [totalRequired, ing.stock_item_id]);
+                    db.run(`INSERT INTO stock_logs (item_id, action, qty_changed, remarks) VALUES (?, 'add', ?, ?)`, 
+                      [ing.stock_item_id, totalRequired, `Refund from Cancelled Order #${id} (${item.item_name} x${item.quantity})`]);
+                  });
+                }
+              });
+            }
+          });
+        }
+
+        // 2. If log waste is true, insert into prepared_waste
+        if (log_waste && orderItems.length > 0) {
+          const wasteSql = `INSERT INTO prepared_waste (item_name, quantity, reason) VALUES (?, ?, ?)`;
+          orderItems.forEach(item => {
+            // Ignore Service Charges virtual item when logging prepared food waste
+            if (item.item_name !== 'Service Charges') {
+              db.run(wasteSql, [item.item_name, item.quantity, `Order #${id} - ${reason}`]);
+            }
+          });
+        }
+
+        // Sync order status to Supabase
+        queueOrderChange(id, 'update');
+
+        res.json({ success: true, message: 'Order cancelled successfully' });
+      });
+    });
+  });
+});
+
+// @route   GET /api/orders/returns-pending
+// @desc    Get all pending, cancelled, and returned orders, and prepared waste logs & outflows
+router.get('/returns-pending', (req, res) => {
+  const sql = `SELECT * FROM orders WHERE status IN ('pending', 'preparing', 'ready', 'cancelled', 'returned') ORDER BY created_at DESC`;
+  db.all(sql, [], (err, orders) => {
+    if (err) return res.status(500).json({ error: 'Failed to fetch returns/pending orders' });
+
+    const fetchWasteAndOutflows = (mappedOrders) => {
+      db.all(`SELECT * FROM prepared_waste ORDER BY created_at DESC`, [], (errW, waste) => {
+        if (errW) return res.status(500).json({ error: 'Failed to fetch prepared waste' });
+        
+        db.all(`SELECT * FROM prepared_waste_outflow ORDER BY created_at DESC LIMIT 100`, [], (errO, outflows) => {
+          if (errO) return res.status(500).json({ error: 'Failed to fetch waste outflows' });
+          
+          res.json({ 
+            orders: mappedOrders, 
+            waste: waste || [], 
+            outflows: outflows || [] 
+          });
+        });
+      });
+    };
+
+    if (orders.length === 0) {
+      fetchWasteAndOutflows([]);
+      return;
+    }
+
+    const orderIds = orders.map(o => o.id);
+    const placeholders = orderIds.map(() => '?').join(',');
+    db.all(`SELECT * FROM order_items WHERE order_id IN (${placeholders})`, orderIds, (err2, items) => {
+      if (err2) return res.status(500).json({ error: 'Failed to fetch order items' });
+
+      const mappedOrders = orders.map(o => ({
+        ...o,
+        items: items.filter(i => i.order_id === o.id)
+      }));
+
+      fetchWasteAndOutflows(mappedOrders);
+    });
+  });
+});
+
+// @route   POST /api/orders/prepared-waste/:id/outflow
+// @desc    Record where a prepared waste item went (Staff, Owner, Spoiled, etc.) and decrement it
+router.post('/prepared-waste/:id/outflow', (req, res) => {
+  const { id } = req.params;
+  const { quantity, destination, notes = '' } = req.body;
+
+  db.get(`SELECT * FROM prepared_waste WHERE id = ?`, [id], (err, waste) => {
+    if (err || !waste) return res.status(404).json({ error: 'Waste log not found' });
+
+    const qtyToOutflow = Math.min(quantity, waste.quantity);
+    const newQty = waste.quantity - qtyToOutflow;
+
+    db.serialize(() => {
+      // 1. Insert record into prepared_waste_outflow
+      db.run(
+        `INSERT INTO prepared_waste_outflow (item_name, quantity, destination, notes) VALUES (?, ?, ?, ?)`,
+        [waste.item_name, qtyToOutflow, destination, notes]
+      );
+
+      // 2. Decrement or delete from prepared_waste
+      if (newQty <= 0) {
+        db.run(`DELETE FROM prepared_waste WHERE id = ?`, [id]);
+      } else {
+        db.run(`UPDATE prepared_waste SET quantity = ? WHERE id = ?`, [newQty, id]);
+      }
+
+      res.json({ success: true, message: 'Outflow recorded successfully' });
+    });
+  });
+});
+
+// @route   DELETE /api/orders/prepared-waste/:id
+// @desc    Delete a prepared waste entry
+router.delete('/prepared-waste/:id', (req, res) => {
+  const { id } = req.params;
+  db.run(`DELETE FROM prepared_waste WHERE id = ?`, [id], function(err) {
+    if (err) return res.status(500).json({ error: 'Failed to delete waste log' });
+    res.json({ success: true, id });
+  });
+});
+
+// @route   DELETE /api/orders/prepared-waste-outflow/:id
+// @desc    Delete a prepared waste outflow entry
+router.delete('/prepared-waste-outflow/:id', (req, res) => {
+  const { id } = req.params;
+  db.run(`DELETE FROM prepared_waste_outflow WHERE id = ?`, [id], function(err) {
+    if (err) return res.status(500).json({ error: 'Failed to delete waste outflow log' });
+    res.json({ success: true, id });
   });
 });
 

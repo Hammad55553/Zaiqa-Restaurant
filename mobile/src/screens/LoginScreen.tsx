@@ -8,11 +8,11 @@ const { BundleUpdater } = NativeModules;
 const LOCAL_APP_VERSION = '1.0.0';
 
 interface LoginScreenProps {
-  onLoginSuccess: (username: string, role: 'waiter' | 'kitchen') => void;
+  onLoginSuccess: (username: string, role: 'waiter' | 'kitchen' | 'rider') => void;
 }
 
 export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
-  const [role, setRole] = useState<'waiter' | 'kitchen'>('waiter');
+  const [role, setRole] = useState<'waiter' | 'kitchen' | 'rider'>('waiter');
   const [username, setUsername] = useState('');
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
@@ -248,7 +248,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         resizeMode="contain"
       />
 
-      <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
+      <StatusBar barStyle="dark-content" backgroundColor="#f8fafc" />
 
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         
@@ -276,13 +276,19 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
               style={[styles.roleTab, role === 'waiter' && styles.activeTab]}
               onPress={() => { setRole('waiter'); setError(''); }}
             >
-              <Text style={[styles.roleText, role === 'waiter' && styles.activeRoleText]}>Waiter Role</Text>
+              <Text style={[styles.roleText, role === 'waiter' && styles.activeRoleText]}>Waiter</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={[styles.roleTab, role === 'kitchen' && styles.activeTab]}
               onPress={() => { setRole('kitchen'); setError(''); }}
             >
-              <Text style={[styles.roleText, role === 'kitchen' && styles.activeRoleText]}>Kitchen Role</Text>
+              <Text style={[styles.roleText, role === 'kitchen' && styles.activeRoleText]}>Kitchen</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.roleTab, role === 'rider' && styles.activeTab]}
+              onPress={() => { setRole('rider'); setError(''); }}
+            >
+              <Text style={[styles.roleText, role === 'rider' && styles.activeRoleText]}>Rider</Text>
             </TouchableOpacity>
           </View>
 
@@ -525,7 +531,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { maxHeight: '60%' }]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select {role === 'waiter' ? 'Waiter' : 'Kitchen Staff'}</Text>
+              <Text style={styles.modalTitle}>Select {role === 'waiter' ? 'Waiter' : role === 'kitchen' ? 'Kitchen Staff' : 'Rider'}</Text>
               <TouchableOpacity onPress={() => setShowUserDropdown(false)} style={styles.closeBtn}>
                 <X size={20} color="#ffffff" />
               </TouchableOpacity>

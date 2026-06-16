@@ -1,0 +1,845 @@
+import React, { useState, useEffect } from 'react';
+import { AlertCircle, Trash2, ShieldAlert, Archive, CheckCircle2, ShoppingBag, Clock, FileText, Ban, ExternalLink, RefreshCw, Send, Check } from 'lucide-react';
+
+const API_BASE = 'http://localhost:5005/api';
+
+const ReturnsPending = ({ onBack }) => {
+  const [activeTab, setActiveTab] = useState('pending'); // 'pending', 'cancelled', 'waste'
+  const [orders, setOrders] = useState([]);
+  const [wasteList, setWasteList] = useState([]);
+  const [outflowList, setOutflowList] = useState([]);
+  const [tablesList, setTablesList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState(null);
+
+  // Cancellation Modal State
+  const [cancelModalOrder, setCancelModalOrder] = useState(null);
+  const [refundRaw, setRefundRaw] = useState(true);
+  const [logWaste, setLogWaste] = useState(false);
+  const [cancelReason, setCancelReason] = useState('Customer Cancelled');
+
+  // Sell Waste Item Modal State
+  const [sellModalItem, setSellModalItem] = useState(null);
+  const [sellQty, setSellQty] = useState(1);
+
+  // Outflow/Discard Waste Item Modal State
+  const [outflowModalItem, setOutflowModalItem] = useState(null);
+  const [outflowQty, setOutflowQty] = useState(1);
+  const [outflowDestination, setOutflowDestination] = useState('Staff Consumed');
+  const [outflowNotes, setOutflowNotes] = useState('');
+
+  const showToast = (msg, type = 'success') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  // Load user role
+  let currentUser = { role: 'cashier', username: 'Cashier' };
+  try {
+    const saved = localStorage.getItem('pos_current_user');
+    if (saved) {
+      currentUser = JSON.parse(saved);
+    }
+  } catch (e) {}
+
+  const isAdmin = currentUser.role === 'admin';
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      // 1. Fetch returns & pending
+      const res = await fetch(`${API_BASE}/orders/returns-pending`);
+      let fetchedOrders = [];
+      if (res.ok) {
+        const data = await res.json();
+        setOrders(data.orders || []);
+        fetchedOrders = data.orders || [];
+        setWasteList(data.waste || []);
+        setOutflowList(data.outflows || []);
+      }
+      
+      // 2. Fetch tables list
+      const tablesRes = await fetch(`${API_BASE}/tables`);
+      if (tablesRes.ok) {
+        const tablesData = await tablesRes.json();
+        
+        // Dynamic status overlay for active dining tables
+        const activeOrders = fetchedOrders.filter(o => ['pending', 'preparing', 'ready'].includes(o.status));
+        activeOrders.forEach(order => {
+          if (order.table_number) {
+            const t = tablesData.find(tb => tb.table_number === order.table_number);
+            if (t) {
+              t.status = 'dining';
+            }
+          }
+        });
+
+        setTablesList(tablesData || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch returns/pending data:', err);
+      showToast('Error loading returns/pending data', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const handleCancelOrder = async () => {
+    if (!cancelModalOrder) return;
+    try {
+      const res = await fetch(`${API_BASE}/orders/${cancelModalOrder.id}/cancel`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          refund_raw: refundRaw,
+          log_waste: logWaste,
+          reason: cancelReason
+        })
+      });
+
+      if (res.ok) {
+        showToast('Order successfully cancelled!', 'success');
+        setCancelModalOrder(null);
+        fetchData();
+      } else {
+        showToast('Failed to cancel order', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Error cancelling order', 'error');
+    }
+  };
+
+  const handleDeleteOrder = async (id) => {
+    if (!window.confirm('Are you sure you want to permanently delete this cancelled order from history?')) return;
+    try {
+      const res = await fetch(`${API_BASE}/orders/${id}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        showToast('Order permanently deleted from history', 'success');
+        fetchData();
+      } else {
+        showToast('Failed to delete order', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Error deleting order', 'error');
+    }
+  };
+
+  const handleDeleteWasteLog = async (id) => {
+    if (!window.confirm('Delete this prepared waste entry?')) return;
+    try {
+      const res = await fetch(`${API_BASE}/orders/prepared-waste/${id}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        showToast('Waste log entry deleted', 'success');
+        fetchData();
+      } else {
+        showToast('Failed to delete waste log', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Error deleting waste log', 'error');
+    }
+  };
+
+  const handleDeleteOutflowLog = async (id) => {
+    if (!window.confirm('Delete this waste outflow history record?')) return;
+    try {
+      const res = await fetch(`${API_BASE}/orders/prepared-waste-outflow/${id}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        showToast('Outflow history record deleted', 'success');
+        fetchData();
+      } else {
+        showToast('Failed to delete outflow log', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Error deleting outflow log', 'error');
+    }
+  };
+
+  const handleConfirmSell = (tableNumber) => {
+    if (!sellModalItem) return;
+    
+    // Save selling item info to local storage
+    localStorage.setItem('zaiqa_mahal_pending_waste_sell', JSON.stringify({
+      name: sellModalItem.item_name,
+      qty: sellQty
+    }));
+
+    if (tableNumber) {
+      // Save target table to local storage
+      localStorage.setItem('zaiqa_mahal_pending_waste_sell_target', JSON.stringify({
+        type: 'table',
+        tableNumber: tableNumber
+      }));
+      showToast(`Selling ${sellQty}x ${sellModalItem.item_name} on Table ${tableNumber}...`, 'success');
+    } else {
+      // New walk-in/delivery order
+      localStorage.setItem('zaiqa_mahal_pending_waste_sell_target', JSON.stringify({
+        type: 'new'
+      }));
+      showToast(`Selling ${sellQty}x ${sellModalItem.item_name} as a new order...`, 'success');
+    }
+
+    setSellModalItem(null);
+    onBack(); // Go back to POS layout
+  };
+
+  const handleConfirmOutflow = async () => {
+    if (!outflowModalItem) return;
+    try {
+      const res = await fetch(`${API_BASE}/orders/prepared-waste/${outflowModalItem.id}/outflow`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          quantity: outflowQty,
+          destination: outflowDestination,
+          notes: outflowNotes
+        })
+      });
+
+      if (res.ok) {
+        showToast('Waste outflow recorded successfully!', 'success');
+        setOutflowModalItem(null);
+        fetchData();
+      } else {
+        showToast('Failed to record waste outflow', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Error recording waste outflow', 'error');
+    }
+  };
+
+  const pendingOrders = orders.filter(o => ['pending', 'preparing', 'ready'].includes(o.status));
+  const cancelledOrders = orders.filter(o => o.status === 'cancelled');
+
+  return (
+    <div className="flex-1 bg-zinc-950 p-6 flex flex-col h-full overflow-hidden text-zinc-100 font-sans">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-6 bg-zinc-900/50 p-4 rounded-2xl border border-zinc-800/80 shadow-2xl backdrop-blur-md">
+        <div>
+          <h1 className="text-2xl font-black text-white uppercase tracking-wider flex items-center gap-3">
+            <Ban className="text-orange-500 drop-shadow-[0_0_8px_rgba(249,115,22,0.4)]" size={28} /> Returns & Pending Bills
+          </h1>
+          <p className="text-xs text-zinc-400 mt-1 font-medium">
+            Manage unpaid active bills, cancellations, stock refunds, and prepared food waste logs.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={fetchData}
+            className="p-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-xl transition-all shadow-md active:scale-95"
+            title="Refresh Data"
+          >
+            <RefreshCw size={16} />
+          </button>
+          <button
+            onClick={onBack}
+            className="px-5 py-2.5 bg-gradient-to-r from-zinc-800 to-zinc-900 hover:from-zinc-700 hover:to-zinc-800 text-white rounded-xl font-black text-xs uppercase tracking-widest cursor-pointer transition-all border border-zinc-700/50 shadow-lg active:scale-95"
+          >
+            Back to POS
+          </button>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-2 mb-6 border-b border-zinc-800 pb-3">
+        <button
+          onClick={() => setActiveTab('pending')}
+          className={`px-5 py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition-all active:scale-95 ${
+            activeTab === 'pending'
+              ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-black font-extrabold shadow-[0_0_20px_rgba(249,115,22,0.25)]'
+              : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-white'
+          }`}
+        >
+          Pending / Unpaid ({pendingOrders.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('cancelled')}
+          className={`px-5 py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition-all active:scale-95 ${
+            activeTab === 'cancelled'
+              ? 'bg-gradient-to-r from-red-600 to-rose-700 text-white shadow-[0_0_20px_rgba(239,68,68,0.25)]'
+              : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-white'
+          }`}
+        >
+          Cancelled & Returned ({cancelledOrders.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('waste')}
+          className={`px-5 py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition-all active:scale-95 ${
+            activeTab === 'waste'
+              ? 'bg-gradient-to-r from-amber-500 to-yellow-600 text-black font-extrabold shadow-[0_0_20px_rgba(245,158,11,0.25)]'
+              : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-white'
+          }`}
+        >
+          Prepared Waste & Outflow ({wasteList.length})
+        </button>
+      </div>
+
+      {/* Security alert for non-admins */}
+      {!isAdmin && (
+        <div className="mb-4 bg-orange-950/20 border border-orange-500/20 rounded-xl p-3.5 text-xs flex items-center gap-3 text-orange-400 shadow-md">
+          <ShieldAlert size={18} className="shrink-0" />
+          <span className="font-medium"><strong>Read-Only Mode:</strong> Only System Administrators can process cancellations, adjust raw stock, or delete entries.</span>
+        </div>
+      )}
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
+        {loading ? (
+          <div className="text-center py-16 text-zinc-500 text-sm font-bold animate-pulse">Loading records...</div>
+        ) : activeTab === 'pending' ? (
+          pendingOrders.length === 0 ? (
+            <div className="text-center py-20 text-zinc-500 text-sm font-bold bg-zinc-900/10 rounded-2xl border border-dashed border-zinc-800">No pending unpaid bills.</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {pendingOrders.map(order => (
+                <div key={order.id} className="bg-zinc-900 border border-zinc-800/80 rounded-2xl p-5 flex flex-col justify-between hover:border-zinc-700 hover:shadow-[0_0_25px_rgba(0,0,0,0.3)] transition-all duration-300 transform hover:-translate-y-1">
+                  <div>
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Order #{order.id}</span>
+                        <h3 className="text-sm font-black text-white mt-1 uppercase tracking-wide">
+                          {order.table_number ? `Table ${order.table_number}` : 'Delivery / Walk-in'}
+                        </h3>
+                        <span className="text-[9px] text-zinc-500 font-bold block mt-1">{new Date(order.created_at).toLocaleString()}</span>
+                      </div>
+                      <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider ${
+                        order.status === 'ready' 
+                          ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.1)]' 
+                          : 'bg-orange-950/60 text-orange-400 border border-orange-500/20 shadow-[0_0_15px_rgba(249,115,22,0.1)]'
+                      }`}>
+                        {order.status}
+                      </span>
+                    </div>
+
+                    <div className="space-y-2 border-t border-b border-zinc-800/60 py-3 my-3">
+                      {(order.items || []).map((item, idx) => (
+                        <div key={idx} className="flex justify-between text-xs items-center">
+                          <span className="text-zinc-300 font-medium">
+                            {item.quantity}x {item.item_name} {item.isFromPreparedWaste && <span className="text-[8px] font-black px-1.5 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/10 rounded uppercase tracking-widest ml-1">prepared stock</span>}
+                          </span>
+                          <span className="font-extrabold text-zinc-400">Rs. {item.price * item.quantity}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-2">
+                    <div className="flex justify-between items-center text-xs mb-4">
+                      <span className="text-zinc-400 font-black uppercase tracking-wider">TOTAL AMOUNT</span>
+                      <span className="text-base font-black text-orange-500 drop-shadow-[0_0_10px_rgba(249,115,22,0.2)]">Rs. {order.total_amount}</span>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          if (!isAdmin) {
+                            showToast('Access denied. Admin role required.', 'error');
+                            return;
+                          }
+                          setCancelModalOrder(order);
+                          setCancelReason('Customer Cancelled');
+                          setRefundRaw(true);
+                          setLogWaste(false);
+                        }}
+                        className={`flex-1 py-2.5 rounded-xl font-black text-[11px] uppercase tracking-wider text-center cursor-pointer transition-all active:scale-95 ${
+                          isAdmin 
+                            ? 'bg-gradient-to-r from-red-600 to-rose-700 text-white shadow-lg hover:brightness-110' 
+                            : 'bg-zinc-800 text-zinc-500 cursor-not-allowed border border-zinc-750'
+                        }`}
+                      >
+                        Cancel Order
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        ) : activeTab === 'cancelled' ? (
+          cancelledOrders.length === 0 ? (
+            <div className="text-center py-20 text-zinc-500 text-sm font-bold bg-zinc-900/10 rounded-2xl border border-dashed border-zinc-800">No cancelled orders.</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {cancelledOrders.map(order => (
+                <div key={order.id} className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-5 flex flex-col justify-between opacity-85 hover:opacity-100 hover:border-zinc-700 transition-all duration-350">
+                  <div>
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Order #{order.id}</span>
+                        <h3 className="text-sm font-black text-zinc-300 mt-1 uppercase tracking-wide">
+                          {order.table_number ? `Table ${order.table_number}` : 'Delivery / Walk-in'}
+                        </h3>
+                        <span className="text-[9px] text-zinc-500 font-medium block mt-1">{new Date(order.created_at).toLocaleString()}</span>
+                      </div>
+                      <span className="px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider bg-red-950/40 text-red-500 border border-red-500/10">
+                        Cancelled
+                      </span>
+                    </div>
+
+                    <div className="space-y-2 border-t border-b border-zinc-800/60 py-3 my-3">
+                      {(order.items || []).map((item, idx) => (
+                        <div key={idx} className="flex justify-between text-xs text-zinc-400 font-medium">
+                          <span>{item.quantity}x {item.item_name}</span>
+                          <span className="font-bold">Rs. {item.price * item.quantity}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between items-center text-xs mb-4">
+                      <span className="text-zinc-500 font-black uppercase tracking-wider">CANCELLED TOTAL</span>
+                      <span className="text-sm font-black text-zinc-400">Rs. {order.total_amount}</span>
+                    </div>
+
+                    {isAdmin && (
+                      <button
+                        onClick={() => handleDeleteOrder(order.id)}
+                        className="w-full py-2 bg-zinc-800 hover:bg-red-950/30 hover:text-red-500 hover:border-red-500/20 text-zinc-400 border border-zinc-750 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+                      >
+                        <Trash2 size={13} /> Delete Log
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        ) : (
+          <div className="space-y-8 animate-fadeIn">
+            {/* Prepared Waste Stock */}
+            <div className="bg-zinc-900/30 p-5 rounded-2xl border border-zinc-800/60 shadow-xl">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xs font-black text-white uppercase tracking-widest border-l-4 border-amber-500 pl-3">
+                  Prepared Waste Items (Available to resell or consume)
+                </h2>
+              </div>
+              {wasteList.length === 0 ? (
+                <div className="text-center py-12 bg-zinc-950/45 border border-zinc-850 border-dashed rounded-xl text-zinc-500 text-xs font-bold">
+                  No active prepared waste food stock.
+                </div>
+              ) : (
+                <div className="bg-zinc-900 border border-zinc-850 rounded-xl overflow-hidden shadow-2xl">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-zinc-950 text-zinc-400 uppercase text-[9px] tracking-wider border-b border-zinc-850">
+                      <tr>
+                        <th className="p-4 font-black">Item Name</th>
+                        <th className="p-4 text-center font-black">Qty Wasted</th>
+                        <th className="p-4 font-black">Reason / Notes</th>
+                        <th className="p-4 font-black">Logged At</th>
+                        <th className="p-4 text-right font-black">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-800/60">
+                      {wasteList.map(waste => (
+                        <tr key={waste.id} className="hover:bg-zinc-850/40 transition-colors">
+                          <td className="p-4 text-white font-extrabold text-xs">{waste.item_name}</td>
+                          <td className="p-4 text-center font-black text-amber-500 text-xs">{waste.quantity}x</td>
+                          <td className="p-4 text-zinc-400 italic font-medium">{waste.reason || 'N/A'}</td>
+                          <td className="p-4 text-zinc-500 font-medium">{new Date(waste.created_at).toLocaleString()}</td>
+                          <td className="p-4 text-right flex justify-end items-center gap-2">
+                            <button
+                              onClick={() => {
+                                setSellModalItem(waste);
+                                setSellQty(1);
+                              }}
+                              className="px-3 py-1.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:brightness-110 text-black rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-md active:scale-95"
+                            >
+                              Sell / Assign
+                            </button>
+                            <button
+                              onClick={() => {
+                                setOutflowModalItem(waste);
+                                setOutflowQty(1);
+                                setOutflowDestination('Staff Consumed');
+                                setOutflowNotes('');
+                              }}
+                              className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer active:scale-95"
+                            >
+                              Log Outflow
+                            </button>
+                            {isAdmin && (
+                              <button
+                                onClick={() => handleDeleteWasteLog(waste.id)}
+                                className="p-2 text-zinc-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
+                                title="Delete Log"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Outflow History */}
+            <div className="bg-zinc-900/30 p-5 rounded-2xl border border-zinc-800/60 shadow-xl">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xs font-black text-white uppercase tracking-widest border-l-4 border-zinc-500 pl-3">
+                  Waste Outflow & Consumption History
+                </h2>
+              </div>
+              {outflowList.length === 0 ? (
+                <div className="text-center py-12 bg-zinc-950/45 border border-zinc-850 border-dashed rounded-xl text-zinc-500 text-xs font-bold">
+                  No outflow logs found.
+                </div>
+              ) : (
+                <div className="bg-zinc-900 border border-zinc-850 rounded-xl overflow-hidden shadow-2xl">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-zinc-950 text-zinc-400 uppercase text-[9px] tracking-wider border-b border-zinc-850">
+                      <tr>
+                        <th className="p-4 font-black">Item Name</th>
+                        <th className="p-4 text-center font-black">Qty</th>
+                        <th className="p-4 font-black">Destination</th>
+                        <th className="p-4 font-black">Notes / Remarks</th>
+                        <th className="p-4 font-black">Logged At</th>
+                        {isAdmin && <th className="p-4 text-right font-black">Actions</th>}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-800/60">
+                      {outflowList.map(outflow => (
+                        <tr key={outflow.id} className="hover:bg-zinc-850/40 transition-colors">
+                          <td className="p-4 text-white font-extrabold text-xs">{outflow.item_name}</td>
+                          <td className="p-4 text-center font-bold text-zinc-300">{outflow.quantity}x</td>
+                          <td className="p-4">
+                            <span className={`px-2.5 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider ${
+                              outflow.destination === 'Staff Consumed' ? 'bg-blue-950/60 text-blue-400 border border-blue-500/20' :
+                              outflow.destination === 'Owner Consumed' || outflow.destination === 'Owner Taken' ? 'bg-purple-950/60 text-purple-400 border border-purple-500/20' :
+                              outflow.destination === 'Spoiled/Discarded' ? 'bg-red-950/60 text-red-400 border border-red-500/20' :
+                              'bg-zinc-800 text-zinc-400 border border-zinc-700'
+                            }`}>
+                              {outflow.destination}
+                            </span>
+                          </td>
+                          <td className="p-4 text-zinc-400 italic font-medium">{outflow.notes || 'N/A'}</td>
+                          <td className="p-4 text-zinc-500 font-medium">{new Date(outflow.created_at).toLocaleString()}</td>
+                          {isAdmin && (
+                            <td className="p-4 text-right">
+                              <button
+                                onClick={() => handleDeleteOutflowLog(outflow.id)}
+                                className="p-2 text-zinc-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
+                                title="Delete Outflow Log"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Sell Modal Dialog */}
+      {sellModalItem && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/85 z-50 p-4 backdrop-blur-md">
+          <div className="bg-zinc-900 border border-zinc-800/80 rounded-3xl max-w-xl w-full p-6 text-zinc-200 flex flex-col max-h-[85vh] shadow-[0_0_50px_rgba(0,0,0,0.7)] animate-zoomIn">
+            <h3 className="text-base font-black text-white uppercase tracking-wider mb-1">
+              Sell / Assign Prepared Item
+            </h3>
+            <div className="text-xs font-black text-amber-500 mb-5 bg-amber-500/10 p-3 rounded-2xl border border-amber-500/20 flex justify-between items-center">
+              <span>Item: {sellModalItem.item_name}</span>
+              <span className="bg-amber-500 text-black px-2 py-0.5 rounded font-black uppercase text-[10px]">Stock: {sellModalItem.quantity}x</span>
+            </div>
+
+            {/* Qty Selector */}
+            <div className="mb-6">
+              <label className="block text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-2.5">
+                Quantity to Sell / Assign
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {[...Array(sellModalItem.quantity)].map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setSellQty(i + 1)}
+                    className={`px-4 py-2 rounded-xl font-black text-xs border transition-all active:scale-95 cursor-pointer ${
+                      sellQty === i + 1
+                        ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-black border-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.3)]'
+                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                    }`}
+                  >
+                    {i + 1}x
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <label className="block text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-2.5">
+              Select Destination Table or Order
+            </label>
+
+            {/* Grid of Tables */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar border border-zinc-800 bg-zinc-950 p-4 rounded-2xl space-y-5 mb-5 shadow-inner">
+              <div>
+                <button
+                  onClick={() => handleConfirmSell(null)}
+                  className="w-full p-3 bg-gradient-to-r from-zinc-900 to-zinc-850 hover:from-orange-500 hover:to-amber-500 hover:text-black border border-zinc-805 hover:border-orange-400 text-white rounded-xl text-xs font-black uppercase tracking-wider flex justify-between items-center transition-all cursor-pointer active:scale-[0.98] shadow-md"
+                >
+                  <span>Create New Order (Walk-in / Delivery)</span>
+                  <ExternalLink size={14} />
+                </button>
+              </div>
+
+              {/* Active Dining tables */}
+              <div>
+                <span className="text-[9px] font-black uppercase text-zinc-500 tracking-widest block mb-2.5">Active Ongoing Tables</span>
+                {tablesList.filter(t => t.status !== 'available').length === 0 ? (
+                  <span className="text-[10px] text-zinc-600 block italic pl-1 font-medium">No active tables right now.</span>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {tablesList.filter(t => t.status !== 'available').map(t => {
+                      const activeOrd = pendingOrders.find(o => o.table_number === t.table_number);
+                      return (
+                        <button
+                          key={t.id}
+                          onClick={() => handleConfirmSell(t.table_number)}
+                          className="p-3.5 text-left bg-zinc-900/80 hover:bg-zinc-850 border border-red-500/10 hover:border-orange-500 text-zinc-200 rounded-2xl transition-all cursor-pointer flex flex-col justify-between shadow-md active:scale-95 hover:shadow-[0_0_15px_rgba(239,68,68,0.15)]"
+                        >
+                          <span className="text-xs font-black text-white uppercase">Table {t.table_number}</span>
+                          <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest mt-1">Ongoing Order</span>
+                          {activeOrd && (
+                            <span className="text-[9px] text-zinc-500 font-extrabold mt-1">Bill: Rs. {activeOrd.total_amount}</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Empty Available tables */}
+              <div>
+                <span className="text-[9px] font-black uppercase text-zinc-500 tracking-widest block mb-2.5">Empty Available Tables</span>
+                {tablesList.filter(t => t.status === 'available').length === 0 ? (
+                  <span className="text-[10px] text-zinc-600 block italic pl-1 font-medium">No empty tables available.</span>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {tablesList.filter(t => t.status === 'available').map(t => (
+                      <button
+                        key={t.id}
+                        onClick={() => handleConfirmSell(t.table_number)}
+                        className="p-3.5 text-left bg-zinc-900/80 hover:bg-zinc-850 border border-emerald-500/10 hover:border-orange-500 text-zinc-200 rounded-2xl transition-all cursor-pointer flex flex-col justify-between shadow-md active:scale-95 hover:shadow-[0_0_15px_rgba(16,185,129,0.15)]"
+                      >
+                        <span className="text-xs font-black text-white uppercase">Table {t.table_number}</span>
+                        <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest mt-1">Start New Bill</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-auto">
+              <button
+                onClick={() => setSellModalItem(null)}
+                className="flex-1 py-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl font-black text-xs uppercase tracking-widest cursor-pointer transition-all active:scale-95 border border-zinc-750 shadow-md"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Outflow Modal Dialog */}
+      {outflowModalItem && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/85 z-50 p-4 backdrop-blur-md">
+          <div className="bg-zinc-900 border border-zinc-800/80 rounded-3xl max-w-md w-full p-6 text-zinc-200 shadow-[0_0_50px_rgba(0,0,0,0.7)] animate-zoomIn">
+            <h3 className="text-base font-black text-white uppercase tracking-wider mb-2 flex items-center gap-2">
+              <Archive className="text-zinc-400" /> Log Waste Outflow
+            </h3>
+            <p className="text-xs text-zinc-400 mb-4 font-medium">
+              Record where the prepared waste item went (consumed by staff/owner, spoiled, etc.).
+            </p>
+
+            <div className="space-y-4 mb-6">
+              {/* Item Info */}
+              <div className="text-xs font-bold text-zinc-400 bg-zinc-950 p-3 rounded-2xl border border-zinc-850 flex justify-between items-center">
+                <span>Item: <strong className="text-white">{outflowModalItem.item_name}</strong></span>
+                <span className="bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded font-black text-[10px]">Max: {outflowModalItem.quantity}x</span>
+              </div>
+
+              {/* Quantity */}
+              <div>
+                <label className="block text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-1.5">
+                  Quantity Outflowed
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max={outflowModalItem.quantity}
+                  value={outflowQty}
+                  onChange={(e) => setOutflowQty(Math.min(outflowModalItem.quantity, Math.max(1, parseInt(e.target.value) || 1)))}
+                  className="w-full bg-zinc-950 border border-zinc-850 p-2.5 text-xs rounded-xl text-white outline-none focus:border-orange-500 font-extrabold"
+                />
+              </div>
+
+              {/* Destination */}
+              <div>
+                <label className="block text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-1.5">
+                  Destination / Outcome
+                </label>
+                <select
+                  value={outflowDestination}
+                  onChange={(e) => setOutflowDestination(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-850 p-2.5 text-xs rounded-xl text-white outline-none focus:border-orange-500 font-extrabold cursor-pointer"
+                >
+                  <option value="Staff Consumed">Staff Consumed (Worker ate it)</option>
+                  <option value="Owner Taken">Owner Taken (Owner/Management took it)</option>
+                  <option value="Spoiled/Discarded">Spoiled / Discarded (Thrown away)</option>
+                  <option value="Customer Complimentary">Customer Complimentary (Free sample)</option>
+                  <option value="Other">Other Reason</option>
+                </select>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-1.5">
+                  Notes / Remarks
+                </label>
+                <textarea
+                  value={outflowNotes}
+                  onChange={(e) => setOutflowNotes(e.target.value)}
+                  rows="2"
+                  className="w-full bg-zinc-950 border border-zinc-850 p-2.5 text-xs rounded-xl text-white outline-none focus:border-orange-500 resize-none font-medium"
+                  placeholder="e.g. Spoiled due to power cut, worker had it for lunch"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setOutflowModalItem(null)}
+                className="flex-1 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl font-black text-xs uppercase tracking-widest cursor-pointer border border-zinc-750 transition-all active:scale-95"
+              >
+                Go Back
+              </button>
+              <button
+                onClick={handleConfirmOutflow}
+                className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-black rounded-xl font-black text-xs uppercase tracking-widest cursor-pointer transition-all active:scale-95 shadow-lg shadow-amber-500/10 hover:brightness-110"
+              >
+                Log Outflow
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancellation Modal Dialog */}
+      {cancelModalOrder && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/85 z-50 p-4 backdrop-blur-md">
+          <div className="bg-zinc-900 border border-zinc-800/80 rounded-3xl max-w-md w-full p-6 text-zinc-200 shadow-[0_0_50px_rgba(0,0,0,0.7)] animate-zoomIn">
+            <h3 className="text-base font-black text-white uppercase tracking-wider mb-2 flex items-center gap-2">
+              <Ban className="text-red-500" /> Cancel Order #{cancelModalOrder.id}
+            </h3>
+            <p className="text-xs text-zinc-400 mb-4 font-medium">
+              Select how to handle stock deduction and prepared food waste logs.
+            </p>
+
+            <div className="space-y-4 mb-6">
+              {/* Question 1: Refund raw ingredients */}
+              <div className="flex items-start gap-3 bg-zinc-950 p-3.5 rounded-2xl border border-zinc-850">
+                <input
+                  type="checkbox"
+                  id="refundRawCheck"
+                  checked={refundRaw}
+                  onChange={(e) => setRefundRaw(e.target.checked)}
+                  className="w-4.5 h-4.5 accent-orange-500 rounded mt-0.5 cursor-pointer"
+                />
+                <div>
+                  <label htmlFor="refundRawCheck" className="text-xs font-black text-white cursor-pointer select-none">
+                    Refund Raw Ingredients to Inventory
+                  </label>
+                  <p className="text-[10px] text-zinc-500 mt-1 font-medium">
+                    Recommended if items were NOT cooked. Restores raw ingredients back to stock.
+                  </p>
+                </div>
+              </div>
+
+              {/* Question 2: Log as waste */}
+              <div className="flex items-start gap-3 bg-zinc-950 p-3.5 rounded-2xl border border-zinc-850">
+                <input
+                  type="checkbox"
+                  id="logWasteCheck"
+                  checked={logWaste}
+                  onChange={(e) => setLogWaste(e.target.checked)}
+                  className="w-4.5 h-4.5 accent-orange-500 rounded mt-0.5 cursor-pointer"
+                />
+                <div>
+                  <label htmlFor="logWasteCheck" className="text-xs font-black text-white cursor-pointer select-none">
+                    Log Wasted Prepared Food
+                  </label>
+                  <p className="text-[10px] text-zinc-500 mt-1 font-medium">
+                    Recommended if items were cooked/prepared. Leaves raw stock consumed, and records items to Prepared Waste list.
+                  </p>
+                </div>
+              </div>
+
+              {/* Cancel Reason */}
+              <div>
+                <label className="block text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-1.5">
+                  Reason for Cancellation
+                </label>
+                <input
+                  type="text"
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-850 p-2.5 text-xs rounded-xl text-white outline-none focus:border-orange-500 font-semibold"
+                  placeholder="e.g. Customer walked out"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setCancelModalOrder(null)}
+                className="flex-1 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl font-black text-xs uppercase tracking-widest cursor-pointer transition-all active:scale-95 border border-zinc-750"
+              >
+                Go Back
+              </button>
+              <button
+                onClick={handleCancelOrder}
+                className="flex-1 py-2.5 bg-gradient-to-r from-red-600 to-rose-700 text-white rounded-xl font-black text-xs uppercase tracking-widest cursor-pointer transition-all active:scale-95 shadow-lg shadow-red-500/10"
+              >
+                Confirm Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className={`fixed bottom-5 right-5 z-50 px-5 py-3 rounded-2xl shadow-2xl text-[10px] font-black uppercase border tracking-widest transition-all duration-300 animate-slideUp ${
+          toast.type === 'error' ? 'bg-red-950/90 border-red-500/30 text-red-400' : 'bg-emerald-950/90 border-emerald-500/30 text-emerald-400'
+        }`}>
+          {toast.msg}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default ReturnsPending;

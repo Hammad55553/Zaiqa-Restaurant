@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShoppingCart, LayoutGrid, Package, FileText, Settings, Bell, Search, Menu as MenuIcon, X, Printer, Truck, Wallet, CreditCard, ChefHat, Utensils, BookOpen, Layers, Phone, Bike, Shield, LogOut } from 'lucide-react';
+import { ShoppingCart, LayoutGrid, Package, FileText, Settings, Bell, Search, Menu as MenuIcon, X, Printer, Truck, Wallet, CreditCard, ChefHat, Utensils, BookOpen, Layers, Phone, Bike, Shield, LogOut, Ban, Eye, EyeOff } from 'lucide-react';
 import POSLayout from './modules/pos/POSLayout';
 import KitchenDisplay from './modules/kds/KitchenDisplay';
 import SplashScreen from './components/SplashScreen';
@@ -14,6 +14,7 @@ import CreditManagement from './modules/khata/CreditManagement';
 import SettingsView from './modules/settings/Settings';
 import DeliveryManager from './modules/delivery/DeliveryManager';
 import UserManager from './modules/users/UserManager';
+import ReturnsPending from './modules/pos/components/ReturnsPending';
 import { API_BASE } from './config';
 import { getOfflineItem, setOfflineItem, removeOfflineItem } from './utils/offlineDB';
 import { purgeExpiredTrash } from './utils/trashDB';
@@ -30,8 +31,9 @@ function App() {
     }
   });
 
-  const [loginUsername, setLoginUsername] = useState('admin');
-  const [loginPassword, setLoginPassword] = useState('admin123');
+  const [loginUsername, setLoginUsername] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
 
@@ -85,6 +87,11 @@ function App() {
   const [khataCustomers, setKhataCustomers] = useState([]);
   const [offlineInvoices, setOfflineInvoices] = useState([]);
   const [offlineDeliveries, setOfflineDeliveries] = useState([]);
+  const [expenses, setExpenses] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+  const [stockItems, setStockItems] = useState([]);
+  const [tablesList, setTablesList] = useState([]);
+  const [usersList, setUsersList] = useState([]);
   const [notifiedReadyOrderIds, setNotifiedReadyOrderIds] = useState([]);
   const lastNotifiedStockTimesRef = useRef({});
 
@@ -288,6 +295,51 @@ function App() {
       } catch (err) {
         console.error("Failed to load customers for search", err);
       }
+      try {
+        const expRes = await fetch(`${API_BASE}/expenses`);
+        if (expRes.ok) {
+          const data = await expRes.json();
+          setExpenses(data);
+        }
+      } catch (err) {
+        console.error("Failed to load expenses for search", err);
+      }
+      try {
+        const supRes = await fetch(`${API_BASE}/suppliers`);
+        if (supRes.ok) {
+          const data = await supRes.json();
+          setSuppliers(data);
+        }
+      } catch (err) {
+        console.error("Failed to load suppliers for search", err);
+      }
+      try {
+        const stockRes = await fetch(`${API_BASE}/stock`);
+        if (stockRes.ok) {
+          const data = await stockRes.json();
+          setStockItems(data);
+        }
+      } catch (err) {
+        console.error("Failed to load stock for search", err);
+      }
+      try {
+        const tblRes = await fetch(`${API_BASE}/tables`);
+        if (tblRes.ok) {
+          const data = await tblRes.json();
+          setTablesList(data);
+        }
+      } catch (err) {
+        console.error("Failed to load tables for search", err);
+      }
+      try {
+        const usrRes = await fetch(`${API_BASE}/users`);
+        if (usrRes.ok) {
+          const data = await usrRes.json();
+          setUsersList(data);
+        }
+      } catch (err) {
+        console.error("Failed to load users for search", err);
+      }
     };
     fetchSearchData();
   }, [isLoaded]);
@@ -348,13 +400,22 @@ function App() {
 
             <div>
               <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Access Key</label>
-              <input 
-                type="password" 
-                value={loginPassword}
-                onChange={(e) => setLoginPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full px-4 py-3 bg-white/[0.03] border border-white/10 rounded-xl focus:outline-none focus:border-orange-500 text-white font-medium text-sm transition-all placeholder:text-slate-600"
-              />
+              <div className="relative flex items-center">
+                <input 
+                  type={showPassword ? "text" : "password"} 
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full pl-4 pr-11 py-3 bg-white/[0.03] border border-white/10 rounded-xl focus:outline-none focus:border-orange-500 text-white font-medium text-sm transition-all placeholder:text-slate-600"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3.5 text-slate-400 hover:text-white transition-colors"
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
             </div>
 
             <button
@@ -438,6 +499,9 @@ function App() {
                   )}
                   {(currentUser.username === 'admin' || currentUser.permissions.includes('kds')) && (
                     <NavItem icon={<ChefHat size={20} />} label="Kitchen Display" active={currentView === 'kds'} onClick={() => navigateTo('kds')} />
+                  )}
+                  {(currentUser.username === 'admin' || currentUser.permissions.includes('pos')) && (
+                    <NavItem icon={<Ban size={20} />} label="Returns & Pending" active={currentView === 'returns'} onClick={() => navigateTo('returns')} />
                   )}
                 </div>
               </div>
@@ -686,46 +750,94 @@ function App() {
           {currentView === 'khata' && <CreditManagement initialCustomerId={globalSelectedCustomerId} />}
           {currentView === 'settings' && <SettingsView />}
           {currentView === 'users' && <UserManager />}
+          {currentView === 'returns' && <ReturnsPending onBack={() => navigateTo('pos')} />}
         </div>
       </main>
 
       {/* Premium Glassmorphic Global Search Overlay */}
       {globalSearchQuery && (() => {
         const query = globalSearchQuery.toLowerCase();
-        
-        // 1. Completed Invoices
-        const matchedInvoices = offlineInvoices.filter(inv => 
+        // Define module permissions checks
+        const canSearchPOS = currentUser?.username === 'admin' || (currentUser?.permissions && currentUser.permissions.includes('pos'));
+        const canSearchDelivery = currentUser?.username === 'admin' || (currentUser?.permissions && currentUser.permissions.includes('delivery'));
+        const canSearchKhata = currentUser?.username === 'admin' || (currentUser?.permissions && currentUser.permissions.includes('khata'));
+        const canSearchInventory = currentUser?.username === 'admin' || (currentUser?.permissions && (currentUser.permissions.includes('pos') || currentUser.permissions.includes('inventory')));
+        const canSearchExpenses = currentUser?.username === 'admin' || (currentUser?.permissions && currentUser.permissions.includes('expenses'));
+        const canSearchSuppliers = currentUser?.username === 'admin' || (currentUser?.permissions && currentUser.permissions.includes('suppliers'));
+        const canSearchStock = currentUser?.username === 'admin' || (currentUser?.permissions && currentUser.permissions.includes('stock'));
+        const canSearchTables = currentUser?.username === 'admin' || (currentUser?.permissions && currentUser.permissions.includes('tables'));
+        const canSearchUsers = currentUser?.username === 'admin' || (currentUser?.permissions && currentUser.permissions.includes('users'));
+
+        // 1. Completed Invoices (POS module permission required)
+        const matchedInvoices = canSearchPOS ? offlineInvoices.filter(inv => 
           String(inv.orderId).toLowerCase().includes(query) ||
           String(inv.customerName || '').toLowerCase().includes(query) ||
           String(inv.customerPhone || '').toLowerCase().includes(query) ||
           String(inv.total || '').includes(query)
-        ).slice(0, 5);
+        ).slice(0, 5) : [];
 
-        // 2. Active Delivery Orders
-        const matchedDeliveries = offlineDeliveries.filter(del => 
+        // 2. Active Delivery Orders (Delivery module permission required)
+        const matchedDeliveries = canSearchDelivery ? offlineDeliveries.filter(del => 
           String(del.id).toLowerCase().includes(query) ||
           String(del.backendOrderId || '').toLowerCase().includes(query) ||
           String(del.name || '').toLowerCase().includes(query) ||
           String(del.phone || '').toLowerCase().includes(query) ||
           String(del.address || '').toLowerCase().includes(query) ||
           String(del.riderName || '').toLowerCase().includes(query)
-        ).slice(0, 5);
+        ).slice(0, 5) : [];
 
-        // 3. Khata Customers
-        const matchedKhata = khataCustomers.filter(cust => 
+        // 3. Khata Customers (Khata module permission required)
+        const matchedKhata = canSearchKhata ? khataCustomers.filter(cust => 
           String(cust.name || '').toLowerCase().includes(query) ||
           String(cust.phone || '').toLowerCase().includes(query) ||
           String(cust.address || '').toLowerCase().includes(query)
-        ).slice(0, 5);
+        ).slice(0, 5) : [];
 
-        // 4. Menu Items
-        const matchedMenu = menuItems.filter(item => 
+        // 4. Menu Items (POS or Inventory module permission required)
+        const matchedMenu = canSearchInventory ? menuItems.filter(item => 
           String(item.name || '').toLowerCase().includes(query) ||
           String(item.category || '').toLowerCase().includes(query) ||
           String(item.price || '').includes(query)
-        ).slice(0, 5);
+        ).slice(0, 5) : [];
 
-        const hasResults = matchedInvoices.length > 0 || matchedDeliveries.length > 0 || matchedKhata.length > 0 || matchedMenu.length > 0;
+        // 5. Expenses (Expenses module permission required)
+        const matchedExpenses = canSearchExpenses ? expenses.filter(exp => 
+          String(exp.category || '').toLowerCase().includes(query) ||
+          String(exp.amount || '').includes(query) ||
+          String(exp.description || '').toLowerCase().includes(query)
+        ).slice(0, 5) : [];
+
+        // 6. Suppliers (Suppliers module permission required)
+        const matchedSuppliers = canSearchSuppliers ? suppliers.filter(sup => 
+          String(sup.name || '').toLowerCase().includes(query) ||
+          String(sup.company || '').toLowerCase().includes(query) ||
+          String(sup.contact || '').toLowerCase().includes(query)
+        ).slice(0, 5) : [];
+
+        // 7. Stock Items (Stock module permission required)
+        const matchedStock = canSearchStock ? stockItems.filter(stock => 
+          String(stock.name || '').toLowerCase().includes(query) ||
+          String(stock.unit || '').toLowerCase().includes(query)
+        ).slice(0, 5) : [];
+
+        // 8. Dining Tables (Tables module permission required)
+        const matchedTables = canSearchTables ? tablesList.filter(tbl => 
+          String(tbl.table_number || tbl.number || '').toLowerCase().includes(query) ||
+          String(tbl.area || '').toLowerCase().includes(query)
+        ).slice(0, 5) : [];
+
+        // 9. Staff Members (Users module permission required)
+        const matchedUsers = canSearchUsers ? usersList.filter(usr => 
+          String(usr.username || '').toLowerCase().includes(query) ||
+          String(usr.name || '').toLowerCase().includes(query) ||
+          String(usr.role || '').toLowerCase().includes(query)
+        ).slice(0, 5) : [];
+
+        const hasResults = matchedInvoices.length > 0 || matchedDeliveries.length > 0 || 
+                           matchedKhata.length > 0 || matchedMenu.length > 0 ||
+                           matchedExpenses.length > 0 || matchedSuppliers.length > 0 ||
+                           matchedStock.length > 0 || matchedTables.length > 0 ||
+                           matchedUsers.length > 0;
 
         return (
           <div className="fixed inset-0 bg-zinc-950/70 backdrop-blur-md z-50 flex items-start justify-center pt-24 px-4 overflow-y-auto">
@@ -756,7 +868,7 @@ function App() {
                   <div className="text-center py-16">
                     <div className="text-gray-300 mb-4 flex justify-center"><Search size={48} /></div>
                     <h4 className="text-base font-bold text-gray-800">No matching records found</h4>
-                    <p className="text-xs text-gray-400 mt-1">Try typing another order ID, customer name, phone number, or food item.</p>
+                    <p className="text-xs text-gray-400 mt-1">Try typing another query or filter options.</p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -891,6 +1003,174 @@ function App() {
                               <div className="text-right">
                                 <div className="text-xs font-black text-gray-900">Rs. {item.price}</div>
                                 <div className="text-[9px] text-amber-500 font-bold uppercase tracking-wider mt-0.5">Edit Item</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Category: Expenses */}
+                    {matchedExpenses.length > 0 && (
+                      <div className="bg-gray-50/50 p-5 rounded-2xl border border-gray-100">
+                        <h4 className="text-xs font-black text-rose-600 uppercase tracking-wider mb-3 flex items-center gap-2">
+                          💸 Outflow Expenses ({matchedExpenses.length})
+                        </h4>
+                        <div className="space-y-2.5">
+                          {matchedExpenses.map(exp => (
+                            <div 
+                              key={exp.id}
+                              onClick={() => {
+                                setGlobalSearchQuery('');
+                                navigateTo('expenses');
+                              }}
+                              className="bg-white p-3.5 rounded-xl border border-gray-200/60 shadow-sm hover:border-rose-500 hover:shadow-md cursor-pointer transition-all flex justify-between items-center group"
+                            >
+                              <div>
+                                <div className="text-xs font-black text-gray-800 group-hover:text-rose-600">{exp.category}</div>
+                                <div className="text-[10px] text-gray-400 font-semibold mt-0.5 truncate max-w-[200px]">
+                                  {exp.description || 'No Description'}
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-xs font-black text-red-600">Rs. {exp.amount}</div>
+                                <div className="text-[9px] text-rose-500 font-bold uppercase tracking-wider mt-0.5">View Tracker</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Category: Suppliers */}
+                    {matchedSuppliers.length > 0 && (
+                      <div className="bg-gray-50/50 p-5 rounded-2xl border border-gray-100">
+                        <h4 className="text-xs font-black text-indigo-600 uppercase tracking-wider mb-3 flex items-center gap-2">
+                          📦 Suppliers Ledger ({matchedSuppliers.length})
+                        </h4>
+                        <div className="space-y-2.5">
+                          {matchedSuppliers.map(sup => (
+                            <div 
+                              key={sup.id}
+                              onClick={() => {
+                                setGlobalSearchQuery('');
+                                navigateTo('suppliers');
+                              }}
+                              className="bg-white p-3.5 rounded-xl border border-gray-200/60 shadow-sm hover:border-indigo-500 hover:shadow-md cursor-pointer transition-all flex justify-between items-center group"
+                            >
+                              <div>
+                                <div className="text-xs font-black text-gray-800 group-hover:text-indigo-600">{sup.name}</div>
+                                <div className="text-[10px] text-gray-400 font-semibold mt-0.5">
+                                  {sup.company} · {sup.contact || 'No contact'}
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-xs font-black text-gray-900">Rs. {sup.balance}</div>
+                                <div className="text-[9px] text-indigo-500 font-bold uppercase tracking-wider mt-0.5">Open Hub</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Category: Stock Items */}
+                    {matchedStock.length > 0 && (
+                      <div className="bg-gray-50/50 p-5 rounded-2xl border border-gray-100">
+                        <h4 className="text-xs font-black text-cyan-600 uppercase tracking-wider mb-3 flex items-center gap-2">
+                          🌾 Stock Inventory ({matchedStock.length})
+                        </h4>
+                        <div className="space-y-2.5">
+                          {matchedStock.map(stock => (
+                            <div 
+                              key={stock.id}
+                              onClick={() => {
+                                setGlobalSearchQuery('');
+                                navigateTo('stock');
+                              }}
+                              className="bg-white p-3.5 rounded-xl border border-gray-200/60 shadow-sm hover:border-cyan-500 hover:shadow-md cursor-pointer transition-all flex justify-between items-center group"
+                            >
+                              <div>
+                                <div className="text-xs font-black text-gray-800 group-hover:text-cyan-600">{stock.name}</div>
+                                <div className="text-[10px] text-gray-400 font-semibold mt-0.5">
+                                  Alert Limit: {stock.min_alert} {stock.unit}
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-xs font-black text-zinc-800">{stock.quantity} {stock.unit}</div>
+                                <div className="text-[9px] text-cyan-500 font-bold uppercase tracking-wider mt-0.5">Adjust Stock</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Category: Dining Tables */}
+                    {matchedTables.length > 0 && (
+                      <div className="bg-gray-50/50 p-5 rounded-2xl border border-gray-100">
+                        <h4 className="text-xs font-black text-teal-600 uppercase tracking-wider mb-3 flex items-center gap-2">
+                          🪑 Floor Tables ({matchedTables.length})
+                        </h4>
+                        <div className="space-y-2.5">
+                          {matchedTables.map(tbl => (
+                            <div 
+                              key={tbl.id}
+                              onClick={() => {
+                                setGlobalSearchQuery('');
+                                navigateTo('tables');
+                              }}
+                              className="bg-white p-3.5 rounded-xl border border-gray-200/60 shadow-sm hover:border-teal-500 hover:shadow-md cursor-pointer transition-all flex justify-between items-center group"
+                            >
+                              <div>
+                                <div className="text-xs font-black text-gray-800 group-hover:text-teal-600">
+                                  Table #{tbl.table_number || tbl.number}
+                                </div>
+                                <div className="text-[10px] text-gray-400 font-semibold mt-0.5">
+                                  Area: {tbl.area} · {tbl.seats} Seats
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                                  tbl.status === 'dining' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'
+                                }`}>
+                                  {tbl.status}
+                                </span>
+                                <div className="text-[9px] text-teal-500 font-bold uppercase tracking-wider mt-1">Configure</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Category: Staff Members */}
+                    {matchedUsers.length > 0 && (
+                      <div className="bg-gray-50/50 p-5 rounded-2xl border border-gray-100">
+                        <h4 className="text-xs font-black text-violet-600 uppercase tracking-wider mb-3 flex items-center gap-2">
+                          👥 Staff Directory ({matchedUsers.length})
+                        </h4>
+                        <div className="space-y-2.5">
+                          {matchedUsers.map(usr => (
+                            <div 
+                              key={usr.id}
+                              onClick={() => {
+                                setGlobalSearchQuery('');
+                                navigateTo('users');
+                              }}
+                              className="bg-white p-3.5 rounded-xl border border-gray-200/60 shadow-sm hover:border-violet-500 hover:shadow-md cursor-pointer transition-all flex justify-between items-center group"
+                            >
+                              <div>
+                                <div className="text-xs font-black text-gray-800 group-hover:text-violet-600">
+                                  {usr.name || usr.username.toUpperCase()}
+                                </div>
+                                <div className="text-[10px] text-gray-400 font-semibold mt-0.5">
+                                  Role: {usr.role.toUpperCase()} · @{usr.username}
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <span className="text-[10px] font-bold text-violet-600">Manage Rules</span>
+                                <div className="text-[9px] text-slate-400 font-semibold mt-0.5">Permissions</div>
                               </div>
                             </div>
                           ))}

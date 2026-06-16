@@ -60,7 +60,7 @@ function DotsMenu({ onLogout, onRefresh }: { onLogout: () => void; onRefresh: ()
       </TouchableOpacity>
       <Modal transparent visible={open} animationType="none" onRequestClose={() => hideMenu()}>
         <Pressable style={styles.modalOverlay} onPress={() => hideMenu()}>
-          <Pressable onPress={() => {}}>
+          <Pressable onPress={(e) => e.stopPropagation()}>
             <Animated.View style={[styles.dropdownCard, { transform: [{ scale: scaleAnim }], opacity: opacityAnim }]}>
               <TouchableOpacity style={styles.menuItem} onPress={() => hideMenu(onRefresh)}>
                 <View style={[styles.menuIcon, { backgroundColor: '#071526' }]}>

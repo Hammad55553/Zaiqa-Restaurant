@@ -62,15 +62,50 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
   const [allDBCustomers, setAllDBCustomers] = useState([]);
   const [suggestedCustomers, setSuggestedCustomers] = useState([]);
   const [suggestedDeliveryCustomers, setSuggestedDeliveryCustomers] = useState([]);
-  const [globalGstRate, setGlobalGstRate] = useState(16);
+  const [globalGstRate, setGlobalGstRate] = useState(0);
+  const [serviceCharges, setServiceCharges] = useState(0);
+  const [applyServiceCharges, setApplyServiceCharges] = useState(true);
+  const [applyTax, setApplyTax] = useState(false);
 
   useEffect(() => {
-    const loadGlobalGst = async () => {
-      const gst = await getOfflineItem('zaiqa_mahal_global_gst_rate', 16);
+    const loadGlobalSettings = async () => {
+      const gst = await getOfflineItem('zaiqa_mahal_global_gst_rate', 0);
       setGlobalGstRate(gst);
+      
+      const scItem = cartItems.find(i => i.name === 'Service Charges' || i.item_name === 'Service Charges');
+      if (scItem) {
+        setServiceCharges(scItem.price || scItem.amount || 0);
+        setApplyServiceCharges(true);
+      } else {
+        if (cartItems.length === 0) {
+          const defaultSC = parseFloat(await getOfflineItem('zaiqa_mahal_global_service_charges', 0));
+          setServiceCharges(defaultSC);
+          setApplyServiceCharges(true);
+          setApplyTax(false);
+        }
+      }
     };
-    loadGlobalGst();
-  }, [view]);
+    loadGlobalSettings();
+  }, [view, cartItems.length === 0]);
+
+  // Synchronize Service Charges item inside cartItems
+  useEffect(() => {
+    setCartItems(prev => {
+      const filtered = prev.filter(i => i.name !== 'Service Charges' && i.item_name !== 'Service Charges');
+      if (applyServiceCharges && serviceCharges > 0) {
+        return [...filtered, {
+          id: 'service-charges-id',
+          cartId: 'service-charges-cart-id',
+          name: 'Service Charges',
+          price: serviceCharges,
+          qty: 1,
+          sent: true,
+          taxRateOverride: 0
+        }];
+      }
+      return filtered;
+    });
+  }, [applyServiceCharges, serviceCharges]);
 
   useEffect(() => {
     const loadCustomers = () => {
@@ -355,12 +390,18 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
 
   const handleViewActiveOrder = (order) => {
     setSelectedDelivery(order);
-    setCartItems(order.items || []);
+    const mapped = order.items || [];
+    setCartItems(mapped);
     setActiveOrderId(null);
     setActiveOrderStatus('pending');
     setAdminUnlockRemark('');
     setView('delivery-order');
     setDuplicateDeliveryPrompt(null);
+    
+    const hasTax = (order.tax > 0);
+    const hasServiceCharges = mapped.some(i => i.item_name === 'Service Charges' || i.name === 'Service Charges');
+    setApplyTax(hasTax);
+    setApplyServiceCharges(hasServiceCharges);
   };
 
   const handleCreateNewOrderAnyway = async (cust) => {
@@ -428,8 +469,47 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
     setDeliveryOrders(orders);
   };
 
+  const checkAndAppendPreparedWaste = async (initialCartItems) => {
+    const stored = localStorage.getItem('zaiqa_mahal_pending_waste_sell_temp');
+    if (stored) {
+      try {
+        const wasteItem = JSON.parse(stored);
+        localStorage.removeItem('zaiqa_mahal_pending_waste_sell_temp');
+        
+        const menuRes = await fetch(`${API_BASE}/inventory`);
+        let matched = null;
+        if (menuRes.ok) {
+          const menuItems = await menuRes.json();
+          matched = menuItems.find(i => i.name.toLowerCase() === wasteItem.name.toLowerCase());
+        }
+        
+        const newItem = matched ? {
+          ...matched,
+          isFromPreparedWaste: true,
+          cartId: matched.id + '-' + Date.now(),
+          qty: wasteItem.qty,
+          sent: false
+        } : {
+          id: 'custom-waste-' + Date.now(),
+          cartId: 'custom-waste-' + Date.now(),
+          name: wasteItem.name,
+          price: 0,
+          isFromPreparedWaste: true,
+          qty: wasteItem.qty,
+          sent: false
+        };
+        
+        showToast(`Added ${newItem.name} from prepared waste (stock will not be deducted)`, 'success');
+        return [...initialCartItems, newItem];
+      } catch (err) {
+        console.error("Error parsing/appending waste item:", err);
+      }
+    }
+    return initialCartItems;
+  };
+
   // Start a blank delivery order immediately — no fields required
-  const startBlankDeliveryOrder = () => {
+  const startBlankDeliveryOrder = async () => {
     const newOrder = {
       id: 'DEL-' + Date.now(),
       phone: '',
@@ -440,10 +520,13 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
       startTime: new Date().toISOString(),
       items: [],
     };
+    const items = await checkAndAppendPreparedWaste([]);
+    newOrder.items = items;
+
     const updated = [newOrder, ...deliveryOrders];
-    saveDeliveryOrders(updated);
+    await saveDeliveryOrders(updated);
     setSelectedDelivery(newOrder);
-    setCartItems([]);
+    setCartItems(items);
     setActiveOrderId(null);
     setActiveOrderStatus('pending');
     setAdminUnlockRemark('');
@@ -462,14 +545,10 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
   const removeDeliveryOrder = async (id) => {
     const matchedOrder = deliveryOrders.find(o => o.id === id);
     if (!matchedOrder) return;
-
-    const success = await moveToTrash('zaiqa_mahal_active_delivery_orders', matchedOrder, 'id');
-    if (success) {
+    if (window.confirm("Are you sure you want to delete this delivery order?")) {
       const updated = deliveryOrders.filter(o => o.id !== id);
       setDeliveryOrders(updated);
-      showToast('Delivery order moved to Trash bin.', 'success');
-    } else {
-      showToast('Failed to remove delivery order.', 'error');
+      await setOfflineItem('zaiqa_mahal_active_delivery_orders', updated);
     }
   };
 
@@ -495,6 +574,8 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
     setView('order');
     setStatusValue(table.status);
     setCustomStatus('');
+    setApplyTax(false);
+    setApplyServiceCharges(true);
     
     // Reset customer states
     setOrderCustomerName('');
@@ -518,9 +599,11 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
     // ALWAYS Fetch active order just in case it was placed from another device or local state was wiped
     try {
       const res = await fetch(`${API_BASE}/orders/table/${table.number}`);
+      let hasLoadedOrder = false;
       if (res.ok) {
         const order = await res.json();
         if (order) {
+          hasLoadedOrder = true;
           setActiveOrderId(order.id);
           setActiveOrderStatus(order.status || 'pending');
           setOrderCustomerName(order.customer_name || '');
@@ -561,11 +644,24 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
             qty: i.quantity,
             sent: true // Mark as already sent to kitchen
           }));
-          setCartItems(mappedItems);
+          
+          const finalItems = await checkAndAppendPreparedWaste(mappedItems);
+          setCartItems(finalItems);
+
+          const hasTax = (order.tax > 0);
+          const hasServiceCharges = order.items.some(i => i.item_name === 'Service Charges' || i.name === 'Service Charges');
+          setApplyTax(hasTax);
+          setApplyServiceCharges(hasServiceCharges);
         }
+      }
+      if (!hasLoadedOrder) {
+        const finalItems = await checkAndAppendPreparedWaste([]);
+        setCartItems(finalItems);
       }
     } catch (err) {
       console.error("Failed to fetch active order:", err);
+      const finalItems = await checkAndAppendPreparedWaste([]);
+      setCartItems(finalItems);
     }
   };
 
@@ -590,14 +686,15 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
   const handlePrintBill = () => {
     if (!selectedTable || cartItems.length === 0) return;
 
-    const sub = cartItems.reduce((sum, item) => sum + item.price * item.qty, 0);
-    const taxAmt = cartItems.reduce((sum, item) => {
+    const isServiceCharge = (i) => i.name === 'Service Charges' || i.item_name === 'Service Charges';
+    const sub = cartItems.filter(i => !isServiceCharge(i)).reduce((sum, item) => sum + item.price * item.qty, 0);
+    const taxAmt = applyTax ? cartItems.filter(i => !isServiceCharge(i)).reduce((sum, item) => {
       const rate = (item.taxRateOverride !== undefined && item.taxRateOverride !== null && item.taxRateOverride !== '')
         ? Number(item.taxRateOverride)
         : globalGstRate;
       return sum + (item.price * item.qty) * (rate / 100);
-    }, 0);
-    const tot = sub + taxAmt;
+    }, 0) : 0;
+    const tot = sub + taxAmt + (applyServiceCharges ? Number(serviceCharges || 0) : 0);
 
     const data = {
       table: selectedTable,
@@ -605,6 +702,7 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
       subtotal: sub,
       tax: taxAmt,
       total: tot,
+      serviceCharges: applyServiceCharges ? Number(serviceCharges || 0) : 0,
       orderId: activeOrderId,
       date: new Date().toISOString(),
     };
@@ -629,14 +727,15 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
   const executeCheckout = async (customerPhone = '') => {
     try {
       // Calculate totals for invoice record
-      const sub = cartItems.reduce((sum, item) => sum + item.price * item.qty, 0);
-      const taxAmt = cartItems.reduce((sum, item) => {
+      const isServiceCharge = (i) => i.name === 'Service Charges' || i.item_name === 'Service Charges';
+      const sub = cartItems.filter(i => !isServiceCharge(i)).reduce((sum, item) => sum + item.price * item.qty, 0);
+      const taxAmt = applyTax ? cartItems.filter(i => !isServiceCharge(i)).reduce((sum, item) => {
         const rate = (item.taxRateOverride !== undefined && item.taxRateOverride !== null && item.taxRateOverride !== '')
           ? Number(item.taxRateOverride)
           : globalGstRate;
         return sum + (item.price * item.qty) * (rate / 100);
-      }, 0);
-      const tot = sub + taxAmt;
+      }, 0) : 0;
+      const tot = sub + taxAmt + (applyServiceCharges ? Number(serviceCharges || 0) : 0);
 
       const invoiceId = activeOrderId || String(Date.now()).slice(-6);
 
@@ -647,6 +746,7 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
         items: cartItems.map(i => ({ name: i.name, price: i.price, qty: i.qty })),
         subtotal: sub,
         tax: taxAmt,
+        serviceCharges: applyServiceCharges ? Number(serviceCharges || 0) : 0,
         total: tot,
         date: new Date().toISOString()
       };
@@ -744,14 +844,15 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
       return;
     }
 
-    const subtotal = cartItems.reduce((sum, item) => sum + (item.price * item.qty), 0);
-    const tax = cartItems.reduce((sum, item) => {
+    const isServiceCharge = (i) => i.name === 'Service Charges' || i.item_name === 'Service Charges';
+    const subtotal = cartItems.filter(i => !isServiceCharge(i)).reduce((sum, item) => sum + (item.price * item.qty), 0);
+    const tax = applyTax ? cartItems.filter(i => !isServiceCharge(i)).reduce((sum, item) => {
       const rate = (item.taxRateOverride !== undefined && item.taxRateOverride !== null && item.taxRateOverride !== '')
         ? Number(item.taxRateOverride)
         : globalGstRate;
       return sum + (item.price * item.qty) * (rate / 100);
-    }, 0);
-    const total = subtotal + tax;
+    }, 0) : 0;
+    const total = subtotal + tax + (applyServiceCharges ? Number(serviceCharges || 0) : 0);
 
     if (view === 'delivery-order') {
       saveCustomerToDirectory();
@@ -763,7 +864,7 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              items: cartItems.map(i => ({ id: i.id, name: i.name, price: i.price, qty: i.qty })),
+              items: cartItems.map(i => ({ id: i.id, name: i.name, price: i.price, qty: i.qty, isFromPreparedWaste: i.isFromPreparedWaste || false })),
               subtotal,
               tax,
               total_amount: total,
@@ -780,7 +881,7 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
               area: 'Delivery',
               customer_name: selectedDelivery.name || 'Delivery Guest',
               remarks: selectedDelivery.remarks || `Delivery Order - Phone: ${selectedDelivery.phone || 'N/A'}, Address: ${selectedDelivery.address || 'N/A'}`,
-              items: cartItems.map(i => ({ id: i.id, name: i.name, price: i.price, qty: i.qty })),
+              items: cartItems.map(i => ({ id: i.id, name: i.name, price: i.price, qty: i.qty, isFromPreparedWaste: i.isFromPreparedWaste || false })),
               subtotal,
               tax,
               total_amount: total
@@ -918,6 +1019,36 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
       return [...prev, { ...item, cartId: cartId, qty: qty, sent: false }];
     });
   };
+
+  useEffect(() => {
+    const checkWasteSell = async () => {
+      try {
+        const stored = localStorage.getItem('zaiqa_mahal_pending_waste_sell');
+        const storedTarget = localStorage.getItem('zaiqa_mahal_pending_waste_sell_target');
+        
+        if (stored) {
+          localStorage.setItem('zaiqa_mahal_pending_waste_sell_temp', stored);
+          localStorage.removeItem('zaiqa_mahal_pending_waste_sell');
+          
+          if (storedTarget) {
+            localStorage.removeItem('zaiqa_mahal_pending_waste_sell_target');
+            const target = JSON.parse(storedTarget);
+            if (target.type === 'table') {
+              const tbl = tables.find(t => t.table_number === target.tableNumber || t.number === target.tableNumber);
+              if (tbl) {
+                handleTableClick(tbl);
+              }
+            } else if (target.type === 'new') {
+              startBlankDeliveryOrder();
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error checking prepared waste sell:", err);
+      }
+    };
+    checkWasteSell();
+  }, [view, tables]);
 
   const updateQty = (id, delta) => {
     setCartItems(prev => prev.map(item => {
@@ -1060,14 +1191,15 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
 
   const handleDeliveryCheckout = async (customerPhone = '') => {
     if (!selectedDelivery) return;
-    const sub = cartItems.reduce((sum, item) => sum + item.price * item.qty, 0);
-    const taxAmt = cartItems.reduce((sum, item) => {
+    const isServiceCharge = (i) => i.name === 'Service Charges' || i.item_name === 'Service Charges';
+    const sub = cartItems.filter(i => !isServiceCharge(i)).reduce((sum, item) => sum + item.price * item.qty, 0);
+    const taxAmt = applyTax ? cartItems.filter(i => !isServiceCharge(i)).reduce((sum, item) => {
       const rate = (item.taxRateOverride !== undefined && item.taxRateOverride !== null && item.taxRateOverride !== '')
         ? Number(item.taxRateOverride)
         : globalGstRate;
       return sum + (item.price * item.qty) * (rate / 100);
-    }, 0);
-    const tot = sub + taxAmt;
+    }, 0) : 0;
+    const tot = sub + taxAmt + (applyServiceCharges ? Number(serviceCharges || 0) : 0);
     const invoiceId = 'DEL-' + String(Date.now()).slice(-6);
 
     const newInvoice = {
@@ -1138,14 +1270,15 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
 
   const handleDeliveryPrint = () => {
     if (!selectedDelivery || cartItems.length === 0) return;
-    const sub = cartItems.reduce((sum, item) => sum + item.price * item.qty, 0);
-    const taxAmt = cartItems.reduce((sum, item) => {
+    const isServiceCharge = (i) => i.name === 'Service Charges' || i.item_name === 'Service Charges';
+    const sub = cartItems.filter(i => !isServiceCharge(i)).reduce((sum, item) => sum + item.price * item.qty, 0);
+    const taxAmt = applyTax ? cartItems.filter(i => !isServiceCharge(i)).reduce((sum, item) => {
       const rate = (item.taxRateOverride !== undefined && item.taxRateOverride !== null && item.taxRateOverride !== '')
         ? Number(item.taxRateOverride)
         : globalGstRate;
       return sum + (item.price * item.qty) * (rate / 100);
-    }, 0);
-    const tot = sub + taxAmt;
+    }, 0) : 0;
+    const tot = sub + taxAmt + (applyServiceCharges ? Number(serviceCharges || 0) : 0);
     const fakeTable = { number: selectedDelivery.id, area: 'Delivery' };
     setPrintData({
       table: fakeTable,
@@ -1153,6 +1286,7 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
       subtotal: sub,
       tax: taxAmt,
       total: tot,
+      serviceCharges: applyServiceCharges ? Number(serviceCharges || 0) : 0,
       orderId: selectedDelivery.id,
       date: new Date().toISOString(),
     });
@@ -1518,14 +1652,15 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
   if (view === 'billing') {
     const isDelivery = !selectedTable;
     const currentTitle = isDelivery ? `Delivery Session ${selectedDelivery?.id}` : `Dine-in Table ${selectedTable?.number}`;
-    const subtotal = cartItems.reduce((sum, item) => sum + (item.price * item.qty), 0);
-    const tax = cartItems.reduce((sum, item) => {
+    const isServiceCharge = (i) => i.name === 'Service Charges' || i.item_name === 'Service Charges';
+    const subtotal = cartItems.filter(i => !isServiceCharge(i)).reduce((sum, item) => sum + (item.price * item.qty), 0);
+    const tax = applyTax ? cartItems.filter(i => !isServiceCharge(i)).reduce((sum, item) => {
       const rate = (item.taxRateOverride !== undefined && item.taxRateOverride !== null && item.taxRateOverride !== '')
         ? Number(item.taxRateOverride)
         : globalGstRate;
       return sum + (item.price * item.qty) * (rate / 100);
-    }, 0);
-    const total = subtotal + tax;
+    }, 0) : 0;
+    const total = subtotal + tax + (applyServiceCharges ? Number(serviceCharges || 0) : 0);
 
     // Direct place/save handler for Dine-in Table
     const handleDineInSave = async () => {
@@ -1595,7 +1730,7 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              items: cartItems.map(i => ({ id: i.id, name: i.name, price: i.price, qty: i.qty })),
+              items: cartItems.map(i => ({ id: i.id, name: i.name, price: i.price, qty: i.qty, isFromPreparedWaste: i.isFromPreparedWaste || false })),
               subtotal: subtotal,
               tax: tax,
               total_amount: total,
@@ -1611,7 +1746,7 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
               area: 'Delivery',
               customer_name: selectedDelivery.name || 'Delivery Guest',
               remarks: selectedDelivery.remarks || `Delivery Order - Phone: ${selectedDelivery.phone || 'N/A'}, Address: ${selectedDelivery.address || 'N/A'}`,
-              items: cartItems.map(i => ({ id: i.id, name: i.name, price: i.price, qty: i.qty })),
+              items: cartItems.map(i => ({ id: i.id, name: i.name, price: i.price, qty: i.qty, isFromPreparedWaste: i.isFromPreparedWaste || false })),
               subtotal: subtotal,
               tax: tax,
               total_amount: total
@@ -1907,7 +2042,7 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
 
                 {/* Items rows */}
                 <div className="space-y-2 py-2 max-h-[160px] overflow-y-auto custom-scrollbar">
-                  {cartItems.map(item => (
+                  {cartItems.filter(item => item.name !== 'Service Charges' && item.item_name !== 'Service Charges').map(item => (
                     <div key={item.cartId || item.id} className="flex justify-between text-[11px] leading-tight">
                       <span className="w-8 font-bold">{item.qty}x</span>
                       <span className="flex-1 text-left px-2 truncate">{item.name}</span>
@@ -1919,14 +2054,64 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
                 <div className="border-t border-dashed border-gray-300 my-2"></div>
 
                 {/* Calculations */}
-                <div className="space-y-1 text-[10px]">
-                  <div className="flex justify-between">
+                <div className="space-y-1.5 text-[10px]">
+                  <div className="flex justify-between items-center">
                     <span>SUBTOTAL</span>
                     <span className="font-bold">Rs. {subtotal}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span>TAX / GST</span>
+                  <div className="flex justify-between items-center">
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={applyTax}
+                        onChange={(e) => setApplyTax(e.target.checked)}
+                        className="w-3 h-3 accent-orange-500 rounded border-gray-300"
+                      />
+                      <span>GST / TAX</span>
+                    </label>
                     <span className="font-bold">Rs. {tax.toFixed(0)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-zinc-600">
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={applyServiceCharges}
+                        onChange={(e) => setApplyServiceCharges(e.target.checked)}
+                        className="w-3 h-3 accent-orange-500 rounded border-gray-300"
+                      />
+                      <span>SERVICE CHARGES</span>
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      {serviceCharges === 0 && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const defaultSC = parseFloat(await getOfflineItem('zaiqa_mahal_global_service_charges', 0));
+                            if (defaultSC > 0) {
+                              setServiceCharges(defaultSC);
+                              setApplyServiceCharges(true);
+                            }
+                          }}
+                          className="text-[9px] text-orange-500 hover:text-orange-600 font-black underline cursor-pointer transition-colors"
+                        >
+                          Apply Default
+                        </button>
+                      )}
+                      <span className="font-bold text-gray-400">Rs.</span>
+                      <input
+                        type="number"
+                        min="0"
+                        value={serviceCharges}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          setServiceCharges(val);
+                          if (val > 0) {
+                            setApplyServiceCharges(true);
+                          }
+                        }}
+                        className="w-16 text-right p-0.5 border border-gray-300 rounded font-black text-[10px] outline-none focus:border-orange-500"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>

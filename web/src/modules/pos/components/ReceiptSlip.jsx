@@ -18,8 +18,15 @@ const ReceiptSlip = ({ printData }) => {
     paymentMethod,
     transactionId,
     remarks,
-    riderName
+    riderName,
+    serviceCharges
   } = printData;
+
+  const displayItems = (items || []).filter(item => item.name !== 'Service Charges' && item.item_name !== 'Service Charges');
+
+  const serviceChargesAmt = serviceCharges !== undefined
+    ? Number(serviceCharges)
+    : (items || []).find(item => item.name === 'Service Charges' || item.item_name === 'Service Charges')?.price || 0;
 
   const formatDate = (dateString) => {
     const d = dateString ? new Date(dateString) : new Date();
@@ -89,7 +96,28 @@ const ReceiptSlip = ({ printData }) => {
         )}
         <div style={row}>
           <span style={{ fontWeight: '700' }}>Cashier:</span>
-          <span>Admin</span>
+          <span>{(() => {
+            if (printData?.cashier) {
+              try {
+                if (typeof printData.cashier === 'string' && printData.cashier.startsWith('{')) {
+                  const p = JSON.parse(printData.cashier);
+                  return p.name || p.username || 'Staff';
+                }
+              } catch(e){}
+              if (typeof printData.cashier === 'object') {
+                return printData.cashier.name || printData.cashier.username || 'Staff';
+              }
+              return printData.cashier;
+            }
+            try {
+              const u = localStorage.getItem('pos_current_user');
+              if (u) {
+                const parsed = JSON.parse(u);
+                return parsed.name || parsed.username || 'Staff';
+              }
+            } catch (e) {}
+            return 'Staff';
+          })()}</span>
         </div>
         <div style={row}>
           <span style={{ fontWeight: '700' }}>Terminal:</span>
@@ -153,7 +181,7 @@ const ReceiptSlip = ({ printData }) => {
 
       {/* ITEMS LIST */}
       <div style={{ marginBottom: '1mm' }}>
-        {items.map((item, index) => (
+        {displayItems.map((item, index) => (
           <div key={index} style={{ marginBottom: '2mm' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
               <span style={{ width: '24px', fontWeight: '700' }}>{item.qty}x</span>
@@ -177,10 +205,18 @@ const ReceiptSlip = ({ printData }) => {
           <span>Subtotal</span>
           <span style={{ fontWeight: '700' }}>Rs. {subtotal.toFixed(0)}</span>
         </div>
-        <div style={row}>
-          <span>GST / Tax</span>
-          <span style={{ fontWeight: '700' }}>Rs. {tax.toFixed(0)}</span>
-        </div>
+        {serviceChargesAmt > 0 && (
+          <div style={row}>
+            <span>Service Charges</span>
+            <span style={{ fontWeight: '700' }}>Rs. {serviceChargesAmt.toFixed(0)}</span>
+          </div>
+        )}
+        {tax > 0 && (
+          <div style={row}>
+            <span>GST / Tax</span>
+            <span style={{ fontWeight: '700' }}>Rs. {tax.toFixed(0)}</span>
+          </div>
+        )}
       </div>
 
       <div style={solid} />

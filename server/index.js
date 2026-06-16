@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const os = require('os');
@@ -70,6 +71,10 @@ app.use(express.json({ limit: '10mb' }));
 
 // ── Initialize SQLite DB ──────────────────────────────────────────────────────
 initDb();
+
+// ── Start Supabase Sync Worker ────────────────────────────────────────────────
+const { startSyncWorker } = require('./services/syncWorker');
+startSyncWorker();
 
 // ── Health Check ──────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {

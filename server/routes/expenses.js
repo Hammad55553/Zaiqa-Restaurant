@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../database/db');
+const { queueExpenseChange } = require('../services/syncHelper');
 
 // GET all expenses
 router.get('/', (req, res) => {
@@ -30,6 +31,9 @@ router.post('/', (req, res) => {
       console.error('Error creating expense:', err.message);
       return res.status(500).json({ error: err.message });
     }
+    // Sync new expense to Supabase
+    queueExpenseChange(this.lastID, 'insert');
+
     res.status(201).json({
       id: this.lastID,
       category,
@@ -52,6 +56,9 @@ router.delete('/:id', (req, res) => {
     if (this.changes === 0) {
       return res.status(404).json({ error: 'Expense not found.' });
     }
+    // Sync deleted expense to Supabase
+    queueExpenseChange(id, 'delete');
+
     res.json({ message: 'Expense deleted successfully.' });
   });
 });

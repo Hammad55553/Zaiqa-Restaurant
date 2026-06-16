@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../database/db');
+const { queueSupplierChange } = require('../services/syncHelper');
 
 // @route   GET /api/suppliers
 // @desc    Get all active suppliers with their ledger history
@@ -60,6 +61,9 @@ router.post('/', (req, res) => {
           [newId, opening.type, opening.amount, opening.note || '', opening.date || new Date().toISOString()]);
       }
 
+      // Sync new supplier to Supabase
+      queueSupplierChange(newId, 'insert');
+
       res.status(201).json({ success: true, id: newId });
     }
   );
@@ -102,6 +106,9 @@ router.post('/:id/ledger', (req, res) => {
             });
           }
 
+          // Sync updated supplier balance to Supabase
+          queueSupplierChange(id, 'update');
+
           res.json({ success: true, newBalance });
         }
       );
@@ -115,6 +122,9 @@ router.delete('/:id', (req, res) => {
   const { id } = req.params;
   db.run(`UPDATE suppliers SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?`, [id], function(err) {
     if (err) return res.status(500).json({ error: 'Failed to delete supplier' });
+    // Sync deleted supplier status (soft delete update) to Supabase
+    queueSupplierChange(id, 'update');
+
     res.json({ success: true });
   });
 });

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../database/db');
+const { queueUserChange } = require('../services/syncHelper');
 
 // Login endpoint
 router.post('/login', (req, res) => {
@@ -34,7 +35,7 @@ router.post('/login', (req, res) => {
 
 // Get all users (Admin only checks can be done in frontend, but we expose endpoint)
 router.get('/', (req, res) => {
-  db.all('SELECT id, username, role, permissions FROM users', [], (err, rows) => {
+  db.all('SELECT id, username, name, role, permissions FROM users', [], (err, rows) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -55,7 +56,7 @@ router.get('/', (req, res) => {
 
 // Create new user
 router.post('/', (req, res) => {
-  const { username, password, role, permissions } = req.body;
+  const { username, password, role, name, permissions } = req.body;
   if (!username || !password || !role) {
     return res.status(400).json({ error: 'Username, password, and role are required' });
   }
@@ -63,8 +64,8 @@ router.post('/', (req, res) => {
   const permsStr = JSON.stringify(permissions || []);
 
   db.run(
-    'INSERT INTO users (username, password, role, permissions) VALUES (?, ?, ?, ?)',
-    [username, password, role, permsStr],
+    'INSERT INTO users (username, password, role, permissions, name) VALUES (?, ?, ?, ?, ?)',
+    [username, password, role, permsStr, name],
     function (err) {
       if (err) {
         if (err.message.includes('UNIQUE constraint failed')) {
@@ -72,7 +73,10 @@ router.post('/', (req, res) => {
         }
         return res.status(500).json({ error: err.message });
       }
-      res.status(201).json({ id: this.lastID, username, role, permissions });
+      // Sync new user to Supabase
+      queueUserChange(this.lastID, 'insert');
+
+      res.status(201).json({ id: this.lastID, username, role, name, permissions });
     }
   );
 });
@@ -80,7 +84,7 @@ router.post('/', (req, res) => {
 // Update user details & permissions
 router.put('/:id', (req, res) => {
   const { id } = req.params;
-  const { username, password, role, permissions } = req.body;
+  const { username, password, role, name, permissions } = req.body;
 
   if (!username || !role) {
     return res.status(400).json({ error: 'Username and role are required' });
@@ -91,24 +95,30 @@ router.put('/:id', (req, res) => {
   if (password) {
     // Update with password change
     db.run(
-      'UPDATE users SET username = ?, password = ?, role = ?, permissions = ? WHERE id = ?',
-      [username, password, role, permsStr, id],
+      'UPDATE users SET username = ?, password = ?, role = ?, name = ?, permissions = ? WHERE id = ?',
+      [username, password, role, name, permsStr, id],
       function (err) {
         if (err) {
           return res.status(500).json({ error: err.message });
         }
+        // Sync user update to Supabase
+        queueUserChange(id, 'update');
+
         res.json({ message: 'User updated successfully' });
       }
     );
   } else {
     // Update without changing password
     db.run(
-      'UPDATE users SET username = ?, role = ?, permissions = ? WHERE id = ?',
-      [username, role, permsStr, id],
+      'UPDATE users SET username = ?, role = ?, name = ?, permissions = ? WHERE id = ?',
+      [username, role, name, permsStr, id],
       function (err) {
         if (err) {
           return res.status(500).json({ error: err.message });
         }
+        // Sync user update to Supabase
+        queueUserChange(id, 'update');
+
         res.json({ message: 'User updated successfully' });
       }
     );
@@ -122,6 +132,9 @@ router.delete('/:id', (req, res) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
+    // Sync deleted user from Supabase
+    queueUserChange(id, 'delete');
+
     res.json({ message: 'User deleted successfully' });
   });
 });

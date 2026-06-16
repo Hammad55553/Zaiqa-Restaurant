@@ -22,3 +22,8 @@ desktop/dist-electron/
 desktop/web-dist/
 desktop/server/
 
+# Environment files
+.env
+*.env
+.env.*
+

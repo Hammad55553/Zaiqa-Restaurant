@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Users, UserPlus, Key, Edit, Trash2, CheckSquare, Square, Save, X, RefreshCw } from 'lucide-react';
+import {
+  Shield, Users, UserPlus, Key, Edit, Trash2, CheckSquare, Square,
+  Save, X, RefreshCw, Search, Check, Info, Lock, Eye, EyeOff, UserCheck
+} from 'lucide-react';
 import { API_BASE } from '../../config';
 
 // Predefined available permission keys and their user-friendly labels
@@ -23,11 +26,13 @@ export default function UserManager() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showFormPassword, setShowFormPassword] = useState(false);
 
   // Editing/Creating states
-  const [editMode, setEditMode] = useState(false); // true if editing existing user
-  const [selectedUser, setSelectedUser] = useState(null); // User currently being edited/created
-  const [formOpen, setFormOpen] = useState(false); // Track if form panel is open
+  const [editMode, setEditMode] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [formOpen, setFormOpen] = useState(false);
   const [formData, setFormData] = useState({
     username: '',
     name: '',
@@ -61,12 +66,13 @@ export default function UserManager() {
     setEditMode(false);
     setSelectedUser(null);
     setFormOpen(true);
+    setShowFormPassword(false);
     setFormData({
       username: '',
       name: '',
       password: '',
       role: 'cashier',
-      permissions: ['pos', 'tables'] // default permissions
+      permissions: ['pos', 'tables']
     });
     setError('');
     setSuccess('');
@@ -76,6 +82,7 @@ export default function UserManager() {
     setEditMode(true);
     setSelectedUser(user);
     setFormOpen(true);
+    setShowFormPassword(false);
     setFormData({
       username: user.username,
       name: user.name || '',
@@ -149,8 +156,7 @@ export default function UserManager() {
 
       setSuccess(editMode ? 'User settings updated successfully!' : 'User created successfully!');
       fetchUsers();
-      
-      // Close/reset editing pane after a delay
+
       setTimeout(() => {
         setSelectedUser(null);
         setEditMode(false);
@@ -180,285 +186,360 @@ export default function UserManager() {
     }
   };
 
+  // Filter users by search term
+  const filteredUsers = users.filter(u =>
+    u.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (u.name && u.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    u.role.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // Statistics summaries
+  const getRoleCount = (role) => users.filter(u => u.role === role).length;
+
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-gray-50/50">
-      <div className="flex-1 overflow-y-auto">
-        <div className="p-6 lg:p-10">
-          <div className="max-w-7xl mx-auto space-y-6">
-        
+    <div className="flex-1 flex flex-col h-full overflow-y-auto bg-slate-50/50 custom-scrollbar">
+      <div className="p-6 lg:p-10 space-y-8 max-w-7xl mx-auto w-full">
+
         {/* Header Alert Notification */}
         {error && (
-          <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-xl shadow-sm flex items-center justify-between">
-            <p className="text-sm text-red-700 font-bold">{error}</p>
-            <button onClick={() => setError('')} className="text-red-500 hover:text-red-700">✕</button>
+          <div className="bg-red-50 border border-red-200 p-4 rounded-2xl shadow-sm flex items-center justify-between animate-fadeIn">
+            <div className="flex items-center gap-2">
+              <span className="text-red-500 font-bold">⚠️</span>
+              <p className="text-sm text-red-700 font-bold">{error}</p>
+            </div>
+            <button onClick={() => setError('')} className="text-red-400 hover:text-red-600 font-bold">✕</button>
           </div>
         )}
         {success && (
-          <div className="bg-green-50 border-l-4 border-green-500 p-4 rounded-xl shadow-sm flex items-center justify-between">
-            <p className="text-sm text-green-700 font-bold">{success}</p>
-            <button onClick={() => setSuccess('')} className="text-green-500 hover:text-green-700">✕</button>
+          <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl shadow-sm flex items-center justify-between animate-fadeIn">
+            <div className="flex items-center gap-2">
+              <span className="text-emerald-500 font-bold">✓</span>
+              <p className="text-sm text-emerald-700 font-bold">{success}</p>
+            </div>
+            <button onClick={() => setSuccess('')} className="text-emerald-400 hover:text-emerald-600 font-bold">✕</button>
           </div>
         )}
 
+        {/* Dashboard Title & Buttons */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-black text-gray-900 flex items-center gap-2">
-              <Shield className="text-orange-500" size={26} /> Staff Role & Permission Control
+            <h2 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
+              <Shield className="text-orange-500" size={32} /> Staff Management Hub
             </h2>
-            <p className="text-sm text-gray-500 font-semibold mt-1">Configure cashier credentials and screen permissions dynamically.</p>
+            <p className="text-sm text-slate-500 font-semibold mt-1">Configure credentials, roles, and modular screen permissions dynamically.</p>
           </div>
           <div className="flex items-center gap-3">
-            <button 
+            <button
               onClick={fetchUsers}
-              className="p-3 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 text-gray-600 shadow-sm transition-all"
+              className="p-3 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-600 shadow-sm transition-all"
+              title="Refresh Users"
             >
-              <RefreshCw size={18} />
+              <RefreshCw size={20} />
             </button>
             <button
               onClick={handleOpenCreate}
-              className="px-5 py-3 bg-zinc-950 text-white rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-zinc-950/20 hover:bg-zinc-800 transition-all text-sm"
+              className="px-6 py-3.5 bg-orange-500 text-white rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-orange-500/20 hover:bg-orange-600 transition-all text-sm"
             >
-              <UserPlus size={18} /> Add New User
+              <UserPlus size={18} /> Add New Staff
             </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          
-          {/* Left Side: Users List */}
-          <div className={`${formOpen ? 'lg:col-span-6' : 'lg:col-span-12'} bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden transition-all duration-300`}>
-            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                <Users size={18} className="text-gray-400" /> Active Users List
-              </h3>
-              <span className="text-xs px-2.5 py-1 bg-gray-100 text-gray-600 font-bold rounded-full">{users.length} Users</span>
+        {/* Stats Row */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          {[
+            { label: 'Admins', count: getRoleCount('admin'), color: 'text-orange-600 bg-orange-50 border-orange-100' },
+            { label: 'Cashiers', count: getRoleCount('cashier'), color: 'text-blue-600 bg-blue-50 border-blue-100' },
+            { label: 'Waiters', count: getRoleCount('waiter'), color: 'text-purple-600 bg-purple-50 border-purple-100' },
+            { label: 'Kitchen', count: getRoleCount('kitchen'), color: 'text-green-600 bg-green-50 border-green-100' },
+            { label: 'Riders', count: getRoleCount('rider'), color: 'text-teal-600 bg-teal-50 border-teal-100' }
+          ].map((item, idx) => (
+            <div key={idx} className={`p-4 border rounded-2xl ${item.color} flex flex-col justify-between shadow-sm`}>
+              <span className="text-[10px] font-black uppercase tracking-wider opacity-80">{item.label}</span>
+              <span className="text-2xl font-black mt-1">{item.count}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Main Double Column Split Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+
+          {/* Left Side: Users List & Search */}
+          <div className={`${formOpen ? 'lg:col-span-7' : 'lg:col-span-12'} space-y-4`}>
+
+            {/* Search Input Bar */}
+            <div className="relative">
+              <Search className="absolute left-4 top-3.5 text-slate-400" size={18} />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search staff by username, name, or role..."
+                className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-2xl font-medium focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all text-sm shadow-sm"
+              />
             </div>
 
-            {loading ? (
-              <div className="p-12 text-center text-gray-400">
-                <RefreshCw className="animate-spin mx-auto mb-2" size={24} />
-                <p className="text-sm font-semibold">Loading users list...</p>
+            {/* List Wrapper */}
+            <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 space-y-4">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-50">
+                <span className="text-xs font-black text-slate-400 uppercase tracking-wider">Active Staff Members</span>
+                <span className="text-xs px-2.5 py-1 bg-slate-100 text-slate-600 font-bold rounded-full">{filteredUsers.length} Found</span>
               </div>
-            ) : users.length === 0 ? (
-              <div className="p-12 text-center text-gray-400">
-                <Users className="mx-auto mb-2 opacity-30" size={36} />
-                <p className="text-sm font-semibold">No registered staff users found.</p>
+
+              {loading ? (
+                <div className="p-12 text-center text-slate-400">
+                  <RefreshCw className="animate-spin mx-auto mb-2" size={24} />
+                  <p className="text-sm font-semibold">Loading users list...</p>
+                </div>
+              ) : filteredUsers.length === 0 ? (
+                <div className="p-12 text-center text-slate-400">
+                  <Users className="mx-auto mb-2 opacity-30" size={36} />
+                  <p className="text-sm font-semibold">No registered staff users match your search.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[580px] overflow-y-auto pr-2 custom-scrollbar">
+                  {filteredUsers.map(u => (
+                    <div
+                      key={u.id}
+                      className={`p-5 rounded-2xl border transition-all duration-300 flex flex-col justify-between gap-4 ${selectedUser?.id === u.id
+                          ? 'border-orange-500 bg-orange-50/10 shadow-md shadow-orange-500/5'
+                          : 'border-slate-100 bg-white hover:border-slate-200 hover:shadow-md'
+                        }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="font-extrabold text-slate-900 text-base">{u.name || u.username.toUpperCase()}</p>
+                          <p className="text-xs text-slate-400 font-bold mt-0.5">@{u.username}</p>
+                        </div>
+                        <span className={`px-2.5 py-1 text-[10px] font-black tracking-widest uppercase rounded-lg ${u.role === 'admin' ? 'bg-orange-100 text-orange-700' :
+                            u.role === 'cashier' ? 'bg-blue-100 text-blue-700' :
+                              u.role === 'waiter' ? 'bg-purple-100 text-purple-700' :
+                                u.role === 'kitchen' ? 'bg-green-100 text-green-700' :
+                                  'bg-teal-100 text-teal-700'
+                          }`}>
+                          {u.role}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between border-t border-slate-50 pt-3 mt-1">
+                        <span className="text-[10px] font-black text-slate-400 uppercase">
+                          {u.permissions ? `${u.permissions.length} Modules Allowed` : '0 Modules'}
+                        </span>
+
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => handleOpenEdit(u)}
+                            className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-600 hover:text-orange-500 hover:border-orange-200 transition-all"
+                            title="Edit User"
+                          >
+                            <Edit size={14} />
+                          </button>
+                          {u.username !== 'admin' && (
+                            <button
+                              onClick={() => handleDeleteUser(u.id)}
+                              className="p-2 bg-red-50 border border-red-100 rounded-lg text-red-500 hover:bg-red-100 transition-all"
+                              title="Delete User"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right Side: Create/Edit Form (Styled Card Viewport-bounded) */}
+          <div className="lg:col-span-5">
+            {formOpen ? (
+              <div className="bg-white rounded-3xl border border-slate-100 shadow-lg overflow-hidden flex flex-col max-h-[620px] animate-fadeIn">
+
+                {/* Form Header */}
+                <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-900 text-white flex-shrink-0">
+                  <div className="flex items-center gap-2">
+                    <UserCheck className="text-orange-400" size={18} />
+                    <h3 className="font-bold text-sm">
+                      {editMode && selectedUser ? `Edit: ${selectedUser.username}` : 'Create Staff Member'}
+                    </h3>
+                  </div>
+                  <button
+                    onClick={() => setFormOpen(false)}
+                    className="text-slate-400 hover:text-white p-1"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+
+                {/* Form Element */}
+                <form onSubmit={handleSubmit} className="flex flex-col min-h-0 flex-1">
+
+                  {/* Scrollable Input Area */}
+                  <div className="p-6 space-y-5 overflow-y-auto flex-1 min-h-0 custom-scrollbar bg-white">
+
+                    {/* Username Input */}
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Username (ID)</label>
+                      <input
+                        type="text"
+                        value={formData.username}
+                        onChange={(e) => setFormData({ ...formData, username: e.target.value.toLowerCase().replace(/\s/g, '') })}
+                        placeholder="e.g. hammad"
+                        disabled={editMode && selectedUser?.username === 'admin'}
+                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:outline-none focus:border-orange-500 focus:bg-white transition-all text-sm text-slate-800"
+                      />
+                    </div>
+
+                    {/* Full Name Input */}
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Full Name</label>
+                      <input
+                        type="text"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        placeholder="e.g. Hammad"
+                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:outline-none focus:border-orange-500 focus:bg-white transition-all text-sm text-slate-800"
+                      />
+                    </div>
+
+                    {/* Password Input */}
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
+                        {editMode ? 'New Access Key (Blank = No change)' : 'Access Key / Password'}
+                      </label>
+                      <div className="relative flex items-center">
+                        <Lock className="absolute left-3.5 text-slate-400" size={16} />
+                        <input
+                          type={showFormPassword ? "text" : "password"}
+                          value={formData.password}
+                          onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                          placeholder={editMode ? "••••••••" : "Enter access PIN/password"}
+                          className="w-full pl-10 pr-11 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:outline-none focus:border-orange-500 focus:bg-white transition-all text-sm text-slate-800"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowFormPassword(!showFormPassword)}
+                          className="absolute right-3.5 text-slate-400 hover:text-slate-700 transition-colors"
+                        >
+                          {showFormPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* System Role Selection */}
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Designated Role</label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {['admin', 'cashier', 'waiter', 'kitchen', 'rider'].map(r => (
+                          <button
+                            key={r}
+                            type="button"
+                            onClick={() => setFormData({ ...formData, role: r })}
+                            className={`py-2 px-1 border rounded-lg text-center font-bold text-[10px] uppercase tracking-wider transition-all ${formData.role === r
+                                ? 'bg-orange-500 text-white border-orange-500 shadow-sm'
+                                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                              }`}
+                          >
+                            {r}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Permissions Section */}
+                    <div className="border-t border-slate-100 pt-4">
+                      <div className="flex justify-between items-center mb-3">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Modules Allowed</label>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={handleSelectAllPermissions}
+                            className="text-[9px] font-black text-orange-600 uppercase hover:underline"
+                          >
+                            All
+                          </button>
+                          <span className="text-slate-300">|</span>
+                          <button
+                            type="button"
+                            onClick={handleClearPermissions}
+                            className="text-[9px] font-black text-slate-500 uppercase hover:underline"
+                          >
+                            None
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-2 max-h-56 overflow-y-auto border border-slate-100 rounded-xl p-2 bg-slate-50/50 custom-scrollbar">
+                        {AVAILABLE_PERMISSIONS.map(perm => {
+                          const isChecked = formData.permissions.includes(perm.id);
+                          return (
+                            <button
+                              key={perm.id}
+                              type="button"
+                              onClick={() => handleTogglePermission(perm.id)}
+                              className={`flex items-start gap-3 p-2.5 rounded-lg border text-left transition-all ${isChecked
+                                  ? 'bg-white border-orange-200 shadow-sm'
+                                  : 'bg-transparent border-transparent hover:bg-slate-100/50'
+                                }`}
+                            >
+                              <span className="mt-0.5 text-orange-500">
+                                {isChecked ? <CheckSquare size={16} /> : <Square size={16} className="text-slate-300" />}
+                              </span>
+                              <div>
+                                <p className="text-xs font-bold text-slate-800">{perm.label}</p>
+                                <p className="text-[10px] text-slate-400 font-semibold mt-0.5 leading-snug">{perm.desc}</p>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Fixed Button Footer */}
+                  <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center gap-3 flex-shrink-0 sticky bottom-0">
+                    <button
+                      type="submit"
+                      className="flex-1 py-3 bg-slate-900 text-white font-extrabold rounded-xl shadow hover:bg-slate-800 transition-all flex items-center justify-center gap-2 text-xs"
+                    >
+                      <Save size={14} /> {editMode ? 'Save Settings' : 'Create Account'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormOpen(false)}
+                      className="px-4 py-3 bg-white border border-slate-200 text-slate-700 font-extrabold rounded-xl hover:bg-slate-50 transition-all text-xs"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
               </div>
             ) : (
-              <div className="divide-y divide-gray-100 overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-[500px]">
-                  <thead>
-                    <tr className="bg-gray-50/50 text-[10px] uppercase font-black tracking-wider text-gray-400">
-                      <th className="p-4 pl-6">Username</th>
-                      <th className="p-4">Designated Role</th>
-                      <th className="p-4">Permitted Modules</th>
-                      <th className="p-4 pr-6 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {users.map(u => (
-                      <tr key={u.id} className="hover:bg-gray-50/30 transition-colors">
-                        <td className="p-4 pl-6 font-bold text-gray-900">{u.username}</td>
-                        <td className="p-4">
-                          <span className={`inline-flex items-center px-2.5 py-1 text-xs font-bold rounded-full ${
-                            u.role === 'admin' ? 'bg-orange-50 text-orange-600' :
-                            u.role === 'cashier' ? 'bg-blue-50 text-blue-600' :
-                            u.role === 'waiter' ? 'bg-purple-50 text-purple-600' :
-                            'bg-zinc-100 text-zinc-600'
-                          }`}>
-                            {u.role.toUpperCase()}
-                          </span>
-                        </td>
-                        <td className="p-4">
-                          <p className="text-xs text-gray-500 font-semibold max-w-[240px] truncate">
-                            {u.permissions && u.permissions.length > 0 
-                              ? u.permissions.join(', ')
-                              : 'No access granted'}
-                          </p>
-                        </td>
-                        <td className="p-4 pr-6 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => handleOpenEdit(u)}
-                              className="p-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-600 hover:text-orange-500 hover:border-orange-200 transition-all"
-                            >
-                              <Edit size={14} />
-                            </button>
-                            {u.username !== 'admin' && (
-                              <button
-                                onClick={() => handleDeleteUser(u.id)}
-                                className="p-2 bg-red-50 border border-red-100 rounded-lg text-red-500 hover:bg-red-100 transition-all"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              // Placeholder State
+              <div className="bg-slate-100/40 border border-dashed border-slate-200 rounded-3xl p-10 text-center flex flex-col items-center justify-center h-[360px] space-y-4">
+                <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 shadow-inner">
+                  <Shield size={26} />
+                </div>
+                <div>
+                  <p className="font-extrabold text-slate-700 text-base">Select Staff Profile</p>
+                  <p className="text-xs text-slate-400 font-semibold max-w-[220px] mx-auto mt-1 leading-relaxed">
+                    Click the edit icon on any staff card to modify their credentials, role, and module permissions.
+                  </p>
+                </div>
+                <button
+                  onClick={handleOpenCreate}
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl shadow-sm transition-all"
+                >
+                  Create New Account
+                </button>
               </div>
             )}
           </div>
 
-          {/* Right Side: Create/Edit Form */}
-          {formOpen && (
-            <div className="lg:col-span-6 bg-white rounded-3xl border border-gray-100 shadow-sm overflow-visible animate-slideUp flex flex-col">
-              <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-zinc-950 text-white flex-shrink-0">
-                <h3 className="font-bold flex items-center gap-2">
-                  <Shield size={18} className="text-orange-400" />
-                  {editMode && selectedUser ? `Edit User: ${selectedUser.username}` : 'Create Staff Member'}
-                </h3>
-                <button 
-                  onClick={() => setFormOpen(false)}
-                  className="text-gray-400 hover:text-white p-1"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-
-              <form onSubmit={handleSubmit} className="flex flex-col">
-                {/* Scrollable content area */}
-                <div className="px-6 pt-6 pb-4 space-y-6">
-                
-                {/* Username Input */}
-                <div>
-                  <label className="block text-xs font-black text-gray-400 uppercase tracking-wider mb-2">Username</label>
-                  <input 
-                    type="text" 
-                    value={formData.username}
-                    onChange={(e) => setFormData({ ...formData, username: e.target.value.toLowerCase().replace(/\s/g, '') })}
-                    placeholder="Enter unique staff username..."
-                    disabled={editMode && selectedUser?.username === 'admin'}
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-medium focus:outline-none focus:border-orange-400 focus:bg-white transition-all text-sm text-gray-800"
-                  />
-                </div>
-
-                {/* Full Name Input */}
-                <div>
-                  <label className="block text-xs font-black text-gray-400 uppercase tracking-wider mb-2">Full Name</label>
-                  <input 
-                    type="text" 
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="Enter staff member's full name..."
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-medium focus:outline-none focus:border-orange-400 focus:bg-white transition-all text-sm text-gray-800"
-                  />
-                </div>
-
-                {/* Password Input */}
-                <div>
-                  <label className="block text-xs font-black text-gray-400 uppercase tracking-wider mb-2">
-                    {editMode ? 'New Password (Leave empty to keep current)' : 'Password'}
-                  </label>
-                  <div className="relative">
-                    <Key className="absolute left-4 top-3 text-gray-400" size={18} />
-                    <input 
-                      type="password" 
-                      value={formData.password}
-                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      placeholder={editMode ? '••••••••' : 'Enter pass key...'}
-                      className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-medium focus:outline-none focus:border-orange-400 focus:bg-white transition-all text-sm text-gray-800"
-                    />
-                  </div>
-                </div>
-
-                {/* Role selection */}
-                <div>
-                  <label className="block text-xs font-black text-gray-400 uppercase tracking-wider mb-2">System Role</label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {['admin', 'cashier', 'waiter', 'kitchen'].map(r => (
-                      <button
-                        key={r}
-                        type="button"
-                        onClick={() => setFormData({ ...formData, role: r })}
-                        className={`py-3 px-2 border rounded-xl text-center font-bold text-xs uppercase tracking-wide transition-all ${
-                          formData.role === r 
-                            ? 'bg-orange-500 text-white border-orange-500 shadow-md shadow-orange-500/20' 
-                            : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                        }`}
-                      >
-                        {r}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Permissions Toggles */}
-                <div>
-                  <div className="flex justify-between items-center mb-3">
-                    <label className="text-xs font-black text-gray-400 uppercase tracking-wider">Module Permissions</label>
-                    <div className="flex items-center gap-2">
-                      <button 
-                        type="button" 
-                        onClick={handleSelectAllPermissions}
-                        className="text-[10px] font-black text-orange-600 uppercase hover:underline"
-                      >
-                        Select All
-                      </button>
-                      <span className="text-gray-300">|</span>
-                      <button 
-                        type="button" 
-                        onClick={handleClearPermissions}
-                        className="text-[10px] font-black text-gray-500 uppercase hover:underline"
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-72 overflow-y-auto border border-gray-100 rounded-xl p-3 bg-gray-50/50 custom-scrollbar">
-                    {AVAILABLE_PERMISSIONS.map(perm => {
-                      const isChecked = formData.permissions.includes(perm.id);
-                      return (
-                        <button
-                          key={perm.id}
-                          type="button"
-                          onClick={() => handleTogglePermission(perm.id)}
-                          className={`flex items-start gap-3 p-2.5 rounded-xl border text-left transition-all ${
-                            isChecked 
-                              ? 'bg-white border-orange-200 shadow-sm' 
-                              : 'bg-transparent border-transparent hover:bg-gray-100/50'
-                          }`}
-                        >
-                          <span className="mt-0.5 text-orange-500">
-                            {isChecked ? <CheckSquare size={16} /> : <Square size={16} className="text-gray-300" />}
-                          </span>
-                          <div>
-                            <p className="text-xs font-bold text-gray-800">{perm.label}</p>
-                            <p className="text-[10px] text-gray-400 font-semibold mt-0.5 leading-snug">{perm.desc}</p>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-                </div>
-
-                {/* Fixed button area */}
-                <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex items-center gap-3 flex-shrink-0 sticky bottom-0">
-                  <button
-                    type="submit"
-                    className="flex-1 py-3.5 bg-zinc-950 text-white font-bold rounded-xl shadow-lg shadow-zinc-900/10 hover:bg-zinc-800 transition-all flex items-center justify-center gap-2 text-sm"
-                  >
-                    <Save size={16} /> {editMode ? 'Save Settings' : 'Create Account'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFormOpen(false)}
-                    className="px-5 py-3.5 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition-all text-sm whitespace-nowrap"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
-
         </div>
-        </div>
-        </div>
+        <div className="h-24" />
       </div>
     </div>
   );

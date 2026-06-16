@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../database/db');
+const { queueCustomerChange } = require('../services/syncHelper');
 
 // GET all customers with history
 router.get('/', (req, res) => {
@@ -66,6 +67,9 @@ router.post('/', (req, res) => {
         });
       }
 
+      // Sync new customer to Supabase
+      queueCustomerChange(custId, 'insert');
+
       res.status(201).json({
         id: custId,
         name,
@@ -100,6 +104,9 @@ router.put('/:id', (req, res) => {
       console.error('Error updating customer:', err.message);
       return res.status(500).json({ error: err.message });
     }
+    // Sync updated customer details to Supabase
+    queueCustomerChange(id, 'update');
+
     res.json({ message: 'Customer updated successfully.' });
   });
 });
@@ -122,6 +129,9 @@ router.delete('/:id', (req, res) => {
         console.error('Error deleting customer:', err.message);
         return res.status(500).json({ error: err.message });
       }
+      // Sync deleted customer from Supabase
+      queueCustomerChange(id, 'delete');
+
       res.json({ message: 'Customer account deleted successfully.' });
     });
   });
@@ -187,6 +197,9 @@ router.post('/:id/ledger', (req, res) => {
               console.error('Error updating customer balance:', err.message);
               return res.status(500).json({ error: err.message });
             }
+            // Sync customer balance update to Supabase
+            queueCustomerChange(id, 'update');
+
             res.json({ customer_id: id, type, amount: entryAmount, note, newBalance });
           });
         });

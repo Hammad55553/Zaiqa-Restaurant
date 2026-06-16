@@ -63,7 +63,7 @@ const Cart = ({
                     </div>
                     <p className="text-orange-600 font-extrabold text-xs mt-0.5">Rs. {item.price}</p>
                   </div>
-                  {!item.sent && !isLocked && (
+                  {!item.sent && (
                     <button 
                       onClick={() => onRemove(item.cartId || item.id)}
                       className="absolute top-2 right-2 text-gray-300 hover:text-red-500 transition-colors p-1"
@@ -77,7 +77,7 @@ const Cart = ({
                   <div className={`flex items-center bg-gray-50 rounded-lg border border-gray-200 p-0.5 shadow-inner ${(item.sent && isLocked) ? 'opacity-50 pointer-events-none' : ''}`}>
                     <button 
                       onClick={() => onUpdateQty(item.cartId || item.id, -1)}
-                      disabled={isLocked}
+                      disabled={item.sent && isLocked}
                       className="w-6 h-6 flex items-center justify-center bg-white rounded shadow-sm text-gray-600 hover:text-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Minus size={12} />
@@ -85,7 +85,7 @@ const Cart = ({
                     <span className="w-8 text-center font-black text-gray-800 text-xs">{item.qty}</span>
                     <button 
                       onClick={() => onUpdateQty(item.cartId || item.id, 1)}
-                      disabled={isLocked}
+                      disabled={item.sent && isLocked}
                       className="w-6 h-6 flex items-center justify-center bg-orange-500 rounded shadow-sm text-white hover:bg-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Plus size={12} />

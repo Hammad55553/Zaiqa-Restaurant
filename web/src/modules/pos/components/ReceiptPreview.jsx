@@ -7,7 +7,13 @@ import { getOfflineItem } from '../../../utils/offlineDB';
 // ---------- The actual slip (80mm thermal receipt) ----------
 const Slip = ({ data, isPrintMode }) => {
   if (!data) return null;
-  const { items = [], subtotal = 0, tax = 0, total = 0, orderId = 'PENDING', date = new Date().toISOString(), customerPhone = 'N/A', table = 'N/A' } = data;
+  const { items = [], subtotal = 0, tax = 0, total = 0, orderId = 'PENDING', date = new Date().toISOString(), customerPhone = 'N/A', table = 'N/A', serviceCharges } = data;
+
+  const serviceChargesAmt = serviceCharges !== undefined
+    ? Number(serviceCharges)
+    : (items.find(i => i.name === 'Service Charges' || i.item_name === 'Service Charges')?.price || 0);
+
+  const displayItems = items.filter(item => item.name !== 'Service Charges' && item.item_name !== 'Service Charges');
 
   const fmt = (d) => new Date(d).toLocaleString('en-PK', {
     day: '2-digit', month: '2-digit', year: 'numeric',
@@ -23,11 +29,11 @@ const Slip = ({ data, isPrintMode }) => {
       fontSize: '11px',
       lineHeight: '1.55',
       padding: '5mm 4mm',
-      boxSizing: 'border-box',
+      boxSizing: 'border-box'
     }}>
       {/* Logo */}
       <div style={{ textAlign: 'center', marginBottom: '2mm' }}>
-        <img src={Logo} alt="logo" style={{ width: '18mm', height: '18mm', objectFit: 'contain', display: 'block', margin: '0 auto' }} />
+        <img src={Logo} alt="Logo" style={{ width: '18mm', height: '18mm', objectFit: 'contain', display: 'block', margin: '0 auto' }} />
       </div>
 
       {/* Restaurant Header */}
@@ -47,53 +53,108 @@ const Slip = ({ data, isPrintMode }) => {
 
       <div style={{ borderTop: '1px dashed #000', margin: '2.5mm 0' }} />
 
-      {/* Meta details */}
-      <div style={{ marginBottom: '1.5mm' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1mm', fontSize: '10px' }}>
-          <span style={{ fontWeight: '700' }}>Date:</span>
-          <span>{fmt(date)}</span>
+      {/* Meta grid */}
+      <div style={{ fontSize: '9.5px', marginBottom: '2mm' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1mm' }}>
+          <span>Bill No:</span><span style={{ fontWeight: '700' }}>{orderId}</span>
         </div>
-        {(table !== 'Delivery' && (typeof table === 'object' ? table.area !== 'Delivery' : true)) && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1mm', fontSize: '10px' }}>
-            <span style={{ fontWeight: '700' }}>Table No:</span>
-            <span>Table {typeof table === 'object' ? `${table.area} - ${table.number}` : table}</span>
-          </div>
-        )}
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1mm', fontSize: '10px' }}>
-          <span style={{ fontWeight: '700' }}>Bill ID:</span>
-          <span style={{ fontWeight: '900' }}>#{orderId}</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1mm' }}>
+          <span>Date:</span><span>{fmt(date)}</span>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1mm', fontSize: '10px' }}>
-          <span style={{ fontWeight: '700' }}>Cashier:</span>
-          <span>Admin</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1mm' }}>
+          <span>Table/Type:</span>
+          <span style={{ fontWeight: '700' }}>
+            {table ? (typeof table === 'object' ? `${table.area || 'Dining'} - Table ${table.number}` : table) : 'Walk-in'}
+          </span>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1mm', fontSize: '10px' }}>
-          <span style={{ fontWeight: '700' }}>Terminal:</span>
-          <span>Main POS</span>
+        
+        {/* Cashier Name */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1mm' }}>
+          <span>Cashier:</span>
+          <span style={{ fontWeight: '700' }}>
+            {(() => {
+              const cashierField = data.cashier;
+              if (cashierField) {
+                try {
+                  if (typeof cashierField === 'string' && cashierField.startsWith('{')) {
+                    const p = JSON.parse(cashierField);
+                    return p.name || p.username || 'Staff';
+                  }
+                } catch(e){}
+                if (typeof cashierField === 'object') {
+                  return cashierField.name || cashierField.username || 'Staff';
+                }
+                return cashierField;
+              }
+              try {
+                const u = localStorage.getItem('pos_current_user');
+                if (u) {
+                  const parsed = JSON.parse(u);
+                  return parsed.name || parsed.username || 'Staff';
+                }
+              } catch (e) {}
+              return 'Staff';
+            })()}
+          </span>
         </div>
+
         {customerPhone && customerPhone !== 'N/A' && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', marginBottom: '1mm' }}>
-            <span style={{ fontWeight: '700' }}>Customer:</span>
-            <span style={{ fontWeight: '950' }}>{customerPhone}</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1mm' }}>
+            <span>Phone:</span><span>{customerPhone}</span>
           </div>
         )}
-        {data.isActiveDelivery && !isPrintMode && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', marginTop: '1.5mm', paddingTop: '1.5mm', borderTop: '1px dotted #ccc' }}>
-            <span style={{ fontWeight: '700' }}>Delivery Status:</span>
-            <span style={{
-              fontWeight: '900',
-              padding: '1px 5px',
-              borderRadius: '3px',
-              background: data.deliveryStatus === 'preparing' ? '#ffedd5' : data.deliveryStatus === 'out_for_delivery' ? '#dbeafe' : '#fee2e2',
-              color: data.deliveryStatus === 'preparing' ? '#ea580c' : data.deliveryStatus === 'out_for_delivery' ? '#1d4ed8' : '#b91c1c',
-              textTransform: 'uppercase',
-              fontSize: '9px'
-            }}>
-              {data.deliveryStatus === 'out_for_delivery' ? 'ON THE WAY' : (data.deliveryStatus || 'PENDING')}
-            </span>
+        {data.customerName && data.customerName !== 'Walk-in Customer' && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1mm' }}>
+            <span>Customer:</span><span>{data.customerName}</span>
           </div>
         )}
       </div>
+
+      {/* CRM/Delivery specifics */}
+      {data.deliveryAddress && data.deliveryAddress !== 'N/A' && (
+        <>
+          <div style={{ borderTop: '1px dashed #000', margin: '2.5mm 0' }} />
+          <div style={{ fontSize: '9.5px', marginBottom: '2mm', background: '#f5f5f5', padding: '1mm 2mm', borderRadius: '4px' }}>
+            <div style={{ fontWeight: '900', textDecoration: 'underline', marginBottom: '1.5mm', fontSize: '10px' }}>
+              DELIVERY DETAILS:
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1mm' }}>
+              <span>Address:</span><span style={{ fontWeight: '700', textAlign: 'right', flex: 1, paddingLeft: '2mm' }}>{data.deliveryAddress}</span>
+            </div>
+            {data.paymentMethod && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1mm' }}>
+                <span>Payment Method:</span><span style={{ fontWeight: '900', textTransform: 'uppercase' }}>{data.paymentMethod}</span>
+              </div>
+            )}
+            {data.riderName && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1mm' }}>
+                <span>Rider:</span><span style={{ fontWeight: '900' }}>{data.riderName}</span>
+              </div>
+            )}
+            {data.remarks && (
+              <div style={{ marginTop: '1.5mm', borderTop: '1px dotted #ccc', paddingTop: '1mm' }}>
+                <span style={{ fontStyle: 'italic', color: '#444' }}>Remarks: {data.remarks}</span>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {data.deliveryStatus && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2mm', background: '#fffbeb', border: '1px solid #fef3c7', padding: '1.5mm 2.5mm', borderRadius: '4px' }}>
+          <span style={{ fontSize: '9px', fontWeight: '800', color: '#b45309' }}>DELIVERY STATUS:</span>
+          <span style={{
+            background: data.deliveryStatus === 'delivered' ? '#dcfce7' : '#fef3c7',
+            color: data.deliveryStatus === 'delivered' ? '#166534' : '#d97706',
+            padding: '0.5mm 1.5mm',
+            borderRadius: '2px',
+            fontWeight: '900',
+            fontSize: '9px'
+          }}>
+            {data.deliveryStatus === 'out_for_delivery' ? 'ON THE WAY' : (data.deliveryStatus || 'PENDING')}
+          </span>
+        </div>
+      )}
 
       <div style={{ borderTop: '1px dashed #000', margin: '2.5mm 0' }} />
 
@@ -107,7 +168,7 @@ const Slip = ({ data, isPrintMode }) => {
 
       {/* Items list */}
       <div style={{ marginBottom: '1mm' }}>
-        {items.map((item, i) => (
+        {displayItems.map((item, i) => (
           <div key={i} style={{ marginBottom: '2mm' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
               <span style={{ width: '24px', fontWeight: '700' }}>{item.qty}x</span>
@@ -126,9 +187,16 @@ const Slip = ({ data, isPrintMode }) => {
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1mm', fontSize: '11px' }}>
           <span>Subtotal</span><span style={{ fontWeight: '700' }}>Rs. {subtotal.toFixed(0)}</span>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
-          <span>GST / Tax</span><span style={{ fontWeight: '700' }}>Rs. {tax.toFixed(0)}</span>
-        </div>
+        {serviceChargesAmt > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1mm', fontSize: '11px' }}>
+            <span>Service Charges</span><span style={{ fontWeight: '700' }}>Rs. {serviceChargesAmt.toFixed(0)}</span>
+          </div>
+        )}
+        {tax > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
+            <span>GST / Tax</span><span style={{ fontWeight: '700' }}>Rs. {tax.toFixed(0)}</span>
+          </div>
+        )}
       </div>
 
       <div style={{ borderTop: '1.5px solid #000', margin: '1mm 0' }} />

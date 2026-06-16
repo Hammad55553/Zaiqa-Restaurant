@@ -28,32 +28,48 @@ db.on('error', (err) => {
 // Initialize database tables
 const initDb = () => {
   db.serialize(() => {
+    // Sync Queue Table
+    db.run(`CREATE TABLE IF NOT EXISTS sync_queue (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      table_name TEXT NOT NULL,
+      record_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',
+      attempts INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+
     // Users Table
     db.run(`CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL,
       role TEXT NOT NULL,
-      permissions TEXT
+      permissions TEXT,
+      name TEXT
     )`, () => {
       // Add permissions column in case of existing installations
       db.run(`ALTER TABLE users ADD COLUMN permissions TEXT`, () => {
-        // Seed default admin user if the table is empty
-        db.get('SELECT COUNT(*) as count FROM users', [], (err, row) => {
-          if (row && row.count === 0) {
-            const defaultPerms = JSON.stringify([
-              'pos', 'delivery', 'tables', 'kds', 'inventory', 'stock', 
-              'suppliers', 'khata', 'expenses', 'reports', 'settings', 'users'
-            ]);
-            db.run(
-              `INSERT INTO users (username, password, role, permissions) VALUES (?, ?, ?, ?)`,
-              ['admin', 'admin123', 'admin', defaultPerms],
-              (err2) => {
-                if (err2) console.error('Admin seeding error:', err2.message);
-                else console.log('🌱 Seeded default admin user.');
-              }
-            );
-          }
+        // Add name column in case of existing installations
+        db.run(`ALTER TABLE users ADD COLUMN name TEXT`, () => {
+          // Seed default admin user if the table is empty
+          db.get('SELECT COUNT(*) as count FROM users', [], (err, row) => {
+            if (row && row.count === 0) {
+              const defaultPerms = JSON.stringify([
+                'pos', 'delivery', 'tables', 'kds', 'inventory', 'stock', 
+                'suppliers', 'khata', 'expenses', 'reports', 'settings', 'users'
+              ]);
+              db.run(
+                `INSERT INTO users (username, password, role, permissions, name) VALUES (?, ?, ?, ?, ?)`,
+                ['admin', 'admin123', 'admin', defaultPerms, 'Administrator'],
+                (err2) => {
+                  if (err2) console.error('Admin seeding error:', err2.message);
+                  else console.log('🌱 Seeded default admin user.');
+                }
+              );
+            }
+          });
         });
       });
     });
@@ -249,6 +265,25 @@ const initDb = () => {
         price REAL NOT NULL,
         quantity INTEGER NOT NULL DEFAULT 1,
         FOREIGN KEY (delivery_order_id) REFERENCES delivery_orders (id) ON DELETE CASCADE
+      )`);
+
+      // Prepared Waste Table (cooked but not served/cancelled items)
+      db.run(`CREATE TABLE IF NOT EXISTS prepared_waste (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        item_name TEXT NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 1,
+        reason TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`);
+
+      // Prepared Waste Outflow Table (records where the returned/wasted food went)
+      db.run(`CREATE TABLE IF NOT EXISTS prepared_waste_outflow (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        item_name TEXT NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 1,
+        destination TEXT NOT NULL, -- 'Staff Consumed', 'Owner Consumed', 'Spoiled/Discarded', 'Other'
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )`);
     });
 };

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../database/db');
+const { queueInventoryChange } = require('../services/syncHelper');
 
 // ── GET all categories ──────────────────────────────
 router.get('/categories', (req, res) => {
@@ -76,6 +77,9 @@ router.post('/', (req, res) => {
         });
         stmt.finalize();
       }
+      // Sync new menu item to Supabase
+      queueInventoryChange(itemId, 'insert');
+
       res.json({ id: itemId, category_id, name, price, image });
     }
   );
@@ -100,9 +104,13 @@ router.patch('/:id', (req, res) => {
             });
             stmt.finalize();
           }
+          // Sync updated item to Supabase
+          queueInventoryChange(itemId, 'update');
           res.json({ success: true });
         });
       } else {
+        // Sync updated item to Supabase
+        queueInventoryChange(itemId, 'update');
         res.json({ success: true });
       }
     }
@@ -113,6 +121,8 @@ router.patch('/:id', (req, res) => {
 router.delete('/:id', (req, res) => {
   db.run(`DELETE FROM items WHERE id = ?`, [req.params.id], function (err) {
     if (err) return res.status(500).json({ error: err.message });
+    // Sync deleted item from Supabase
+    queueInventoryChange(req.params.id, 'delete');
     res.json({ success: true });
   });
 });

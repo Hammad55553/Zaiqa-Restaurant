@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../database/db');
+const { queueStockChange } = require('../services/syncHelper');
 
 // ── GET all stock items ──────────────────────────────
 router.get('/', (req, res) => {
@@ -25,6 +26,9 @@ router.post('/', (req, res) => {
       // Log initial creation
       db.run(`INSERT INTO stock_logs (item_id, action, qty_changed, remarks) VALUES (?, 'set', ?, 'Initial stock setup')`, [newItemId, quantity || 0]);
       
+      // Sync new stock item to Supabase
+      queueStockChange(newItemId, 'insert');
+
       res.json({ id: newItemId, name, unit, quantity, unit_price, min_alert });
     }
   );
@@ -38,6 +42,8 @@ router.patch('/:id', (req, res) => {
     [name, unit, unit_price, min_alert, req.params.id],
     function (err) {
       if (err) return res.status(500).json({ error: err.message });
+      // Sync updated stock details to Supabase
+      queueStockChange(req.params.id, 'update');
       res.json({ success: true });
     }
   );
@@ -63,6 +69,9 @@ router.post('/:id/adjust', (req, res) => {
       // Log the adjustment
       db.run(`INSERT INTO stock_logs (item_id, action, qty_changed, remarks) VALUES (?, ?, ?, ?)`, [req.params.id, action, parseFloat(qty), remarks || '']);
       
+      // Sync updated stock quantity to Supabase
+      queueStockChange(req.params.id, 'update');
+
       res.json({ success: true, newQuantity: newQty });
     });
   });
@@ -95,6 +104,8 @@ router.delete('/:id', (req, res) => {
       runStockRetry(`DELETE FROM stock_items WHERE id = ?`, [id], 4, 200, function(err) {
         if (err) return res.status(500).json({ error: 'Failed deleting stock item: ' + err.message });
         if (this.changes === 0) return res.status(404).json({ error: 'Stock item not found' });
+        // Sync deleted stock item from Supabase
+        queueStockChange(id, 'delete');
         res.json({ success: true, deletedId: id });
       });
     });

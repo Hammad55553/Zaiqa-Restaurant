@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Dimensions, Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Clipboard, ArrowLeft } from 'lucide-react-native';
 import MenuSection from '../components/MenuSection';
@@ -221,14 +222,34 @@ export default function OrderingScreen({
         fetchWithTimeout(`${API_BASE}/inventory/categories`),
       ]);
       if (itemsRes.ok && catsRes.ok) {
-        setMenuItems(await itemsRes.json());
+        const items = await itemsRes.json();
         const cats = await catsRes.json();
-        setCategories(['All', ...cats.map((c: any) => c.name)]);
+        const processedCats = ['All', ...cats.map((c: any) => c.name)];
+        
+        setMenuItems(items);
+        setCategories(processedCats);
+
+        // Cache menu items & categories
+        await AsyncStorage.setItem('CACHED_MENU_ITEMS', JSON.stringify(items));
+        await AsyncStorage.setItem('CACHED_MENU_CATEGORIES', JSON.stringify(processedCats));
       } else {
         throw new Error('Unreachable');
       }
     } catch (err) {
-      console.warn('Failed to fetch menu, using mock fallback');
+      console.warn('Failed to fetch menu, checking AsyncStorage cache...');
+      try {
+        const cachedItems = await AsyncStorage.getItem('CACHED_MENU_ITEMS');
+        const cachedCats = await AsyncStorage.getItem('CACHED_MENU_CATEGORIES');
+        if (cachedItems && cachedCats) {
+          setMenuItems(JSON.parse(cachedItems));
+          setCategories(JSON.parse(cachedCats));
+          return;
+        }
+      } catch (cacheErr) {
+        console.warn('Error reading menu cache:', cacheErr);
+      }
+
+      console.warn('Using mock fallback for menu');
       const mockItems: MenuItem[] = [
         { id: 101, name: 'Special Chicken Karahi', price: 1800, category_name: 'Karahi' },
         { id: 102, name: 'Mutton Joint Karahi', price: 3200, category_name: 'Karahi' },

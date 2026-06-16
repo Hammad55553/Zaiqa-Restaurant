@@ -145,7 +145,7 @@ const OrderTicket = ({ order, onStatusChange, onDelete, isHistory = false }) => 
 
       {/* Items List */}
       <div className="flex-1 p-4 space-y-2.5 bg-gray-50/20 overflow-y-auto max-h-[220px] custom-scrollbar">
-        {(order.items || []).map((item, idx) => (
+        {(order.items || []).filter(item => item.item_name !== 'Service Charges' && item.name !== 'Service Charges').map((item, idx) => (
           <div key={idx} className="flex justify-between items-start gap-3 border-b border-gray-100 pb-2.5 last:border-0 last:pb-0">
             <div className="flex-1">
               <p className="font-extrabold text-sm text-gray-800 leading-snug">{item.item_name || item.name}</p>

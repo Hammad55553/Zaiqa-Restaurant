@@ -98,7 +98,7 @@ function DotsMenu({ onLogout }: { onLogout: () => void }) {
 
       <Modal transparent visible={open} animationType="none" onRequestClose={() => hideMenu()}>
         <Pressable style={styles.modalOverlay} onPress={() => hideMenu()}>
-          <Pressable onPress={() => { }}>
+          <Pressable onPress={(e) => e.stopPropagation()}>
             <Animated.View
               style={[
                 styles.dropdownCard,

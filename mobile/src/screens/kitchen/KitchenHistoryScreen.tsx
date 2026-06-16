@@ -43,7 +43,9 @@ function CompletedOrderCard({ order }: { order: KitchenOrder }) {
       <View style={styles.itemsSection}>
         {order.items.map((item, idx) => (
           <View key={item.id} style={[styles.itemRow, idx < order.items.length - 1 && styles.itemBorder]}>
-            <Text style={styles.itemQty}>×{item.quantity}</Text>
+            <View style={styles.qtyContainer}>
+              <Text style={styles.itemQty}>{item.quantity}x</Text>
+            </View>
             <Text style={styles.itemName} numberOfLines={1}>{item.item_name}</Text>
           </View>
         ))}
@@ -51,7 +53,7 @@ function CompletedOrderCard({ order }: { order: KitchenOrder }) {
 
       <View style={styles.totalRow}>
         <Text style={styles.orderIdText}>Order #{order.id}</Text>
-        <Text style={styles.totalAmount}>Rs. {order.total_amount.toFixed(0)}</Text>
+        <Text style={styles.timeLabel}>Prepared</Text>
       </View>
     </View>
   );
@@ -75,7 +77,7 @@ export default function KitchenHistoryScreen({
     return (
       <View style={styles.emptyContainer}>
         <View style={styles.emptyIcon}>
-          <UtensilsCrossed size={44} color="#64748b" />
+          <UtensilsCrossed size={44} color="#94a3b8" />
         </View>
         <Text style={styles.emptyTitle}>No completed orders yet</Text>
         <Text style={styles.emptySub}>Completed orders will appear here.</Text>
@@ -91,7 +93,7 @@ export default function KitchenHistoryScreen({
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.summaryBanner}>
-        <CheckCircle2 size={18} color="#16a34a" />
+        <CheckCircle2 size={16} color="#15803d" />
         <Text style={styles.summaryText}>{orders.length} orders completed today</Text>
       </View>
 
@@ -103,8 +105,8 @@ export default function KitchenHistoryScreen({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f1f5f9' },
-  scrollContent: { padding: 14, paddingBottom: 40, gap: 10 },
+  container: { flex: 1, backgroundColor: '#f8fafc' },
+  scrollContent: { padding: 16, paddingBottom: 40, gap: 14 },
   centerLoading: {
     flex: 1,
     justifyContent: 'center',
@@ -116,27 +118,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 40,
-    backgroundColor: '#f1f5f9',
+    backgroundColor: '#f8fafc',
   },
   emptyIcon: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: '#f1f5f9',
-    borderWidth: 2,
-    borderColor: '#e2e8f0',
+    borderWidth: 1.5,
+    borderColor: '#cbd5e1',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   emptyTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '900',
     color: '#0f172a',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   emptySub: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#64748b',
     textAlign: 'center',
   },
@@ -144,130 +146,154 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#f0fdf4',
-    borderRadius: 12,
-    padding: 12,
+    backgroundColor: '#ecfdf5',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderWidth: 1,
-    borderColor: '#bbf7d0',
-    marginBottom: 4,
+    borderColor: '#a7f3d0',
+    marginBottom: 6,
+    shadowColor: '#10b981',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
   },
   summaryText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#15803d',
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#065f46',
+    letterSpacing: 0.3,
   },
   card: {
     backgroundColor: '#ffffff',
-    borderRadius: 16,
+    borderRadius: 20,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     backgroundColor: '#f8fafc',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: '#f1f5f9',
   },
   tableBadge: {
     backgroundColor: '#0f172a',
-    borderRadius: 7,
-    paddingHorizontal: 9,
-    paddingVertical: 3,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
   tableNumber: {
     color: '#ffffff',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '900',
+    letterSpacing: 0.5,
   },
   areaText: {
     fontSize: 12,
     color: '#64748b',
-    fontWeight: '600',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   donePill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#f0fdf4',
-    borderRadius: 7,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
+    backgroundColor: '#ecfdf5',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderWidth: 1,
-    borderColor: '#bbf7d0',
+    borderColor: '#d1fae5',
   },
   doneText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '900',
-    color: '#16a34a',
-    letterSpacing: 0.5,
+    color: '#065f46',
+    letterSpacing: 0.8,
   },
   timePill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     backgroundColor: '#f1f5f9',
-    borderRadius: 7,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
   },
   timePillText: {
     fontSize: 11,
-    color: '#64748b',
-    fontWeight: '600',
+    color: '#475569',
+    fontWeight: '700',
   },
   itemsSection: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    gap: 2,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 4,
   },
   itemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 6,
-    gap: 10,
+    paddingVertical: 8,
+    gap: 12,
   },
   itemBorder: {
     borderBottomWidth: 1,
-    borderColor: '#f1f5f9',
+    borderColor: '#f8fafc',
+  },
+  qtyContainer: {
+    backgroundColor: '#fef3c7',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
   },
   itemQty: {
     fontSize: 12,
-    fontWeight: '800',
-    color: '#f97316',
-    width: 28,
+    fontWeight: '900',
+    color: '#d97706',
   },
   itemName: {
     flex: 1,
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#374151',
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1e293b',
   },
   totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     backgroundColor: '#f8fafc',
     borderTopWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: '#f1f5f9',
   },
   orderIdText: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#94a3b8',
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
-  totalAmount: {
-    fontSize: 15,
-    fontWeight: '900',
-    color: '#0f172a',
+  timeLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#16a34a',
+    backgroundColor: '#f0fdf4',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
 });

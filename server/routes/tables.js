@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../database/db');
+const { queueTableChange } = require('../services/syncHelper');
 
 // @route   GET /api/tables
 // @desc    Get all tables
@@ -36,6 +37,9 @@ router.post('/', (req, res) => {
         }
         return res.status(500).json({ error: err.message });
       }
+      // Sync new table to Supabase
+      queueTableChange(this.lastID, 'insert');
+
       res.status(201).json({ id: this.lastID, number: table_number, area, seats: seats || 4, status: 'available' });
     }
   );
@@ -65,6 +69,8 @@ router.patch('/:id', (req, res) => {
     values,
     function (err) {
       if (err) return res.status(500).json({ error: err.message });
+      // Sync updated table details/status to Supabase
+      queueTableChange(id, 'update');
       res.json({ success: true });
     }
   );
@@ -75,6 +81,8 @@ router.patch('/:id', (req, res) => {
 router.delete('/:id', (req, res) => {
   db.run(`DELETE FROM tables WHERE id = ?`, [req.params.id], function (err) {
     if (err) return res.status(500).json({ error: err.message });
+    // Sync deleted table from Supabase
+    queueTableChange(req.params.id, 'delete');
     res.json({ success: true });
   });
 });

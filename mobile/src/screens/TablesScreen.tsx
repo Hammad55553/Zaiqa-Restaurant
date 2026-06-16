@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, ScrollView, ActivityIndicator, Alert, TouchableOpacity, Text } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE } from '../config';
 import TableCard from '../components/TableCard';
 import AreaScroller from '../components/AreaScroller';
@@ -78,14 +79,51 @@ export default function TablesScreen({
       if (res.ok) {
         const data: Table[] = await res.json();
         setTables(data);
+        
+        const pref = ['Male', 'Family', 'Lawn'];
         const uniqueAreas = Array.from(new Set(data.map(t => t.area)));
+        uniqueAreas.sort((a, b) => {
+          let idxA = pref.indexOf(a);
+          let idxB = pref.indexOf(b);
+          if (idxA === -1) idxA = 999;
+          if (idxB === -1) idxB = 999;
+          return idxA - idxB;
+        });
+
         setAreas(uniqueAreas);
         if (uniqueAreas.length > 0) setSelectedArea(uniqueAreas[0]);
+
+        // Save to cache
+        await AsyncStorage.setItem('CACHED_TABLES', JSON.stringify(data));
       } else {
         throw new Error('Unreachable');
       }
     } catch (err) {
-      console.warn('Failed to fetch tables, using mock fallback');
+      console.warn('Failed to fetch tables, trying cache...');
+      try {
+        const cached = await AsyncStorage.getItem('CACHED_TABLES');
+        if (cached) {
+          const data: Table[] = JSON.parse(cached);
+          setTables(data);
+          
+          const pref = ['Male', 'Family', 'Lawn'];
+          const uniqueAreas = Array.from(new Set(data.map(t => t.area)));
+          uniqueAreas.sort((a, b) => {
+            let idxA = pref.indexOf(a);
+            let idxB = pref.indexOf(b);
+            if (idxA === -1) idxA = 999;
+            if (idxB === -1) idxB = 999;
+            return idxA - idxB;
+          });
+          setAreas(uniqueAreas);
+          if (uniqueAreas.length > 0) setSelectedArea(uniqueAreas[0]);
+          return;
+        }
+      } catch (cacheErr) {
+        console.warn('Failed to load tables from cache:', cacheErr);
+      }
+
+      console.warn('Using mock fallback for tables');
       const mockTables: Table[] = [
         { id: 1, number: '1', area: 'Male', seats: 4, status: 'available' },
         { id: 2, number: '2', area: 'Male', seats: 2, status: 'dining', startTime: new Date(Date.now() - 12 * 60 * 1000).toISOString() },
