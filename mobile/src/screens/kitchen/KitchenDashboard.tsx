@@ -10,6 +10,7 @@ import {
   Animated,
   Pressable,
   AppState,
+  DeviceEventEmitter,
 } from 'react-native';
 import { Flame, CheckCircle2, LogOut, MoreVertical, RefreshCw } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -157,10 +158,16 @@ export default function KitchenDashboard({ username, onLogout }: KitchenDashboar
     }
   }, []);
 
-  // Auto-poll every 8s
+  // Auto-poll every 8s + instant refresh on WebSocket sync trigger
   useEffect(() => {
     fetchLive();
     pollTimer.current = setInterval(() => fetchLive(), 8000);
+
+    const syncSub = DeviceEventEmitter.addListener('SYNC_TRIGGER', (event) => {
+      if (event.url.includes('/orders')) {
+        fetchLive();
+      }
+    });
 
     const sub = AppState.addEventListener('change', state => {
       if (state === 'active') {
@@ -174,9 +181,10 @@ export default function KitchenDashboard({ username, onLogout }: KitchenDashboar
 
     return () => {
       if (pollTimer.current) clearInterval(pollTimer.current);
+      syncSub.remove();
       sub.remove();
     };
-  }, []);
+  }, [fetchLive]);
 
   // Load history when switching tabs
   useEffect(() => {

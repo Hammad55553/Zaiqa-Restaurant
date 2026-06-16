@@ -20,6 +20,19 @@ app.set('wss_server', wss);
 
 wss.on('connection', (ws) => {
   console.log('🔌 Client connected via WebSocket');
+  
+  ws.on('message', (message) => {
+    try {
+      const data = JSON.parse(message);
+      if (data.type === 'NOTIFICATION') {
+        console.log(`🔔 Custom Notification received: ${data.title} - ${data.desc}`);
+        broadcast(data);
+      }
+    } catch (e) {
+      console.warn('⚠️ Received non-JSON message over WS:', message);
+    }
+  });
+
   ws.on('close', () => console.log('❌ Client disconnected from WebSocket'));
 });
 
@@ -35,13 +48,35 @@ const broadcast = (data) => {
 
 app.set('wss_broadcast', broadcast);
 
-// Sync mutation middleware: auto-broadcast a SYNC_TRIGGER on successful non-GET mutations
+// Sync mutation middleware: auto-broadcast a SYNC_TRIGGER and NOTIFICATION on successful non-GET mutations
 app.use((req, res, next) => {
   if (req.method !== 'GET') {
     res.on('finish', () => {
       if (res.statusCode >= 200 && res.statusCode < 300) {
         console.log(`📡 Successful mutation detected: ${req.method} ${req.originalUrl}. Broadcasting sync...`);
+        
+        // 1. Broadcast sync trigger
         broadcast({ type: 'SYNC_TRIGGER', method: req.method, url: req.originalUrl, timestamp: Date.now() });
+
+        // 2. Broadcast critical notifications automatically
+        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        if (req.method === 'POST' && req.originalUrl.includes('/orders')) {
+          broadcast({
+            type: 'NOTIFICATION',
+            id: `notif-order-${Date.now()}`,
+            title: 'New Order Placed 📝',
+            desc: `A new order has been received by the system.`,
+            time: timeStr
+          });
+        } else if (req.originalUrl.includes('/orders') && (req.method === 'PUT' || req.method === 'PATCH')) {
+          broadcast({
+            type: 'NOTIFICATION',
+            id: `notif-update-${Date.now()}`,
+            title: 'Order Status Updated 🔄',
+            desc: `An order's status or details have been updated.`,
+            time: timeStr
+          });
+        }
       }
     });
   }

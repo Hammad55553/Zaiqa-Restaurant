@@ -14,6 +14,7 @@ import {
   RefreshControl,
   ActivityIndicator,
   Linking,
+  DeviceEventEmitter,
 } from 'react-native';
 import { Bike, LogOut, RefreshCw, Clock, MapPin, Phone, User, FileText, CheckCircle2, MoreVertical, X, AlertCircle } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -91,10 +92,16 @@ export default function RiderDashboard({ username, onLogout }: RiderDashboardPro
     }
   }, []);
 
-  // Auto-poll every 8s
+  // Auto-poll every 8s + instant refresh on WebSocket sync trigger
   useEffect(() => {
     fetchOrders();
     pollTimer.current = setInterval(() => fetchOrders(), 8000);
+
+    const syncSub = DeviceEventEmitter.addListener('SYNC_TRIGGER', (event) => {
+      if (event.url.includes('/orders') || event.url.includes('/deliveries')) {
+        fetchOrders();
+      }
+    });
 
     const sub = AppState.addEventListener('change', state => {
       if (state === 'active') {
@@ -108,9 +115,10 @@ export default function RiderDashboard({ username, onLogout }: RiderDashboardPro
 
     return () => {
       if (pollTimer.current) clearInterval(pollTimer.current);
+      syncSub.remove();
       sub.remove();
     };
-  }, []);
+  }, [fetchOrders]);
 
   const handleUpdateStatus = async (orderId: number, newStatus: 'completed') => {
     setUpdatingId(orderId);

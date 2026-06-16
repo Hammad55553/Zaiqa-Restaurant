@@ -11,6 +11,71 @@ class SyncService {
     this.syncInterval = null;
     this.lastSyncTime = {};
     this.pollInterval = 5000; // Poll every 5 seconds
+    this.ws = null;
+  }
+
+  /**
+   * Connect to the WebSocket server for instant changes and notifications
+   */
+  connectWebSocket() {
+    if (this.ws) {
+      try { this.ws.close(); } catch(e){}
+    }
+
+    const wsUrl = API_BASE.replace(/^http/, 'ws').replace(/\/api$/, '');
+    console.log(`🔌 Connecting to WebSocket sync server at: ${wsUrl}`);
+    this.ws = new WebSocket(wsUrl);
+
+    this.ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        console.log('📡 WS Message received:', data);
+        
+        if (data.type === 'SYNC_TRIGGER') {
+          // Trigger local state refreshes instantly!
+          if (data.url.includes('/orders')) {
+            this.syncOrders();
+          } else if (data.url.includes('/tables')) {
+            this.syncTables();
+          } else if (data.url.includes('/inventory')) {
+            this.syncInventory();
+          } else if (data.url.includes('/customers')) {
+            this.syncCustomers();
+          } else if (data.url.includes('/stock')) {
+            this.syncStock();
+          }
+        } else if (data.type === 'NOTIFICATION') {
+          // Broadcast notification to all listeners
+          this.emit('notification', data);
+        }
+      } catch (err) {
+        console.error('Error handling WS message:', err);
+      }
+    };
+
+    this.ws.onclose = () => {
+      console.warn('🔌 WebSocket connection closed. Reconnecting in 3s...');
+      setTimeout(() => this.connectWebSocket(), 3000);
+    };
+
+    this.ws.onerror = (err) => {
+      console.error('🔌 WebSocket connection error:', err);
+    };
+  }
+
+  /**
+   * Send a custom notification to other devices
+   */
+  sendNotification(title, desc) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({
+        type: 'NOTIFICATION',
+        title,
+        desc,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        id: `notif-${Date.now()}`
+      }));
+    }
   }
 
   /**
@@ -49,21 +114,24 @@ class SyncService {
   startSync() {
     console.log('🔄 Starting real-time sync...');
     
+    // Connect WebSocket first
+    this.connectWebSocket();
+
     // Sync orders periodically
     this.syncOrders();
-    this.orderSyncInterval = setInterval(() => this.syncOrders(), this.pollInterval);
+    this.orderSyncInterval = setInterval(() => this.syncOrders(), this.pollInterval * 2);
 
     // Sync tables periodically
     this.syncTables();
-    this.tableSyncInterval = setInterval(() => this.syncTables(), this.pollInterval);
+    this.tableSyncInterval = setInterval(() => this.syncTables(), this.pollInterval * 2);
 
     // Sync inventory periodically
     this.syncInventory();
-    this.inventorySyncInterval = setInterval(() => this.syncInventory(), this.pollInterval * 2); // Less frequent
+    this.inventorySyncInterval = setInterval(() => this.syncInventory(), this.pollInterval * 4); // Less frequent
 
     // Sync customers periodically
     this.syncCustomers();
-    this.customerSyncInterval = setInterval(() => this.syncCustomers(), this.pollInterval * 2);
+    this.customerSyncInterval = setInterval(() => this.syncCustomers(), this.pollInterval * 4);
   }
 
   /**
@@ -71,6 +139,10 @@ class SyncService {
    */
   stopSync() {
     console.log('⛔ Stopping real-time sync');
+    if (this.ws) {
+      try { this.ws.close(); } catch(e){}
+      this.ws = null;
+    }
     clearInterval(this.orderSyncInterval);
     clearInterval(this.tableSyncInterval);
     clearInterval(this.inventorySyncInterval);

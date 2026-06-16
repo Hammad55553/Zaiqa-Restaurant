@@ -10,6 +10,60 @@ import { ToastProvider } from './src/components/Toast';
 import { loadServerIP } from './src/config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { useToast } from './src/components/Toast';
+import { WS_URL } from './src/config';
+import { DeviceEventEmitter, Vibration, useRef } from 'react-native';
+
+function WebSocketManager() {
+  const toast = useToast();
+  const wsRef = useRef<WebSocket | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    let reconnectTimer: ReturnType<typeof setTimeout>;
+
+    function connect() {
+      if (!active) return;
+      console.log(`🔌 Connecting to Mobile WS server at ${WS_URL}`);
+      const ws = new WebSocket(WS_URL);
+      wsRef.current = ws;
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'SYNC_TRIGGER') {
+            DeviceEventEmitter.emit('SYNC_TRIGGER', data);
+          } else if (data.type === 'NOTIFICATION') {
+            toast.info(data.title, data.desc);
+            Vibration.vibrate([0, 400, 100, 400]);
+          }
+        } catch (e) {
+          console.warn('Error processing WS msg:', e);
+        }
+      };
+
+      ws.onclose = () => {
+        console.warn('🔌 Mobile WS disconnected. Reconnecting in 4s...');
+        reconnectTimer = setTimeout(connect, 4000);
+      };
+
+      ws.onerror = (err) => {
+        console.error('🔌 Mobile WS error:', err);
+      };
+    }
+
+    connect();
+
+    return () => {
+      active = false;
+      if (wsRef.current) wsRef.current.close();
+      clearTimeout(reconnectTimer);
+    };
+  }, []);
+
+  return null;
+}
+
 function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [user, setUser] = useState<{ username: string; role: 'waiter' | 'kitchen' | 'rider' } | null>(null);
@@ -64,6 +118,7 @@ function App() {
 
   return (
     <ToastProvider>
+      <WebSocketManager />
       <SafeAreaProvider>
         <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
         <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>

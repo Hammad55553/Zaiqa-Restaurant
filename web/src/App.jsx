@@ -350,9 +350,51 @@ function App() {
     
     console.log('🚀 Starting real-time sync service for multi-device support');
     syncService.startSync();
+
+    const unsubscribe = syncService.subscribe('notification', (notif) => {
+      // 1. Add notification to state
+      setNotifications(prev => [
+        {
+          id: notif.id,
+          title: notif.title,
+          desc: notif.desc,
+          time: notif.time,
+          read: false
+        },
+        ...prev
+      ]);
+
+      // 2. Play audio notification chime
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        // Sweet POS notification sound chime
+        osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
+        gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        osc.start();
+        
+        setTimeout(() => {
+          osc.frequency.setValueAtTime(880, audioCtx.currentTime); // A5
+          setTimeout(() => {
+            try {
+              osc.stop();
+              audioCtx.close();
+            } catch(e){}
+          }, 150);
+        }, 100);
+      } catch (err) {
+        console.warn('Audio Context sound play blocked by browser policies:', err);
+      }
+    });
     
     return () => {
       syncService.stopSync();
+      unsubscribe();
     };
   }, [isLoaded, currentUser]);
 
