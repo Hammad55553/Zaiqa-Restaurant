@@ -1,5 +1,8 @@
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '.env') });
+const envPath = process.env.ELECTRON_APP_PATH
+  ? path.join(process.env.ELECTRON_APP_PATH, 'server/.env')
+  : path.join(__dirname, '.env');
+require('dotenv').config({ path: envPath });
 const express = require('express');
 const cors = require('cors');
 const os = require('os');

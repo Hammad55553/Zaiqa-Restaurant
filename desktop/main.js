@@ -17,7 +17,7 @@ let mainWindow;
 
 function seedDatabaseIfNeeded() {
   if (!userDataPath) return;
-  const sqlite3 = require('@vscode/sqlite3').verbose();
+  const sqlite3 = require('sqlite3').verbose();
   const dbPath = path.join(userDataPath, 'pos.db');
   const db = new sqlite3.Database(dbPath);
 
@@ -156,6 +156,7 @@ app.whenReady().then(() => {
   console.log('App ready!');
   userDataPath = app.getPath('userData');
   process.env.ELECTRON_USER_DATA_PATH = userDataPath;
+  process.env.ELECTRON_APP_PATH = app.getAppPath();
   console.log('UserData directory:', userDataPath);
   
   try {

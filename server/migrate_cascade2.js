@@ -2,7 +2,7 @@
  * Migration: Fix all missing ON DELETE CASCADE constraints
  * Tables: items, stock_logs, supplier_ledger
  */
-const sqlite3 = require('@vscode/sqlite3').verbose();
+const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const db = new sqlite3.Database(path.resolve(__dirname, 'database/pos.db'));
 
