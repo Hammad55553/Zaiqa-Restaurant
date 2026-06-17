@@ -235,8 +235,6 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 
-// ── Serve Static Assets ───────────────────────────────────────────────────────
-const path = require('path');
 // Serve the mobile assets folder so the mobile app can fetch them via URL to prevent OTA bundle image breakages
 app.use('/assets', express.static(path.join(__dirname, '../mobile/assets')));
 
