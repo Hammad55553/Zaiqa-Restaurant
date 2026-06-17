@@ -25,9 +25,37 @@ const isLocal = typeof window !== 'undefined' &&
    navigator.userAgent.toLowerCase().includes('electron'));
 
 const SERVER_IP = savedIP || (isLocal ? 'localhost' : (typeof window !== 'undefined' ? window.location.hostname : 'localhost'));
-const SERVER_PORT = '5005';
 
-export const SERVER_URL = `http://${SERVER_IP}:${SERVER_PORT}`;
-export const API_BASE   = `${SERVER_URL}/api`;
-export const WS_URL     = `${typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${SERVER_IP}:${SERVER_PORT}`;
+const getUrls = (ip) => {
+  const cleanIp = ip.trim();
+  if (cleanIp.startsWith('http://') || cleanIp.startsWith('https://')) {
+    return {
+      server: cleanIp,
+      api: cleanIp.endsWith('/') ? `${cleanIp}api` : `${cleanIp}/api`,
+      ws: cleanIp.replace('http://', 'ws://').replace('https://', 'wss://')
+    };
+  }
+  
+  if (cleanIp.includes('.') && !/^[0-9.]+$/.test(cleanIp) && cleanIp !== 'localhost' && cleanIp !== '127.0.0.1') {
+    // Hosted Domain (e.g. zaiqa-pos.onrender.com)
+    return {
+      server: `https://${cleanIp}`,
+      api: `https://${cleanIp}/api`,
+      ws: `wss://${cleanIp}`
+    };
+  }
+
+  // Local IP or localhost
+  return {
+    server: `http://${cleanIp}:5005`,
+    api: `http://${cleanIp}:5005/api`,
+    ws: `${typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${cleanIp}:5005`
+  };
+};
+
+const configUrls = getUrls(SERVER_IP);
+
+export const SERVER_URL = configUrls.server;
+export const API_BASE   = configUrls.api;
+export const WS_URL     = configUrls.ws;
 
