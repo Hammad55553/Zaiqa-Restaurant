@@ -18,6 +18,21 @@ const wss = new WebSocket.Server({ server });
 app.set('http_server', server);
 app.set('wss_server', wss);
 
+let electronApp;
+try {
+  electronApp = require('electron').app;
+  
+  // Aggressively clear cache on boot to ensure OTA updates reflect immediately on old desktop clients
+  const session = require('electron').session;
+  if (session && session.defaultSession) {
+    session.defaultSession.clearCache().then(() => {
+      console.log('✅ Electron cache forcefully cleared from server module!');
+    }).catch(err => console.error('Failed to clear cache:', err));
+  }
+} catch (e) {
+  console.log('Running outside Electron context');
+}
+
 wss.on('connection', (ws) => {
   console.log('🔌 Client connected via WebSocket');
   
