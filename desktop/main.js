@@ -127,6 +127,11 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  // Clear cache to ensure OTA UI updates are immediately visible
+  mainWindow.webContents.session.clearCache().then(() => {
+    console.log('Electron session cache cleared successfully.');
+  });
 }
 
 console.log('About to call app.whenReady()...');
