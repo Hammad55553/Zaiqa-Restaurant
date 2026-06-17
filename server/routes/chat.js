@@ -6,7 +6,7 @@ const { broadcastChatNotification } = require('../services/fcmHelper');
 // Get last 50 messages
 router.get('/', (req, res) => {
   db.all(
-    'SELECT * FROM messages ORDER BY id DESC LIMIT 50',
+    'SELECT m.*, u.name as sender_name FROM messages m LEFT JOIN users u ON m.sender_username = u.username ORDER BY m.id DESC LIMIT 50',
     [],
     (err, messages) => {
       if (err) {
@@ -58,7 +58,7 @@ router.get('/', (req, res) => {
 
 // Post a new message
 router.post('/', (req, res) => {
-  const { sender_username, sender_role, text } = req.body;
+  const { sender_username, sender_name, sender_role, text } = req.body;
   if (!sender_username || !sender_role || !text) {
     return res.status(400).json({ error: 'Username, role, and text are required' });
   }
@@ -81,6 +81,7 @@ router.post('/', (req, res) => {
           const messageObj = {
             id: messageId,
             sender_username,
+            sender_name,
             sender_role,
             text,
             created_at: now,

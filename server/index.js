@@ -219,12 +219,44 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 
+// ── Serve Static Assets ───────────────────────────────────────────────────────
+const path = require('path');
+// Serve the mobile assets folder so the mobile app can fetch them via URL to prevent OTA bundle image breakages
+app.use('/assets', express.static(path.join(__dirname, '../mobile/assets')));
+
 // ── Initialize SQLite DB ──────────────────────────────────────────────────────
 initDb();
 
 // ── Start Supabase Sync Worker ────────────────────────────────────────────────
-const { startSyncWorker } = require('./services/syncWorker');
+const { startSyncWorker, triggerSyncNow } = require('./services/syncWorker');
 startSyncWorker();
+
+// ── Sync Status & Force Sync ──────────────────────────────────────────────────
+const { db } = require('./database/db');
+app.get('/api/sync/status', (req, res) => {
+  db.get(`SELECT COUNT(*) as pending FROM sync_queue WHERE status='pending'`, (err, row1) => {
+    db.get(`SELECT COUNT(*) as failed FROM sync_queue WHERE status='failed'`, (err2, row2) => {
+      db.get(`SELECT MAX(created_at) as last_activity FROM sync_queue`, (err3, row3) => {
+        res.json({
+          pending: row1?.pending || 0,
+          failed: row2?.failed || 0,
+          lastActivity: row3?.last_activity || null,
+          workerRunning: true,
+          timestamp: new Date().toISOString()
+        });
+      });
+    });
+  });
+});
+
+app.post('/api/sync/force', async (req, res) => {
+  try {
+    await triggerSyncNow();
+    res.json({ success: true, message: 'Sync triggered' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ── Health Check ──────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
@@ -238,18 +270,24 @@ app.get('/api/health', (req, res) => {
 });
 
 // ── Routes ────────────────────────────────────────────────────────────────────
+const expensesRouter = require('./routes/expenses');
+const tablesRouter = require('./routes/tables');
+const chatRouter = require('./routes/chat');
+const syncRouter = require('./routes/sync');
+
 app.use('/api/orders',    require('./routes/orders'));
 app.use('/api/inventory', require('./routes/inventory'));
 app.use('/api/reports',   require('./routes/reports'));
 app.use('/api/stock',     require('./routes/stock'));
-app.use('/api/tables',    require('./routes/tables'));
+app.use('/api/tables',    tablesRouter);
 app.use('/api/suppliers', require('./routes/suppliers'));
-app.use('/api/expenses',  require('./routes/expenses'));
+app.use('/api/expenses',  expensesRouter);
 app.use('/api/customers', require('./routes/customers'));
 app.use('/api/deliveries',require('./routes/deliveries'));
 app.use('/api/users',     require('./routes/users'));
 app.use('/api/update',    require('./routes/update'));
-app.use('/api/chat',      require('./routes/chat'));
+app.use('/api/chat',      chatRouter);
+app.use('/api/sync',      syncRouter);
 
 // ── 404 fallback ──────────────────────────────────────────────────────────────
 app.use((req, res) => {

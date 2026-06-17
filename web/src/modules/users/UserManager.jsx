@@ -18,7 +18,10 @@ const AVAILABLE_PERMISSIONS = [
   { id: 'expenses', label: 'Expense Tracker', desc: 'Log daily expenditures and bills' },
   { id: 'reports', label: 'Financial Reports', desc: 'View sales, cost, and cashflows' },
   { id: 'settings', label: 'System Settings', desc: 'Configure printer and server variables' },
-  { id: 'users', label: 'User Manager', desc: 'Create and define staff access control' }
+  { id: 'chat', label: 'Team Chat Access', desc: 'Allow user to participate in real-time internal messaging' },
+  { id: 'users', label: 'User Manager', desc: 'Create and define staff access control' },
+  { id: 'sync', label: 'Sync Queue Manager', desc: 'Monitor offline sync queues and errors' },
+  { id: 'queue', label: 'Customer Queue Display', desc: 'Open the customer-facing order queue TV screen' }
 ];
 
 export default function UserManager() {
@@ -128,10 +131,7 @@ export default function UserManager() {
       return;
     }
 
-    if (!editMode && !formData.password) {
-      setError('Password is required for new users');
-      return;
-    }
+
 
     try {
       let url = `${API_BASE}/users`;
@@ -163,6 +163,35 @@ export default function UserManager() {
         setFormOpen(false);
       }, 1000);
 
+    } catch (err) {
+      setError('Network communication failed');
+    }
+  };
+
+  const handleResetPin = async () => {
+    if (!selectedUser) return;
+    if (!window.confirm("Are you sure you want to reset this user's PIN? They will be asked to set a new one on their next login.")) return;
+
+    setError('');
+    setSuccess('');
+    try {
+      const response = await fetch(`${API_BASE}/users/${selectedUser.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...formData, reset_pin: true })
+      });
+      if (response.ok) {
+        setSuccess('PIN reset successfully. User must set a new PIN on next login.');
+        fetchUsers();
+        setTimeout(() => {
+          setSelectedUser(null);
+          setEditMode(false);
+          setFormOpen(false);
+        }, 1500);
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Failed to reset PIN');
+      }
     } catch (err) {
       setError('Network communication failed');
     }
@@ -302,8 +331,8 @@ export default function UserManager() {
                     <div
                       key={u.id}
                       className={`p-5 rounded-2xl border transition-all duration-300 flex flex-col justify-between gap-4 ${selectedUser?.id === u.id
-                          ? 'border-orange-500 bg-orange-50/10 shadow-md shadow-orange-500/5'
-                          : 'border-slate-100 bg-white hover:border-slate-200 hover:shadow-md'
+                        ? 'border-orange-500 bg-orange-50/10 shadow-md shadow-orange-500/5'
+                        : 'border-slate-100 bg-white hover:border-slate-200 hover:shadow-md'
                         }`}
                     >
                       <div className="flex items-start justify-between">
@@ -312,10 +341,10 @@ export default function UserManager() {
                           <p className="text-xs text-slate-400 font-bold mt-0.5">@{u.username}</p>
                         </div>
                         <span className={`px-2.5 py-1 text-[10px] font-black tracking-widest uppercase rounded-lg ${u.role === 'admin' ? 'bg-orange-100 text-orange-700' :
-                            u.role === 'cashier' ? 'bg-blue-100 text-blue-700' :
-                              u.role === 'waiter' ? 'bg-purple-100 text-purple-700' :
-                                u.role === 'kitchen' ? 'bg-green-100 text-green-700' :
-                                  'bg-teal-100 text-teal-700'
+                          u.role === 'cashier' ? 'bg-blue-100 text-blue-700' :
+                            u.role === 'waiter' ? 'bg-purple-100 text-purple-700' :
+                              u.role === 'kitchen' ? 'bg-green-100 text-green-700' :
+                                'bg-teal-100 text-teal-700'
                           }`}>
                           {u.role}
                         </span>
@@ -374,7 +403,7 @@ export default function UserManager() {
                 </div>
 
                 {/* Form Element */}
-                <form onSubmit={handleSubmit} className="flex flex-col min-h-0 flex-1">
+                <form onSubmit={handleSubmit} className="flex flex-col min-h-0 flex-1" autoComplete="off">
 
                   {/* Scrollable Input Area */}
                   <div className="p-6 space-y-5 overflow-y-auto flex-1 min-h-0 custom-scrollbar bg-white">
@@ -388,6 +417,7 @@ export default function UserManager() {
                         onChange={(e) => setFormData({ ...formData, username: e.target.value.toLowerCase().replace(/\s/g, '') })}
                         placeholder="e.g. hammad"
                         disabled={editMode && selectedUser?.username === 'admin'}
+                        autoComplete="off"
                         className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:outline-none focus:border-orange-500 focus:bg-white transition-all text-sm text-slate-800"
                       />
                     </div>
@@ -406,9 +436,20 @@ export default function UserManager() {
 
                     {/* Password Input */}
                     <div>
-                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
-                        {editMode ? 'New Access Key (Blank = No change)' : 'Access Key / Password'}
-                      </label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                          {editMode ? 'New Access Key (Blank = No change)' : 'Access Key (Blank = Let User Set)'}
+                        </label>
+                        {editMode && (
+                          <button
+                            type="button"
+                            onClick={handleResetPin}
+                            className="text-[10px] font-bold text-red-500 hover:text-red-700 bg-red-50 px-2 py-0.5 rounded"
+                          >
+                            FORCE PIN RESET
+                          </button>
+                        )}
+                      </div>
                       <div className="relative flex items-center">
                         <Lock className="absolute left-3.5 text-slate-400" size={16} />
                         <input
@@ -416,6 +457,7 @@ export default function UserManager() {
                           value={formData.password}
                           onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                           placeholder={editMode ? "••••••••" : "Enter access PIN/password"}
+                          autoComplete="new-password"
                           className="w-full pl-10 pr-11 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:outline-none focus:border-orange-500 focus:bg-white transition-all text-sm text-slate-800"
                         />
                         <button
@@ -438,8 +480,8 @@ export default function UserManager() {
                             type="button"
                             onClick={() => setFormData({ ...formData, role: r })}
                             className={`py-2 px-1 border rounded-lg text-center font-bold text-[10px] uppercase tracking-wider transition-all ${formData.role === r
-                                ? 'bg-orange-500 text-white border-orange-500 shadow-sm'
-                                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                              ? 'bg-orange-500 text-white border-orange-500 shadow-sm'
+                              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                               }`}
                           >
                             {r}
@@ -480,8 +522,8 @@ export default function UserManager() {
                               type="button"
                               onClick={() => handleTogglePermission(perm.id)}
                               className={`flex items-start gap-3 p-2.5 rounded-lg border text-left transition-all ${isChecked
-                                  ? 'bg-white border-orange-200 shadow-sm'
-                                  : 'bg-transparent border-transparent hover:bg-slate-100/50'
+                                ? 'bg-white border-orange-200 shadow-sm'
+                                : 'bg-transparent border-transparent hover:bg-slate-100/50'
                                 }`}
                             >
                               <span className="mt-0.5 text-orange-500">

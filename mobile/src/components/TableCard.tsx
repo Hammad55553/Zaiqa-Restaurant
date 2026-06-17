@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Image, Dimensions, Animated } from 'react-native';
 import { Users as UsersIcon, Clock as ClockIcon } from 'lucide-react-native';
+import { API_BASE } from '../config';
 
 interface Table {
   id: number;
@@ -159,9 +160,10 @@ export default function TableCard({ table, onPress }: TableCardProps) {
       >
         {/* Table Background Image */}
         <Image 
-          source={require('../../assets/table.png')} 
+          source={{ uri: `${API_BASE.replace('/api', '')}/assets/table.png` }} 
           style={styles.tableCardBackgroundImage} 
           resizeMode="cover"
+          defaultSource={require('../../assets/table.png')}
         />
         
         {/* Dark overlay / state color overlay */}

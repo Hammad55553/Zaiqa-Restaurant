@@ -469,31 +469,70 @@ function runWithRetry(sql, params, retries, delay, callback) {
   });
 }
 
+// @route   GET /api/orders/all
+// @desc    Get ALL orders (active + completed + trashed) — admin only
+router.get('/all', (req, res) => {
+  const { include_trash, status } = req.query;
+  let sql = `SELECT * FROM orders WHERE 1=1`;
+  const params = [];
+
+  if (include_trash !== 'true') {
+    sql += ` AND deleted_at IS NULL`;
+  }
+  if (status) {
+    sql += ` AND status = ?`;
+    params.push(status);
+  }
+  sql += ` ORDER BY created_at DESC`;
+
+  db.all(sql, params, (err, orders) => {
+    if (err) return res.status(500).json({ error: 'Failed to fetch orders' });
+    if (!orders.length) return res.json([]);
+
+    const orderIds = orders.map(o => o.id);
+    const placeholders = orderIds.map(() => '?').join(',');
+    db.all(`SELECT * FROM order_items WHERE order_id IN (${placeholders})`, orderIds, (err2, items) => {
+      if (err2) return res.status(500).json({ error: 'Failed to fetch order items' });
+      res.json(orders.map(o => ({ ...o, items: (items || []).filter(i => i.order_id === o.id) })));
+    });
+  });
+});
+
+// @route   PATCH /api/orders/:id/trash
+// @desc    Soft-delete (move to trash)
+router.patch('/:id/trash', (req, res) => {
+  const { id } = req.params;
+  db.run(`UPDATE orders SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL`, [id], function(err) {
+    if (err) return res.status(500).json({ error: 'Failed to trash order' });
+    if (this.changes === 0) return res.status(404).json({ error: 'Order not found or already trashed' });
+    res.json({ success: true, id, trashed: true });
+  });
+});
+
+// @route   PATCH /api/orders/:id/restore
+// @desc    Restore from trash
+router.patch('/:id/restore', (req, res) => {
+  const { id } = req.params;
+  db.run(`UPDATE orders SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL`, [id], function(err) {
+    if (err) return res.status(500).json({ error: 'Failed to restore order' });
+    if (this.changes === 0) return res.status(404).json({ error: 'Order not found or not in trash' });
+    res.json({ success: true, id, restored: true });
+  });
+});
+
 // @route   DELETE /api/orders/:id
-// @desc    Delete an order and all its items (cascade safe, BUSY-retry)
+// @desc    Permanently delete an order (admin only — must be in trash first)
 router.delete('/:id', (req, res) => {
   const { id } = req.params;
-
-  // Step 1: Delete child items first (avoids FK constraint error)
-  runWithRetry(`DELETE FROM order_items WHERE order_id = ?`, [id], 5, 300, (err) => {
+  // Permanently delete (cascade handles order_items)
+  runWithRetry(`DELETE FROM orders WHERE id = ?`, [id], 5, 300, function(err) {
     if (err) {
-      console.error('Error deleting order items:', err.message);
-      return res.status(500).json({ error: 'Failed to delete order items: ' + err.message });
+      console.error('Error deleting order:', err.message);
+      return res.status(500).json({ error: 'Failed to delete order: ' + err.message });
     }
-
-    // Step 2: Delete the parent order
-    runWithRetry(`DELETE FROM orders WHERE id = ?`, [id], 5, 300, function(err) {
-      if (err) {
-        console.error('Error deleting order:', err.message);
-        return res.status(500).json({ error: 'Failed to delete order: ' + err.message });
-      }
-      if (this.changes === 0) {
-        return res.status(404).json({ error: 'Order not found' });
-      }
-      // Sync deleted order from Supabase
-      queueOrderChange(id, 'delete');
-      res.json({ success: true, deletedId: id });
-    });
+    if (this.changes === 0) return res.status(404).json({ error: 'Order not found' });
+    queueOrderChange(id, 'delete');
+    res.json({ success: true, deletedId: id });
   });
 });
 

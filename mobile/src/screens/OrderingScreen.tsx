@@ -46,6 +46,7 @@ interface QueuedOrder {
 interface OrderingScreenProps {
   selectedTable: Table;
   username: string;
+  name?: string;
   onBack: () => void;
   onQueueOfflineOrder: (order: QueuedOrder) => void;
   initialCartItems?: CartItem[];
@@ -54,6 +55,7 @@ interface OrderingScreenProps {
 export default function OrderingScreen({
   selectedTable,
   username,
+  name,
   onBack,
   onQueueOfflineOrder,
   initialCartItems
@@ -147,7 +149,7 @@ export default function OrderingScreen({
                   subtotal,
                   tax,
                   total_amount,
-                  remarks: `[Waiter: ${username}] ${updatedRemarks}`
+                  remarks: `[Waiter: ${name || username}] ${updatedRemarks}`
                 })
               });
 
@@ -330,7 +332,7 @@ export default function OrderingScreen({
           subtotal,
           tax,
           total_amount,
-          remarks: `[Waiter: ${username}] ${remarks || ''}`
+          remarks: `[Waiter: ${name || username}] ${remarks || ''}`
         };
 
         const res = await fetch(`${API_BASE}/orders/${activeOrder.id}/sync`, {
@@ -354,7 +356,7 @@ export default function OrderingScreen({
           table_number: selectedTable.number,
           area: selectedTable.area,
           customer_name: `Table Guest`,
-          remarks: `[Waiter: ${username}] ${remarks || ''}`,
+          remarks: `[Waiter: ${name || username}] ${remarks || ''}`,
           items: cartItems,
           subtotal,
           tax,
@@ -388,8 +390,8 @@ export default function OrderingScreen({
         tax,
         total_amount,
         remarks: activeOrder 
-          ? `[EDIT/SYNC ORDER #${activeOrder.id}] [Waiter: ${username}] ${remarks || ''}`
-          : `[Waiter: ${username}] ${remarks || ''}`,
+          ? `[EDIT/SYNC ORDER #${activeOrder.id}] [Waiter: ${name || username}] ${remarks || ''}`
+          : `[Waiter: ${name || username}] ${remarks || ''}`,
         timestamp: new Date().toLocaleTimeString(),
         status: 'pending'
       };
@@ -416,7 +418,7 @@ export default function OrderingScreen({
   return (
     <View style={styles.orderScreenWrapper}>
       {/* Active Table selection header */}
-      <View style={[styles.activeTableHeader, { paddingTop: insets.top, height: 60 + insets.top }]}>
+      <View style={styles.activeTableHeader}>
         <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.7}>
           <ArrowLeft size={20} color="#ffffff" />
         </TouchableOpacity>

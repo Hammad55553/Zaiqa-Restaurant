@@ -62,6 +62,8 @@ interface QueuedOrder {
 
 interface WaiterDashboardProps {
   username: string;
+  name?: string;
+  permissions?: string[];
   onLogout: () => void;
 }
 
@@ -69,11 +71,9 @@ interface WaiterDashboardProps {
 
 interface DotsMenuProps {
   onLogout: () => void;
-  chatEnabled: boolean;
-  onToggleChat: (val: boolean) => void;
 }
 
-function DotsMenu({ onLogout, chatEnabled, onToggleChat }: DotsMenuProps) {
+function DotsMenu({ onLogout }: DotsMenuProps) {
   const [open, setOpen] = useState(false);
   const scaleAnim = useRef(new Animated.Value(0.85)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
@@ -113,12 +113,7 @@ function DotsMenu({ onLogout, chatEnabled, onToggleChat }: DotsMenuProps) {
                 { transform: [{ scale: scaleAnim }], opacity: opacityAnim },
               ]}
             >
-              <TouchableOpacity style={styles.menuItem} onPress={() => hideMenu(() => onToggleChat(!chatEnabled))}>
-                <View style={[styles.menuIcon, { backgroundColor: '#1e293b' }]}>
-                  <Text style={{ color: '#ffffff', fontWeight: 'bold', fontSize: 10 }}>💬</Text>
-                </View>
-                <Text style={styles.menuLabel}>{chatEnabled ? 'Hide Chat Room' : 'Show Chat Room'}</Text>
-              </TouchableOpacity>
+
 
               <TouchableOpacity style={styles.menuItem} onPress={() => hideMenu(onLogout)}>
                 <View style={[styles.menuIcon, { backgroundColor: '#2a0a0a' }]}>
@@ -136,27 +131,12 @@ function DotsMenu({ onLogout, chatEnabled, onToggleChat }: DotsMenuProps) {
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 
-export default function WaiterDashboard({ username, onLogout }: WaiterDashboardProps) {
+export default function WaiterDashboard({ username, name, permissions, onLogout }: WaiterDashboardProps) {
   const insets = useSafeAreaInsets();
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<'tables' | 'history' | 'queue' | 'chat'>('tables');
-  const [chatEnabled, setChatEnabled] = useState(true);
-
-  useEffect(() => {
-    AsyncStorage.getItem('chat_module_enabled').then((val) => {
-      if (val !== null) {
-        setChatEnabled(val === 'true');
-      }
-    });
-  }, []);
-
-  const handleToggleChat = async (enabled: boolean) => {
-    setChatEnabled(enabled);
-    await AsyncStorage.setItem('chat_module_enabled', enabled ? 'true' : 'false');
-    if (!enabled && activeTab === 'chat') {
-      setActiveTab('tables');
-    }
-  };
+  
+  const chatEnabled = permissions?.includes('chat') || false;
 
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
   const [initialCartItems, setInitialCartItems] = useState<CartItem[]>([]);
@@ -294,9 +274,10 @@ export default function WaiterDashboard({ username, onLogout }: WaiterDashboardP
     <View style={styles.container}>
       {/* Background Watermark */}
       <Image
-        source={require('../../assets/Logo.jpg')}
+        source={{ uri: `${API_BASE.replace('/api', '')}/assets/Logo.jpg` }}
         style={styles.backgroundWatermark}
         resizeMode="contain"
+        defaultSource={require('../../assets/Logo.jpg')}
       />
 
       <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
@@ -311,107 +292,106 @@ export default function WaiterDashboard({ username, onLogout }: WaiterDashboardP
 
       {/* ── Header ── */}
       {!selectedTable && (
-        <View style={[styles.header, { paddingTop: insets.top, height: 60 + insets.top }]}>
+        <View style={styles.header}>
           <View style={styles.logoBadge}>
-            <Image source={require('../../assets/Logo.jpg')} style={styles.logoBadgeImage} resizeMode="cover" />
+            <Image source={{ uri: `${API_BASE.replace('/api', '')}/assets/Logo.jpg` }} defaultSource={require('../../assets/Logo.jpg')} style={styles.logoBadgeImage} resizeMode="cover" />
           </View>
           <View style={{ flex: 1, marginLeft: 12 }}>
             <Text style={styles.headerTitle}>ZAIQA MAHAL</Text>
-            <Text style={styles.headerSub}>WAITER WORKSPACE • {username.toUpperCase()}</Text>
+            <Text style={styles.headerSub}>WAITER WORKSPACE • {(name || username).toUpperCase()}</Text>
           </View>
-          <DotsMenu onLogout={onLogout} chatEnabled={chatEnabled} onToggleChat={handleToggleChat} />
+          <DotsMenu onLogout={onLogout} />
         </View>
       )}
 
-      {/* ── Main Tabs (hidden on ordering screen) ── */}
-      {!selectedTable && (
-        <View style={styles.mainTabs}>
-          {/* Tables */}
-          <TouchableOpacity
-            style={[styles.tabBtn, activeTab === 'tables' && styles.activeTabBtn]}
-            onPress={() => setActiveTab('tables')}
-          >
-            <Layers size={16} color={activeTab === 'tables' ? '#ffffff' : '#94a3b8'} />
-            <Text style={[styles.tabLabel, activeTab === 'tables' && styles.activeTabLabel]}>TABLES</Text>
-          </TouchableOpacity>
-
-          {/* History */}
-          <TouchableOpacity
-            style={[styles.tabBtn, activeTab === 'history' && styles.activeTabBtn]}
-            onPress={() => setActiveTab('history')}
-          >
-            <Clock size={16} color={activeTab === 'history' ? '#ffffff' : '#94a3b8'} />
-            <Text style={[styles.tabLabel, activeTab === 'history' && styles.activeTabLabel]}>HISTORY</Text>
-          </TouchableOpacity>
-
-          {/* Offline Queue Tab */}
-          <TouchableOpacity
-            style={[
-              styles.tabBtn,
-              activeTab === 'queue' && styles.activeTabBtn,
-              queueCount > 0 && activeTab !== 'queue' && styles.queueTabAlert,
-            ]}
-            onPress={() => setActiveTab('queue')}
-          >
-            <WifiOff size={16} color={
-              activeTab === 'queue' ? '#ffffff' :
-                queueCount > 0 ? '#f59e0b' : '#94a3b8'
-            } />
-            <Text style={[
-              styles.tabLabel,
-              activeTab === 'queue' && styles.activeTabLabel,
-              queueCount > 0 && activeTab !== 'queue' && { color: '#f59e0b' },
-            ]}>QUEUE</Text>
-            {queueCount > 0 && (
-              <View style={[
-                styles.tabBadge,
-                failedCount > 0 && { backgroundColor: '#ef4444' },
-              ]}>
-                <Text style={styles.tabBadgeText}>{queueCount}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-
-          {/* Chat Tab */}
-          {chatEnabled && (
-            <TouchableOpacity
-              style={[styles.tabBtn, activeTab === 'chat' && styles.activeTabBtn]}
-              onPress={() => setActiveTab('chat')}
-            >
-              <Text style={{ fontSize: 14, marginBottom: 2 }}>💬</Text>
-              <Text style={[styles.tabLabel, activeTab === 'chat' && styles.activeTabLabel]}>CHAT</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
-
-      {/* ── Screen Routing ── */}
+      {/* ── Screen Routing & Footer Tabs ── */}
       {!selectedTable ? (
-        activeTab === 'tables' ? (
-          <TablesScreen
-            onSelectTable={setSelectedTable}
-            queue={queue}
-            syncOfflineQueue={syncOfflineQueue}
-            syncingQueue={syncingQueue}
-          />
-        ) : activeTab === 'history' ? (
-          <HistoryScreen username={username} onReorder={handleReorder} />
-        ) : activeTab === 'chat' ? (
-          <ChatScreen username={username} role="waiter" onBack={() => setActiveTab('tables')} />
-        ) : (
-          <OfflineQueueScreen
-            queue={queue}
-            syncingQueue={syncingQueue}
-            onSyncAll={syncOfflineQueue}
-            onRetryOne={retryOneOrder}
-            onDeleteOne={handleDeleteOne}
-            onClearAll={handleClearAll}
-          />
-        )
+        <View style={{ flex: 1 }}>
+          <View style={{ flex: 1 }}>
+            {activeTab === 'tables' ? (
+              <TablesScreen
+                onSelectTable={setSelectedTable}
+                queue={queue}
+                syncOfflineQueue={syncOfflineQueue}
+                syncingQueue={syncingQueue}
+              />
+            ) : activeTab === 'history' ? (
+              <HistoryScreen username={username} name={name} onReorder={handleReorder} />
+            ) : activeTab === 'chat' && chatEnabled ? (
+              <ChatScreen username={username} name={name} role="waiter" onBack={() => setActiveTab('tables')} />
+            ) : (
+              <OfflineQueueScreen
+                queue={queue}
+                syncingQueue={syncingQueue}
+                onSyncAll={syncOfflineQueue}
+                onRetryOne={retryOneOrder}
+                onDeleteOne={handleDeleteOne}
+                onClearAll={handleClearAll}
+              />
+            )}
+          </View>
+
+          {/* ── Footer Navigation Tabs ── */}
+          <View style={[styles.mainTabsFooter, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+            {/* Tables */}
+            <TouchableOpacity
+              style={styles.tabBtn}
+              onPress={() => setActiveTab('tables')}
+            >
+              <Layers size={22} color={activeTab === 'tables' ? '#ea580c' : '#94a3b8'} />
+              <Text style={[styles.tabLabel, activeTab === 'tables' && styles.activeTabLabel]}>Tables</Text>
+            </TouchableOpacity>
+
+            {/* History */}
+            <TouchableOpacity
+              style={styles.tabBtn}
+              onPress={() => setActiveTab('history')}
+            >
+              <Clock size={22} color={activeTab === 'history' ? '#ea580c' : '#94a3b8'} />
+              <Text style={[styles.tabLabel, activeTab === 'history' && styles.activeTabLabel]}>History</Text>
+            </TouchableOpacity>
+
+            {/* Offline Queue Tab */}
+            <TouchableOpacity
+              style={styles.tabBtn}
+              onPress={() => setActiveTab('queue')}
+            >
+              <WifiOff size={22} color={
+                activeTab === 'queue' ? '#ea580c' :
+                  queueCount > 0 ? '#f59e0b' : '#94a3b8'
+              } />
+              <Text style={[
+                styles.tabLabel,
+                activeTab === 'queue' && styles.activeTabLabel,
+                queueCount > 0 && activeTab !== 'queue' && { color: '#f59e0b' },
+              ]}>Queue</Text>
+              {queueCount > 0 && (
+                <View style={[
+                  styles.tabBadge,
+                  failedCount > 0 && { backgroundColor: '#ef4444' },
+                ]}>
+                  <Text style={styles.tabBadgeText}>{queueCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
+            {/* Chat Tab */}
+            {chatEnabled && (
+              <TouchableOpacity
+                style={styles.tabBtn}
+                onPress={() => setActiveTab('chat')}
+              >
+                <Text style={{ fontSize: 18, marginBottom: 2, opacity: activeTab === 'chat' ? 1 : 0.6 }}>💬</Text>
+                <Text style={[styles.tabLabel, activeTab === 'chat' && styles.activeTabLabel]}>Chat</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
       ) : (
         <OrderingScreen
           selectedTable={selectedTable}
           username={username}
+          name={name}
           onBack={handleBackToFloor}
           onQueueOfflineOrder={handleQueueOfflineOrder}
           initialCartItems={initialCartItems}
@@ -488,46 +468,53 @@ const styles = StyleSheet.create({
     borderColor: '#334155',
   },
 
-  // Tabs
-  mainTabs: {
+  // Tabs (Footer)
+  mainTabsFooter: {
     flexDirection: 'row',
-    backgroundColor: '#0f172a',
-    padding: 5,
-    borderRadius: 14,
-    marginHorizontal: 16,
-    marginTop: 12,
-    marginBottom: 8,
+    backgroundColor: '#ffffff',
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+    paddingTop: 12,
+    paddingHorizontal: 16,
+    justifyContent: 'space-around',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    elevation: 10,
   },
   tabBtn: {
-    flex: 1,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 11,
-    gap: 6,
-    borderRadius: 10,
+    paddingHorizontal: 12,
+    gap: 4,
   },
-  activeTabBtn: { backgroundColor: '#ea580c' },
-  queueTabAlert: { backgroundColor: '#1c1400' },
+  activeTabBtn: {}, // kept for legacy reference
+  queueTabAlert: {}, // kept for legacy reference
   tabLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '800',
     color: '#94a3b8',
     letterSpacing: 0.5,
   },
-  activeTabLabel: { color: '#ffffff' },
+  activeTabLabel: { color: '#ea580c' },
   tabBadge: {
+    position: 'absolute',
+    top: -6,
+    right: 4,
     backgroundColor: '#f59e0b',
-    borderRadius: 8,
-    minWidth: 18,
-    height: 18,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 5,
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: '#ffffff',
   },
   tabBadgeText: {
     color: '#ffffff',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '900',
   },
 

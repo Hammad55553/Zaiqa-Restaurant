@@ -10,14 +10,18 @@ const db = new sqlite3.Database(dbPath, (err) => {
     console.error('Error connecting to the SQLite database:', err.message);
   } else {
     console.log('Connected to the SQLite database.');
-    
-    // Set busy timeout at C-level (most reliable for WAL lock contention)
-    db.configure('busyTimeout', 15000);
-    
-    // Enable WAL mode for concurrent read/write performance
-    db.run('PRAGMA journal_mode = WAL;');
-    // Enable foreign key enforcement
-    db.run('PRAGMA foreign_keys = ON;');
+
+    // ── Performance Tuning ─────────────────────────────────────────────
+    db.configure('busyTimeout', 15000);            // wait up to 15s on lock
+    db.serialize(() => {
+      db.run('PRAGMA journal_mode = WAL;');         // concurrent reads + writes
+      db.run('PRAGMA foreign_keys = ON;');          // enforce FK constraints
+      db.run('PRAGMA synchronous = NORMAL;');       // safe + faster than FULL
+      db.run('PRAGMA cache_size = -65536;');        // 64 MB query cache
+      db.run('PRAGMA mmap_size = 268435456;');      // 256 MB memory-mapped I/O
+      db.run('PRAGMA temp_store = MEMORY;');        // temp tables in RAM
+      db.run('PRAGMA optimize;');                   // auto-analyze query planner
+    });
   }
 });
 
@@ -133,7 +137,7 @@ const initDb = () => {
       name TEXT NOT NULL,
       price REAL NOT NULL,
       image TEXT,
-      FOREIGN KEY (category_id) REFERENCES categories (id)
+      FOREIGN KEY (category_id) REFERENCES categories (id) ON DELETE SET NULL
     )`);
 
     // Orders Table
@@ -150,12 +154,14 @@ const initDb = () => {
         remarks TEXT,
         admin_edit_remark TEXT,
         has_new_updates BOOLEAN DEFAULT 0,
+        deleted_at DATETIME DEFAULT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )`);
 
       // Add columns if they don't exist (for existing DBs)
       db.run(`ALTER TABLE orders ADD COLUMN admin_edit_remark TEXT`, (err) => {});
       db.run(`ALTER TABLE orders ADD COLUMN has_new_updates BOOLEAN DEFAULT 0`, (err) => {});
+      db.run(`ALTER TABLE orders ADD COLUMN deleted_at DATETIME DEFAULT NULL`, (err) => {});
     });
 
     // Order Items (KOT)
@@ -187,7 +193,7 @@ const initDb = () => {
         qty_changed REAL,
         remarks TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (item_id) REFERENCES stock_items (id)
+        FOREIGN KEY (item_id) REFERENCES stock_items (id) ON DELETE CASCADE
       )`);
 
       // Recipe/BOM (Bill of Materials) Table
@@ -219,7 +225,7 @@ const initDb = () => {
         amount REAL NOT NULL,
         note TEXT,
         date DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
+        FOREIGN KEY (supplier_id) REFERENCES suppliers (id) ON DELETE CASCADE
       )`);
 
       // Expenses Table
@@ -314,6 +320,50 @@ const initDb = () => {
         notes TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )`);
+
+      // ── Performance Indexes ────────────────────────────────────────────
+      // Orders — most frequently queried columns
+      db.run(`CREATE INDEX IF NOT EXISTS idx_orders_status        ON orders(status)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_orders_table         ON orders(table_number)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_orders_created       ON orders(created_at)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_orders_status_date   ON orders(status, created_at)`);
+
+      // Order Items — always joined by order_id
+      db.run(`CREATE INDEX IF NOT EXISTS idx_oi_order_id          ON order_items(order_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_oi_item_id           ON order_items(item_id)`);
+
+      // Inventory
+      db.run(`CREATE INDEX IF NOT EXISTS idx_items_cat            ON items(category_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_items_name           ON items(name)`);
+
+      // Stock
+      db.run(`CREATE INDEX IF NOT EXISTS idx_stock_logs_item      ON stock_logs(item_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_stock_logs_date      ON stock_logs(created_at)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_ingredients_menu     ON item_ingredients(menu_item_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_ingredients_stock    ON item_ingredients(stock_item_id)`);
+
+      // Customers & Suppliers
+      db.run(`CREATE INDEX IF NOT EXISTS idx_cust_ledger          ON customer_ledger(customer_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_sup_ledger           ON supplier_ledger(supplier_id)`);
+
+      // Delivery
+      db.run(`CREATE INDEX IF NOT EXISTS idx_delivery_status      ON delivery_orders(delivery_status)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_delivery_date        ON delivery_orders(created_at)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_delivery_items       ON delivery_order_items(delivery_order_id)`);
+
+      // Chat / Messages
+      db.run(`CREATE INDEX IF NOT EXISTS idx_messages_date        ON messages(created_at)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_receipts_msg         ON message_receipts(message_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_reactions_msg        ON message_reactions(message_id)`);
+
+      // Sync Queue
+      db.run(`CREATE INDEX IF NOT EXISTS idx_sync_status          ON sync_queue(status)`);
+
+      // Expenses
+      db.run(`CREATE INDEX IF NOT EXISTS idx_expenses_date        ON expenses(date)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_expenses_cat         ON expenses(category)`);
+
+      console.log('✅ DB indexes verified/created.');
     });
 };
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Package, Plus, Pencil, Trash2, X, Check, Search,
-  Tag, ChevronDown, Loader2, AlertCircle, UtensilsCrossed
+  Tag, ChevronDown, Loader2, AlertCircle, UtensilsCrossed, CheckSquare, Square
 } from 'lucide-react';
 import { API_BASE } from '../../config';
 
@@ -80,13 +80,47 @@ const InventorySystem = () => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterCat, setFilterCat] = useState('all');
-  const [modal, setModal] = useState(null); // 'addItem' | 'editItem' | 'addCat' | 'deleteCat'
+  const [modal, setModal] = useState(null);
   const [editTarget, setEditTarget] = useState(null);
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteCatTarget, setDeleteCatTarget] = useState(null);
 
   const [stockItems, setStockItems] = useState([]);
+
+  // ── Multi-select state ─────────────────────────────────────────────
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [showBulkConfirm, setShowBulkConfirm] = useState(false);
+
+  const toggleSelect = (id) => setSelected(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
+  const toggleSelectAll = (catItems) => {
+    const ids = catItems.map(i => i.id);
+    const allSelected = ids.every(id => selected.has(id));
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (allSelected) ids.forEach(id => next.delete(id));
+      else ids.forEach(id => next.add(id));
+      return next;
+    });
+  };
+
+  const exitSelectMode = () => { setSelectMode(false); setSelected(new Set()); };
+
+  const deleteSelected = async () => {
+    setBulkDeleting(true);
+    await Promise.all([...selected].map(id => fetch(`${API}/${id}`, { method: 'DELETE' })));
+    setBulkDeleting(false);
+    setShowBulkConfirm(false);
+    exitSelectMode();
+    fetchAll();
+  };
 
   // Form state
   const [form, setForm] = useState({ name: '', price: '', category_id: '', image: '', ingredients: [], taxRateOverride: '' });
@@ -255,6 +289,18 @@ const InventorySystem = () => {
             <Plus size={16} /> Category
           </button>
 
+          {/* Select Mode Toggle */}
+          <button
+            onClick={() => selectMode ? exitSelectMode() : setSelectMode(true)}
+            className={`col-span-1 w-full md:w-auto px-4 py-2.5 rounded-xl text-sm font-bold flex justify-center items-center gap-2 transition-all border ${
+              selectMode
+                ? 'bg-orange-50 border-orange-400 text-orange-600'
+                : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <CheckSquare size={16} /> {selectMode ? 'Cancel' : 'Select'}
+          </button>
+
           {/* Add Item Button */}
           <button onClick={openAdd} className="col-span-1 w-full md:w-auto px-5 py-2.5 bg-gradient-to-br from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 rounded-xl text-sm font-bold text-white flex justify-center items-center gap-2 shadow-lg shadow-orange-500/20 transition-all">
             <Plus size={16} /> Item
@@ -305,56 +351,87 @@ const InventorySystem = () => {
         )}
 
         {/* Items grouped by category */}
-        {!loading && Object.entries(grouped).map(([catName, catItems]) => (
-          <div key={catName} style={{ marginBottom: 28 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-              <div style={{ fontSize: 13, fontWeight: 900, color: '#09090b', textTransform: 'uppercase', letterSpacing: 1 }}>{catName}</div>
-              <Badge color="orange">{catItems.length} items</Badge>
-              <div style={{ flex: 1, height: 1, background: '#f4f4f5' }} />
-            </div>
+        {!loading && Object.entries(grouped).map(([catName, catItems]) => {
+          const allCatSelected = catItems.every(i => selected.has(i.id));
+          return (
+            <div key={catName} style={{ marginBottom: 28 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                {selectMode && (
+                  <button
+                    onClick={() => toggleSelectAll(catItems)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', color: allCatSelected ? '#f97316' : '#a1a1aa' }}
+                    title="Select all in category"
+                  >
+                    {allCatSelected ? <CheckSquare size={18} /> : <Square size={18} />}
+                  </button>
+                )}
+                <div style={{ fontSize: 13, fontWeight: 900, color: '#09090b', textTransform: 'uppercase', letterSpacing: 1 }}>{catName}</div>
+                <Badge color="orange">{catItems.length} items</Badge>
+                <div style={{ flex: 1, height: 1, background: '#f4f4f5' }} />
+              </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
-              {catItems.map(item => (
-                <div key={item.id} style={{
-                  background: '#fff', borderRadius: 16, padding: '16px 18px',
-                  border: '1.5px solid #f4f4f5', display: 'flex', alignItems: 'center', gap: 14,
-                  transition: 'box-shadow 0.2s, border-color 0.2s',
-                  boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
-                }}
-                  onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.08)'; e.currentTarget.style.borderColor = '#fed7aa'; }}
-                  onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.04)'; e.currentTarget.style.borderColor = '#f4f4f5'; }}
-                >
-                  <div style={{ width: 42, height: 42, borderRadius: 12, background: 'linear-gradient(135deg, #fff7ed, #ffedd5)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
-                    {item.image ? (
-                      <img src={item.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    ) : (
-                      <UtensilsCrossed size={18} color="#f97316" />
-                    )}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 800, color: '#09090b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                      <div style={{ fontSize: 16, fontWeight: 900, color: '#ea580c' }}>Rs. {item.price.toLocaleString()}</div>
-                      {item.taxRateOverride !== undefined && item.taxRateOverride !== null && item.taxRateOverride !== '' && (
-                        <div style={{ fontSize: 10, fontWeight: 800, color: '#475569', background: '#e2e8f0', padding: '2px 6px', borderRadius: 6 }}>
-                          GST: {item.taxRateOverride}%
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
+                {catItems.map(item => {
+                  const isSelected = selected.has(item.id);
+                  return (
+                    <div key={item.id}
+                      onClick={() => selectMode && toggleSelect(item.id)}
+                      style={{
+                        background: isSelected ? '#fff7ed' : '#fff',
+                        borderRadius: 16, padding: '16px 18px',
+                        border: `1.5px solid ${isSelected ? '#f97316' : '#f4f4f5'}`,
+                        display: 'flex', alignItems: 'center', gap: 14,
+                        transition: 'box-shadow 0.2s, border-color 0.2s, background 0.15s',
+                        boxShadow: isSelected ? '0 0 0 3px rgba(249,115,22,0.15)' : '0 1px 4px rgba(0,0,0,0.04)',
+                        cursor: selectMode ? 'pointer' : 'default',
+                      }}
+                      onMouseEnter={e => { if (!selectMode) { e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.08)'; e.currentTarget.style.borderColor = '#fed7aa'; } }}
+                      onMouseLeave={e => { if (!selectMode) { e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.04)'; e.currentTarget.style.borderColor = isSelected ? '#f97316' : '#f4f4f5'; } }}
+                    >
+                      {/* Checkbox or Image */}
+                      {selectMode ? (
+                        <div style={{ width: 42, height: 42, borderRadius: 12, background: isSelected ? '#fff7ed' : '#f4f4f5', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: `2px solid ${isSelected ? '#f97316' : '#e4e4e7'}` }}>
+                          {isSelected ? <Check size={20} color="#f97316" /> : <Square size={18} color="#a1a1aa" />}
+                        </div>
+                      ) : (
+                        <div style={{ width: 42, height: 42, borderRadius: 12, background: 'linear-gradient(135deg, #fff7ed, #ffedd5)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
+                          {item.image ? (
+                            <img src={item.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          ) : (
+                            <UtensilsCrossed size={18} color="#f97316" />
+                          )}
+                        </div>
+                      )}
+
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: '#09090b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                          <div style={{ fontSize: 16, fontWeight: 900, color: '#ea580c' }}>Rs. {item.price.toLocaleString()}</div>
+                          {item.taxRateOverride !== undefined && item.taxRateOverride !== null && item.taxRateOverride !== '' && (
+                            <div style={{ fontSize: 10, fontWeight: 800, color: '#475569', background: '#e2e8f0', padding: '2px 6px', borderRadius: 6 }}>
+                              GST: {item.taxRateOverride}%
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {!selectMode && (
+                        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                          <button onClick={(e) => { e.stopPropagation(); openEdit(item); }} style={{ width: 32, height: 32, borderRadius: 8, background: '#f4f4f5', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3f3f46' }}>
+                            <Pencil size={14} />
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); setDeleteTarget(item); }} style={{ width: 32, height: 32, borderRadius: 8, background: '#fef2f2', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444' }}>
+                            <Trash2 size={14} />
+                          </button>
                         </div>
                       )}
                     </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                    <button onClick={() => openEdit(item)} style={{ width: 32, height: 32, borderRadius: 8, background: '#f4f4f5', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3f3f46' }}>
-                      <Pencil size={14} />
-                    </button>
-                    <button onClick={() => setDeleteTarget(item)} style={{ width: 32, height: 32, borderRadius: 8, background: '#fef2f2', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444' }}>
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
-              ))}
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* ── Add / Edit Item Modal ── */}
@@ -460,7 +537,7 @@ const InventorySystem = () => {
                   </div>
                 ))}
               </div>
-              <Input label="Ya Custom Image Link (URL) Dalein" value={form.image} onChange={e => setForm(p => ({ ...p, image: e.target.value }))} placeholder="https://..." />
+              <Input label="Or Enter Custom Image URL" value={form.image} onChange={e => setForm(p => ({ ...p, image: e.target.value }))} placeholder="https://..." />
             </div>
 
             <div style={{ display: 'flex', gap: 10 }}>
@@ -497,7 +574,7 @@ const InventorySystem = () => {
               <AlertCircle size={28} color="#ef4444" />
             </div>
             <div style={{ fontSize: 16, fontWeight: 800, color: '#09090b', marginBottom: 8 }}>"{deleteTarget.name}"</div>
-            <div style={{ fontSize: 14, color: '#71717a' }}>Yeh item hamesha ke liye delete ho jaega.</div>
+            <div style={{ fontSize: 14, color: '#71717a' }}>This item will be permanently deleted and cannot be recovered.</div>
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
             <button onClick={() => setDeleteTarget(null)} style={{ flex: 1, padding: '12px', borderRadius: 12, border: '1.5px solid #e4e4e7', background: '#fff', fontSize: 14, fontWeight: 700, color: '#71717a', cursor: 'pointer' }}>Cancel</button>
@@ -508,7 +585,65 @@ const InventorySystem = () => {
         </Modal>
       )}
 
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      {/* ── Bulk Delete Floating Bar ── */}
+      {selectMode && (
+        <div style={{
+          position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)',
+          zIndex: 9999, display: 'flex', alignItems: 'center', gap: 12,
+          background: '#09090b', borderRadius: 20, padding: '12px 20px',
+          boxShadow: '0 8px 40px rgba(0,0,0,0.35)',
+          animation: 'slideUp 0.25s ease',
+        }}>
+          <div style={{ color: '#fff', fontWeight: 800, fontSize: 14 }}>
+            {selected.size === 0 ? 'Tap items to select' : `${selected.size} item${selected.size > 1 ? 's' : ''} selected`}
+          </div>
+          {selected.size > 0 && (
+            <>
+              <div style={{ width: 1, height: 20, background: '#3f3f46' }} />
+              <button
+                onClick={() => setSelected(new Set(filtered.map(i => i.id)))}
+                style={{ background: '#27272a', border: 'none', color: '#a1a1aa', padding: '6px 14px', borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
+              >
+                Select All
+              </button>
+              <button
+                onClick={() => setShowBulkConfirm(true)}
+                style={{ background: '#ef4444', border: 'none', color: '#fff', padding: '6px 16px', borderRadius: 10, fontWeight: 800, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                <Trash2 size={14} /> Delete {selected.size}
+              </button>
+            </>
+          )}
+          <button onClick={exitSelectMode} style={{ background: '#27272a', border: 'none', color: '#a1a1aa', width: 32, height: 32, borderRadius: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {/* ── Bulk Delete Confirm Modal ── */}
+      {showBulkConfirm && (
+        <Modal title="Delete Selected Items?" onClose={() => setShowBulkConfirm(false)}>
+          <div style={{ textAlign: 'center', padding: '8px 0 24px' }}>
+            <div style={{ width: 56, height: 56, borderRadius: 16, background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+              <AlertCircle size={28} color="#ef4444" />
+            </div>
+            <div style={{ fontSize: 22, fontWeight: 900, color: '#09090b', marginBottom: 8 }}>{selected.size} Items</div>
+            <div style={{ fontSize: 14, color: '#71717a' }}>These items will be permanently deleted and cannot be recovered.</div>
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={() => setShowBulkConfirm(false)} style={{ flex: 1, padding: '12px', borderRadius: 12, border: '1.5px solid #e4e4e7', background: '#fff', fontSize: 14, fontWeight: 700, color: '#71717a', cursor: 'pointer' }}>Cancel</button>
+            <button onClick={deleteSelected} disabled={bulkDeleting} style={{ flex: 1, padding: '12px', borderRadius: 12, border: 'none', background: '#ef4444', fontSize: 14, fontWeight: 700, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              {bulkDeleting ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Trash2 size={16} />}
+              {bulkDeleting ? 'Deleting...' : `Yes, Delete ${selected.size}`}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes slideUp { from { opacity: 0; transform: translateX(-50%) translateY(20px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+      `}</style>
       {/* ── Delete Category Confirm Modal ── */}
       {deleteCatTarget && (
         <Modal title="Delete Category?" onClose={() => setDeleteCatTarget(null)}>
@@ -518,8 +653,8 @@ const InventorySystem = () => {
             </div>
             <h4 style={{ fontSize: 16, fontWeight: 800, color: '#09090b', margin: '0 0 8px' }}>Are you sure?</h4>
             <p style={{ fontSize: 13, color: '#71717a', margin: 0, lineHeight: 1.5 }}>
-              Aap <strong>"{deleteCatTarget.name}"</strong> category delete kar rahe hain.<br/>
-              Agar aap ise delete karenge, toh is category mein aane wale <strong>{items.filter(i => i.category_id === deleteCatTarget.id).length} items</strong> bhi iss category se nikal jayenge.
+              You are about to delete the <strong>"{deleteCatTarget.name}"</strong> category.<br/>
+              The <strong>{items.filter(i => i.category_id === deleteCatTarget.id).length} items</strong> in this category will become uncategorized.
             </p>
           </div>
           <div style={{ display: 'flex', gap: 10 }}>

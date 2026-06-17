@@ -50,16 +50,16 @@ interface DeliveryOrder {
 
 interface RiderDashboardProps {
   username: string;
+  name?: string;
+  permissions?: string[];
   onLogout: () => void;
 }
 
 interface DotsMenuProps {
   onLogout: () => void;
-  chatEnabled: boolean;
-  onToggleChat: (val: boolean) => void;
 }
 
-function DotsMenu({ onLogout, chatEnabled, onToggleChat }: DotsMenuProps) {
+function DotsMenu({ onLogout }: DotsMenuProps) {
   const [open, setOpen] = useState(false);
   const scaleAnim = useRef(new Animated.Value(0.85)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
@@ -99,12 +99,7 @@ function DotsMenu({ onLogout, chatEnabled, onToggleChat }: DotsMenuProps) {
                 { transform: [{ scale: scaleAnim }], opacity: opacityAnim },
               ]}
             >
-              <TouchableOpacity style={styles.menuItem} onPress={() => hideMenu(() => onToggleChat(!chatEnabled))}>
-                <View style={[styles.menuIcon, { backgroundColor: '#1e293b' }]}>
-                  <Text style={{ color: '#ffffff', fontWeight: 'bold', fontSize: 10 }}>💬</Text>
-                </View>
-                <Text style={styles.menuLabel}>{chatEnabled ? 'Hide Chat Room' : 'Show Chat Room'}</Text>
-              </TouchableOpacity>
+
 
               <TouchableOpacity style={styles.menuItem} onPress={() => hideMenu(onLogout)}>
                 <View style={[styles.menuIcon, { backgroundColor: '#2a0a0a' }]}>
@@ -120,27 +115,11 @@ function DotsMenu({ onLogout, chatEnabled, onToggleChat }: DotsMenuProps) {
   );
 }
 
-export default function RiderDashboard({ username, onLogout }: RiderDashboardProps) {
+export default function RiderDashboard({ username, name, permissions, onLogout }: RiderDashboardProps) {
   const insets = useSafeAreaInsets();
   const toast = useToast();
-  const [chatEnabled, setChatEnabled] = useState(true);
+  const chatEnabled = permissions?.includes('chat') || false;
   const [showChat, setShowChat] = useState(false);
-
-  useEffect(() => {
-    AsyncStorage.getItem('chat_module_enabled').then((val) => {
-      if (val !== null) {
-        setChatEnabled(val === 'true');
-      }
-    });
-  }, []);
-
-  const handleToggleChat = async (enabled: boolean) => {
-    setChatEnabled(enabled);
-    await AsyncStorage.setItem('chat_module_enabled', enabled ? 'true' : 'false');
-    if (!enabled) {
-      setShowChat(false);
-    }
-  };
   const [orders, setOrders] = useState<DeliveryOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -246,20 +225,20 @@ export default function RiderDashboard({ username, onLogout }: RiderDashboardPro
       <NetworkStatusBar status={netStatus} onRetry={pingServer} />
 
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top, height: 60 + insets.top }]}>
+      <View style={styles.header}>
         <View style={styles.logoBadge}>
           <Image source={require('../../assets/Logo.jpg')} style={styles.logoBadgeImg} resizeMode="cover" />
         </View>
         <View style={{ flex: 1, marginLeft: 12 }}>
           <Text style={styles.headerTitle}>RIDER PORTAL</Text>
-          <Text style={styles.headerSub}>RIDER • {username.toUpperCase()}</Text>
+          <Text style={styles.headerSub}>RIDER • {(name || username).toUpperCase()}</Text>
         </View>
         {chatEnabled && (
           <TouchableOpacity style={[styles.logoutBtn, { marginRight: 8 }]} onPress={() => setShowChat(true)} activeOpacity={0.7}>
             <Text style={{ fontSize: 18 }}>💬</Text>
           </TouchableOpacity>
         )}
-        <DotsMenu onLogout={onLogout} chatEnabled={chatEnabled} onToggleChat={handleToggleChat} />
+        <DotsMenu onLogout={onLogout} />
       </View>
 
       {!showChat ? (
@@ -489,7 +468,7 @@ export default function RiderDashboard({ username, onLogout }: RiderDashboardPro
           )}
         </>
       ) : (
-        <ChatScreen username={username} role="rider" onBack={() => setShowChat(false)} />
+        <ChatScreen username={username} name={name} role="rider" onBack={() => setShowChat(false)} />
       )}
     </View>
   );

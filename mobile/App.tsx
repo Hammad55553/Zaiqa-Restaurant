@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { StatusBar, StyleSheet, View, Alert } from 'react-native';
+import { StatusBar, StyleSheet, View, Alert, Modal, Text, TouchableOpacity, TouchableWithoutFeedback } from 'react-native';
+import { LogOut } from 'lucide-react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import LoginScreen from './src/screens/LoginScreen';
 import WaiterDashboard from './src/screens/WaiterDashboard';
@@ -87,8 +88,9 @@ function WebSocketManager() {
 
 function App() {
   const [showSplash, setShowSplash] = useState(true);
-  const [user, setUser] = useState<{ username: string; role: 'waiter' | 'kitchen' | 'rider' } | null>(null);
+  const [user, setUser] = useState<{ username: string; role: 'waiter' | 'kitchen' | 'rider', name?: string, permissions?: string[] } | null>(null);
   const [configLoaded, setConfigLoaded] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   useEffect(() => {
     loadServerIP().then(() => {
@@ -103,27 +105,19 @@ function App() {
     });
   }, []);
 
-  const handleLoginSuccess = (username: string, role: 'waiter' | 'kitchen' | 'rider') => {
-    setUser({ username, role });
+  const handleLoginSuccess = (username: string, role: 'waiter' | 'kitchen' | 'rider', name?: string, permissions?: string[]) => {
+    setUser({ username, role, name, permissions });
   };
 
   const handleLogout = () => {
-    Alert.alert(
-      "Confirm Logout",
-      "Are you sure you want to log out?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Logout",
-          style: "destructive",
-          onPress: () => {
-            AsyncStorage.removeItem('LOGGED_IN_USER').then(() => {
-              setUser(null);
-            });
-          }
-        }
-      ]
-    );
+    setShowLogoutModal(true);
+  };
+
+  const confirmLogout = () => {
+    setShowLogoutModal(false);
+    AsyncStorage.removeItem('LOGGED_IN_USER').then(() => {
+      setUser(null);
+    });
   };
 
   if (showSplash || !configLoaded) {
@@ -141,21 +135,65 @@ function App() {
     <ToastProvider>
       <WebSocketManager />
       <SafeAreaProvider>
-        <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
-        <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+        <StatusBar barStyle="light-content" backgroundColor="#0f172a" translucent={false} />
+        <SafeAreaView style={styles.container}>
           <View style={styles.content}>
             {user ? (
               user.role === 'kitchen' ? (
-                <KitchenDashboard username={user.username} onLogout={handleLogout} />
+                <KitchenDashboard username={user.username} name={user.name} permissions={user.permissions} onLogout={handleLogout} />
               ) : user.role === 'rider' ? (
-                <RiderDashboard username={user.username} onLogout={handleLogout} />
+                <RiderDashboard username={user.username} name={user.name} permissions={user.permissions} onLogout={handleLogout} />
               ) : (
-                <WaiterDashboard username={user.username} onLogout={handleLogout} />
+                <WaiterDashboard username={user.username} name={user.name} permissions={user.permissions} onLogout={handleLogout} />
               )
             ) : (
               <LoginScreen onLoginSuccess={handleLoginSuccess} />
             )}
           </View>
+
+          {/* CUSTOM LOGOUT MODAL */}
+          <Modal
+            visible={showLogoutModal}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setShowLogoutModal(false)}
+          >
+            <TouchableWithoutFeedback onPress={() => setShowLogoutModal(false)}>
+              <View style={styles.modalOverlay}>
+                <TouchableWithoutFeedback>
+                  <View style={styles.modalCard}>
+                    <View style={styles.modalHeader}>
+                      <View style={styles.iconCircle}>
+                        <LogOut size={28} color="#ef4444" />
+                      </View>
+                    </View>
+                    
+                    <Text style={styles.modalTitle}>Confirm Logout</Text>
+                    <Text style={styles.modalDesc}>Are you sure you want to log out of your current session?</Text>
+                    
+                    <View style={styles.modalActions}>
+                      <TouchableOpacity 
+                        style={styles.cancelBtn} 
+                        onPress={() => setShowLogoutModal(false)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.cancelBtnText}>Cancel</Text>
+                      </TouchableOpacity>
+                      
+                      <TouchableOpacity 
+                        style={styles.confirmBtn} 
+                        onPress={confirmLogout}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.confirmBtnText}>Log Out</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </TouchableWithoutFeedback>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+
         </SafeAreaView>
       </SafeAreaProvider>
     </ToastProvider>
@@ -169,7 +207,84 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#0f172a',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    width: '100%',
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  modalHeader: {
+    marginBottom: 16,
+  },
+  iconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#fef2f2',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#0f172a',
+    marginBottom: 8,
+  },
+  modalDesc: {
+    fontSize: 15,
+    color: '#64748b',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 22,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 12,
+  },
+  cancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+  },
+  cancelBtnText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#475569',
+  },
+  confirmBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#ef4444',
+    alignItems: 'center',
+    shadowColor: '#ef4444',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  confirmBtnText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#ffffff',
   },
 });
 

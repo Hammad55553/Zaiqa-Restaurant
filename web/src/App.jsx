@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShoppingCart, LayoutGrid, Package, FileText, Settings, Bell, Search, Menu as MenuIcon, X, Printer, Truck, Wallet, CreditCard, ChefHat, Utensils, BookOpen, Layers, Phone, Bike, Shield, LogOut, Ban, Eye, EyeOff, MessageSquare, Globe, Wifi, WifiOff } from 'lucide-react';
+import { ShoppingCart, LayoutGrid, Package, FileText, Settings, Bell, Search, Menu as MenuIcon, X, Printer, Truck, Wallet, CreditCard, ChefHat, Utensils, BookOpen, Layers, Phone, Bike, Shield, LogOut, Ban, Eye, EyeOff, MessageSquare, Globe, Wifi, WifiOff, ClipboardList, Database } from 'lucide-react';
 import POSLayout from './modules/pos/POSLayout';
 import KitchenDisplay from './modules/kds/KitchenDisplay';
 import SplashScreen from './components/SplashScreen';
@@ -16,6 +16,9 @@ import DeliveryManager from './modules/delivery/DeliveryManager';
 import UserManager from './modules/users/UserManager';
 import ReturnsPending from './modules/pos/components/ReturnsPending';
 import ChatView from './modules/chat/ChatView';
+import OrdersHistory from './modules/orders/OrdersHistory';
+import SyncQueueViewer from './modules/sync/SyncQueueViewer';
+import CustomerQueueDisplay from './modules/queue/CustomerQueueDisplay';
 import { API_BASE } from './config';
 import { getOfflineItem, setOfflineItem, removeOfflineItem } from './utils/offlineDB';
 import { purgeExpiredTrash } from './utils/trashDB';
@@ -577,6 +580,10 @@ function App() {
     setSidebarOpen(false);
   };
 
+  if (currentView === 'queue') {
+    return <CustomerQueueDisplay />;
+  }
+
   return (
     <div className="flex h-screen bg-[#f8f9fc] overflow-hidden flex-col md:flex-row font-sans relative magic-reveal-dashboard">
       <style>{`
@@ -680,6 +687,9 @@ function App() {
                   {(currentUser.username === 'admin' || currentUser.permissions.includes('reports')) && (
                     <NavItem icon={<FileText size={20} />} label="Financial Reports" active={currentView === 'reports'} onClick={() => navigateTo('reports')} />
                   )}
+                  {currentUser.username === 'admin' && (
+                    <NavItem icon={<ClipboardList size={20} />} label="Orders History" active={currentView === 'orders'} onClick={() => navigateTo('orders')} />
+                  )}
                   {(currentUser.username === 'admin' || currentUser.permissions.includes('pos')) && (
                     <NavItem icon={<Printer size={20} />} label="Receipt Preview" active={currentView === 'receipt'} onClick={() => navigateTo('receipt')} />
                   )}
@@ -697,6 +707,12 @@ function App() {
                   )}
                   {(currentUser.username === 'admin' || currentUser.permissions.includes('users')) && (
                     <NavItem icon={<Shield size={20} />} label="User Manager" active={currentView === 'users'} onClick={() => navigateTo('users')} />
+                  )}
+                  {(currentUser.username === 'admin' || currentUser.permissions.includes('sync')) && (
+                    <NavItem icon={<Database size={20} />} label="Sync Queue" active={currentView === 'sync'} onClick={() => navigateTo('sync')} />
+                  )}
+                  {(currentUser.username === 'admin' || currentUser.permissions.includes('queue')) && (
+                    <NavItem icon={<Globe size={20} />} label="Queue TV Screen" active={currentView === 'queue'} onClick={() => navigateTo('queue')} />
                   )}
                 </div>
               </div>
@@ -720,7 +736,7 @@ function App() {
               <img src="./Logo.jpg" alt="User" className="w-11 h-11 rounded-full object-cover border-2 border-zinc-900" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-white tracking-wide truncate">{currentUser.username}</p>
+              <p className="text-sm font-bold text-white tracking-wide truncate">{currentUser.name || currentUser.username}</p>
               <p className="text-[11px] text-orange-400 font-bold uppercase tracking-widest mt-0.5">{currentUser.role}</p>
             </div>
           </div>
@@ -940,8 +956,10 @@ function App() {
           {currentView === 'khata' && <CreditManagement initialCustomerId={globalSelectedCustomerId} />}
           {currentView === 'settings' && <SettingsView />}
           {currentView === 'users' && <UserManager />}
+          {currentView === 'sync' && <SyncQueueViewer />}
           {currentView === 'returns' && <ReturnsPending onBack={() => navigateTo('pos')} />}
           {currentView === 'chat' && <ChatView currentUser={currentUser} />}
+          {currentView === 'orders' && <OrdersHistory currentUser={currentUser} />}
         </div>
       </main>
 

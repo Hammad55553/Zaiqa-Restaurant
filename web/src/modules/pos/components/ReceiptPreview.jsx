@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import Logo from '../../../assets/Logo.jpg';
-import { Printer, X, ZoomIn, ZoomOut, Search, FileText, Smartphone, Calendar, Hash } from 'lucide-react';
-import { getOfflineItem } from '../../../utils/offlineDB';
+import { Printer, X, ZoomIn, ZoomOut, Search, FileText, Smartphone, Calendar, Hash, Trash2 } from 'lucide-react';
+import { getOfflineItem, setOfflineItem } from '../../../utils/offlineDB';
 
 // ---------- The actual slip (80mm thermal receipt) ----------
 const Slip = ({ data, isPrintMode }) => {
@@ -303,6 +303,23 @@ const ReceiptPreview = ({ onClose, initialInvoiceId }) => {
     }
   };
 
+  const clearAllReceipts = async () => {
+    if (!window.confirm(`Clear all ${invoices.length} receipts from this device? This cannot be undone.`)) return;
+    await setOfflineItem('zaiqa_mahal_completed_invoices', []);
+    setInvoices([]);
+    setSelectedInvoice(null);
+  };
+
+  const deleteOneReceipt = async (orderId, e) => {
+    e.stopPropagation(); // don't select the invoice
+    const updated = invoices.filter(inv => String(inv.orderId) !== String(orderId));
+    await setOfflineItem('zaiqa_mahal_completed_invoices', updated.filter(i => !i.isActiveDelivery));
+    setInvoices(updated);
+    if (selectedInvoice?.orderId === orderId) {
+      setSelectedInvoice(updated.length > 0 ? updated[0] : null);
+    }
+  };
+
   // Filter completed invoices safely by ID, Phone, Table, or Customer Name
   const filteredInvoices = invoices.filter(inv => {
     const term = searchTerm.trim().toLowerCase();
@@ -370,6 +387,17 @@ const ReceiptPreview = ({ onClose, initialInvoiceId }) => {
               boxShadow: '0 4px 15px rgba(249,115,22,0.3)',
             }}>
               <Printer size={14} /> Reprint Bill
+            </button>
+          )}
+
+          {invoices.length > 0 && (
+            <button onClick={clearAllReceipts} title="Clear all receipts from this device" style={{
+              padding: '10px 16px', borderRadius: 10, border: '1px solid rgba(239,68,68,0.3)',
+              background: 'rgba(239,68,68,0.1)',
+              color: '#ef4444', fontWeight: 800, fontSize: 12, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+              <Trash2 size={13} /> Clear All
             </button>
           )}
 
@@ -467,6 +495,24 @@ const ReceiptPreview = ({ onClose, initialInvoiceId }) => {
                         <span style={{ fontSize: '10px', color: '#f97316', fontWeight: 850 }}>
                           {typeof inv.table === 'object' ? `${inv.table.area} - ${inv.table.number}` : (String(inv.table).toLowerCase() === 'delivery' ? 'Delivery' : `Table ${inv.table}`)}
                         </span>
+                        {/* Delete single receipt */}
+                        {!inv.isActiveDelivery && (
+                          <button
+                            onClick={(e) => deleteOneReceipt(inv.orderId, e)}
+                            title="Remove this receipt"
+                            style={{
+                              width: 22, height: 22, borderRadius: 6, border: 'none',
+                              background: 'rgba(239,68,68,0.12)', cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              color: '#ef4444', flexShrink: 0,
+                              transition: 'background 0.15s',
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.25)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.12)'}
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        )}
                       </div>
                     </div>
 

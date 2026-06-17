@@ -82,6 +82,11 @@ export default function NetworkStatusBar({ status, onRetry, queueCount = 0 }: Ne
 
 const styles = StyleSheet.create({
   bar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
     height: 36,
     flexDirection: 'row',
     alignItems: 'center',

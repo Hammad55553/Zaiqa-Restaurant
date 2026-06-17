@@ -36,6 +36,7 @@ interface Reaction {
 interface Message {
   id: number | string;
   sender_username: string;
+  sender_name?: string;
   sender_role: string;
   text: string;
   created_at: string;
@@ -46,11 +47,12 @@ interface Message {
 
 interface ChatScreenProps {
   username: string;
+  name?: string;
   role: string;
   onBack: () => void;
 }
 
-export default function ChatScreen({ username, role, onBack }: ChatScreenProps) {
+export default function ChatScreen({ username, name, role, onBack }: ChatScreenProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
@@ -196,6 +198,7 @@ export default function ChatScreen({ username, role, onBack }: ChatScreenProps) 
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               sender_username: username,
+              sender_name: name || username,
               sender_role: role,
               text: qMsg.text,
             }),
@@ -227,6 +230,7 @@ export default function ChatScreen({ username, role, onBack }: ChatScreenProps) 
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             sender_username: username,
+            sender_name: name || username,
             sender_role: role,
             text: trimmed,
           }),
@@ -247,6 +251,7 @@ export default function ChatScreen({ username, role, onBack }: ChatScreenProps) 
     const tempMsg: Message = {
       id: `offline-${Date.now()}`,
       sender_username: username,
+      sender_name: name || username,
       sender_role: role,
       text,
       created_at: new Date().toISOString(),
@@ -341,7 +346,7 @@ export default function ChatScreen({ username, role, onBack }: ChatScreenProps) 
       <View style={[styles.messageRow, isMe ? styles.myMessageRow : styles.otherMessageRow]}>
         {!isMe && (
           <View style={styles.senderHeader}>
-            <Text style={styles.senderName}>{item.sender_username}</Text>
+            <Text style={styles.senderName}>{item.sender_name || item.sender_username}</Text>
             <View style={[styles.roleBadge, { backgroundColor: colors.bg }]}>
               <Text style={[styles.roleText, { color: colors.text }]}>{item.sender_role.toUpperCase()}</Text>
             </View>

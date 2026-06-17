@@ -290,7 +290,7 @@ const TableManager = () => {
             </div>
             <h4 style={{ fontSize: 16, fontWeight: 800, color: '#09090b', margin: '0 0 8px' }}>Are you sure?</h4>
             <p style={{ fontSize: 13, color: '#71717a', margin: 0, lineHeight: 1.5 }}>
-              Aap <strong>"{deleteTarget.number}"</strong> ({deleteTarget.area} Area) ko hamesha ke liye delete kar rahe hain.
+              You are about to permanently delete Table <strong>"{deleteTarget.number}"</strong> ({deleteTarget.area} Area). This action cannot be undone.
             </p>
           </div>
           <div style={{ display: 'flex', gap: 10 }}>

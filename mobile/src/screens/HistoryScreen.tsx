@@ -5,10 +5,11 @@ import OrderHistory from '../components/OrderHistory';
 
 interface HistoryScreenProps {
   username: string;
+  name?: string;
   onReorder: (order: any) => void;
 }
 
-export default function HistoryScreen({ username, onReorder }: HistoryScreenProps) {
+export default function HistoryScreen({ username, name, onReorder }: HistoryScreenProps) {
   const [orderHistory, setOrderHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
@@ -77,7 +78,7 @@ export default function HistoryScreen({ username, onReorder }: HistoryScreenProp
       // Filter orders placed by this waiter today
       const userOrders = combined.filter((order: any) => {
         const isToday = order.created_at && order.created_at.startsWith(todayStr);
-        const isUser = order.remarks && order.remarks.includes(`[Waiter: ${username}]`);
+        const isUser = order.remarks && order.remarks.includes(`[Waiter: ${name || username}]`);
         return isToday && isUser;
       });
       

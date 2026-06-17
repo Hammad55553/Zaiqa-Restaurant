@@ -26,6 +26,8 @@ import ChatScreen from '../ChatScreen';
 
 interface KitchenDashboardProps {
   username: string;
+  name?: string;
+  permissions?: string[];
   onLogout: () => void;
 }
 
@@ -34,11 +36,9 @@ interface KitchenDashboardProps {
 interface DotsMenuProps {
   onLogout: () => void;
   onRefresh: () => void;
-  chatEnabled: boolean;
-  onToggleChat: (val: boolean) => void;
 }
 
-function DotsMenu({ onLogout, onRefresh, chatEnabled, onToggleChat }: DotsMenuProps) {
+function DotsMenu({ onLogout, onRefresh }: DotsMenuProps) {
   const [open, setOpen] = useState(false);
   const scaleAnim = useRef(new Animated.Value(0.85)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
@@ -81,13 +81,6 @@ function DotsMenu({ onLogout, onRefresh, chatEnabled, onToggleChat }: DotsMenuPr
               
               <View style={styles.menuDivider} />
 
-              <TouchableOpacity style={styles.menuItem} onPress={() => hideMenu(() => onToggleChat(!chatEnabled))}>
-                <View style={[styles.menuIcon, { backgroundColor: '#1e293b' }]}>
-                  <Text style={{ color: '#ffffff', fontWeight: 'bold', fontSize: 10 }}>💬</Text>
-                </View>
-                <Text style={styles.menuLabel}>{chatEnabled ? 'Hide Chat Room' : 'Show Chat Room'}</Text>
-              </TouchableOpacity>
-
               <View style={styles.menuDivider} />
 
               <TouchableOpacity style={styles.menuItem} onPress={() => hideMenu(onLogout)}>
@@ -106,28 +99,12 @@ function DotsMenu({ onLogout, onRefresh, chatEnabled, onToggleChat }: DotsMenuPr
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 
-export default function KitchenDashboard({ username, onLogout }: KitchenDashboardProps) {
+export default function KitchenDashboard({ username, name, permissions, onLogout }: KitchenDashboardProps) {
   const insets = useSafeAreaInsets();
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<'live' | 'history'>('live');
-  const [chatEnabled, setChatEnabled] = useState(true);
+  const chatEnabled = permissions?.includes('chat') || false;
   const [showChat, setShowChat] = useState(false);
-
-  useEffect(() => {
-    AsyncStorage.getItem('chat_module_enabled').then((val) => {
-      if (val !== null) {
-        setChatEnabled(val === 'true');
-      }
-    });
-  }, []);
-
-  const handleToggleChat = async (enabled: boolean) => {
-    setChatEnabled(enabled);
-    await AsyncStorage.setItem('chat_module_enabled', enabled ? 'true' : 'false');
-    if (!enabled) {
-      setShowChat(false);
-    }
-  };
 
   // ── Network Status ──
   const { status: netStatus, ping: pingServer } = useServerStatus({
@@ -276,20 +253,20 @@ export default function KitchenDashboard({ username, onLogout }: KitchenDashboar
 
 
       {/* ── Header ── */}
-      <View style={[styles.header, { paddingTop: insets.top, height: 60 + insets.top }]}>
+      <View style={styles.header}>
         <View style={styles.logoBadge}>
           <Image source={require('../../../assets/Logo.jpg')} style={styles.logoBadgeImg} resizeMode="cover" />
         </View>
         <View style={{ flex: 1, marginLeft: 12 }}>
           <Text style={styles.headerTitle}>KITCHEN DISPLAY</Text>
-          <Text style={styles.headerSub}>CHEF • {username.toUpperCase()}</Text>
+          <Text style={styles.headerSub}>CHEF • {(name || username).toUpperCase()}</Text>
         </View>
         {chatEnabled && (
           <TouchableOpacity style={[styles.dotsBtn, { marginRight: 8 }]} onPress={() => setShowChat(true)} activeOpacity={0.7}>
             <Text style={{ fontSize: 18 }}>💬</Text>
           </TouchableOpacity>
         )}
-        <DotsMenu onLogout={onLogout} onRefresh={() => fetchLive(true)} chatEnabled={chatEnabled} onToggleChat={handleToggleChat} />
+        <DotsMenu onLogout={onLogout} onRefresh={() => fetchLive(true)} />
       </View>
 
       {!showChat ? (
@@ -357,7 +334,7 @@ export default function KitchenDashboard({ username, onLogout }: KitchenDashboar
       )}
         </>
       ) : (
-        <ChatScreen username={username} role="kitchen" onBack={() => setShowChat(false)} />
+        <ChatScreen username={username} name={name} role="kitchen" onBack={() => setShowChat(false)} />
       )}
     </View>
   );

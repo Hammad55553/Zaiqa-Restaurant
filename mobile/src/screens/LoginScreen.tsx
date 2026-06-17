@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, Platform, KeyboardAvoidingView, Image, StatusBar, Modal, ActivityIndicator, NativeModules, Alert } from 'react-native';
-import { Users, Lock, ChevronRight, Settings, Wifi, RefreshCw, X, CheckCircle, AlertTriangle, Download } from 'lucide-react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Users, Lock, ChevronRight, Settings, Wifi, RefreshCw, X, CheckCircle, AlertTriangle, Download, Eye, EyeOff } from 'lucide-react-native';
 import { serverIP, setServerIP, API_BASE } from '../config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -8,14 +9,16 @@ const { BundleUpdater } = NativeModules;
 const LOCAL_APP_VERSION = '1.0.0';
 
 interface LoginScreenProps {
-  onLoginSuccess: (username: string, role: 'waiter' | 'kitchen' | 'rider') => void;
+  onLoginSuccess: (username: string, role: 'waiter' | 'kitchen' | 'rider', name?: string, permissions?: string[]) => void;
 }
 
 export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
-  const [role, setRole] = useState<'waiter' | 'kitchen' | 'rider'>('waiter');
   const [username, setUsername] = useState('');
   const [pin, setPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [pinSetupMode, setPinSetupMode] = useState(false);
   const [error, setError] = useState('');
+  const [unsupportedRoleInfo, setUnsupportedRoleInfo] = useState<{ role: string, name: string } | null>(null);
 
   // Settings & update state
   const [showSettings, setShowSettings] = useState(false);
@@ -27,28 +30,8 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const [isDownloadingUpdate, setIsDownloadingUpdate] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState('');
   const [activeJSVersion, setActiveJSVersion] = useState(LOCAL_APP_VERSION);
-  const [dbUsers, setDbUsers] = useState<any[]>([]);
-  const [showUserDropdown, setShowUserDropdown] = useState(false);
-  const [manualInputMode, setManualInputMode] = useState(false);
-
-  const fetchUsersList = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/users`);
-      if (res.ok) {
-        const data = await res.json();
-        setDbUsers(data);
-        await AsyncStorage.setItem('CACHED_USERS', JSON.stringify(data));
-      }
-    } catch (e) {
-      console.warn('Failed to fetch users, loading cache...', e);
-      try {
-        const cached = await AsyncStorage.getItem('CACHED_USERS');
-        if (cached) {
-          setDbUsers(JSON.parse(cached));
-        }
-      } catch (err) {}
-    }
-  };
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   useEffect(() => {
     // Load stored active JS version if any
@@ -57,7 +40,6 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         setActiveJSVersion(val);
       }
     });
-    fetchUsersList();
   }, []);
 
   const handleLogin = async () => {
@@ -86,32 +68,66 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
       if (res.ok) {
         const data = await res.json();
-        const loggedInUser = data.user;
-        if (loggedInUser.role !== role) {
-          setError(`Incorrect role selection. Selected: ${role}, Database role: ${loggedInUser.role}`);
+
+        if (data.requirePinSetup) {
+          setPinSetupMode(true);
+          setError('First time login. Please confirm your new PIN.');
           setIsTestingConn(false);
           return;
         }
+
+        const loggedInUser = data.user;
+
+        // Ensure they have a valid mobile role
+        if (!['waiter', 'kitchen', 'rider'].includes(loggedInUser.role)) {
+          setUnsupportedRoleInfo({ role: loggedInUser.role, name: loggedInUser.name || loggedInUser.username });
+          setIsTestingConn(false);
+          return;
+        }
+
         await AsyncStorage.setItem('LOGGED_IN_USER', JSON.stringify({
           username: loggedInUser.username,
-          role: loggedInUser.role
+          role: loggedInUser.role,
+          name: loggedInUser.name,
+          permissions: loggedInUser.permissions || []
         }));
-        onLoginSuccess(loggedInUser.username, loggedInUser.role);
+        onLoginSuccess(loggedInUser.username, loggedInUser.role, loggedInUser.name, loggedInUser.permissions || []);
       } else {
         const data = await res.json();
         setError(data.error || 'Invalid username or passcode PIN');
       }
     } catch (err) {
-      console.warn('Network error during login, falling back to offline check', err);
-      // Offline fallback check: allow local bypass for demo/stuck offline situations
-      if (pin === '1234' || pin === '0000') {
-        const offlineUser = { username, role };
-        await AsyncStorage.setItem('LOGGED_IN_USER', JSON.stringify(offlineUser));
-        onLoginSuccess(username, role);
-      } else {
-        setError('Server unreachable. Offline login only works with PIN 1234 or 0000.');
-      }
+      console.warn('Network error during login', err);
+      setError('Server unreachable. Please check connection to the Zaiqa Mahal server.');
     } finally {
+      setIsTestingConn(false);
+    }
+  };
+
+  const handleSetPin = async () => {
+    if (!pin || pin !== confirmPin) {
+      setError('PINs do not match. Please re-enter.');
+      return;
+    }
+    setError('');
+    setIsTestingConn(true);
+    try {
+      const res = await fetch(`${API_BASE}/users/set-pin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, pin })
+      });
+      if (res.ok) {
+        setPinSetupMode(false);
+        // Automatically login now that PIN is set
+        await handleLogin();
+      } else {
+        const data = await res.json();
+        setError(data.error || 'Failed to set PIN');
+        setIsTestingConn(false);
+      }
+    } catch (err) {
+      setError('Network error');
       setIsTestingConn(false);
     }
   };
@@ -121,7 +137,6 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       await setServerIP(serverIPInput);
       setConnStatus(null);
       Alert.alert('Configuration Saved', `Server IP updated to: ${serverIPInput}`);
-      fetchUsersList();
     } catch (e) {
       Alert.alert('Error', 'Failed to save server IP');
     }
@@ -133,7 +148,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000);
-      
+
       const testUrl = `http://${serverIPInput}:5005/api/health`;
       const res = await fetch(testUrl, { signal: controller.signal });
       clearTimeout(timeoutId);
@@ -158,7 +173,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       const res = await fetch(testUrl);
       if (!res.ok) throw new Error('Server returned error');
       const data = await res.json();
-      
+
       const serverVer = data.version || '1.0.0';
       const isNew = serverVer !== activeJSVersion;
 
@@ -179,13 +194,13 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       Alert.alert('Not Supported', 'OTA update is only supported on native Android builds.');
       return;
     }
-    
+
     setIsDownloadingUpdate(true);
     setDownloadProgress('Downloading bundle...');
     try {
       const downloadUrl = `http://${serverIPInput}:5005/api/update/mobile-bundle`;
       await BundleUpdater.downloadBundle(downloadUrl);
-      
+
       if (updateInfo) {
         await AsyncStorage.setItem('ACTIVE_JS_VERSION', updateInfo.serverVersion);
         setActiveJSVersion(updateInfo.serverVersion);
@@ -226,13 +241,14 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   };
 
   return (
-    <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
-      style={styles.keyboardContainer}
-    >
-      {/* Settings Gear Icon at Top Right */}
-      <TouchableOpacity 
-        style={styles.settingsIcon} 
+    <SafeAreaView style={styles.safeArea}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardContainer}
+      >
+        {/* Settings Gear Icon at Top Right */}
+      <TouchableOpacity
+        style={styles.settingsIcon}
         onPress={() => {
           setServerIPInput(serverIP);
           setShowSettings(true);
@@ -243,20 +259,20 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
       {/* Background Watermark Logo */}
       <Image
-        source={require('../../assets/Logo.jpg')}
+        source={{ uri: `${API_BASE.replace('/api', '')}/assets/Logo.jpg` }}
         style={styles.backgroundWatermark}
-        resizeMode="contain"
+        resizeMode="cover"
+        defaultSource={require('../../assets/Logo.jpg')}
       />
 
-      <StatusBar barStyle="dark-content" backgroundColor="#f8fafc" />
-
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        
+
         {/* Brand Logo & Name */}
         <View style={styles.brandContainer}>
           <View style={styles.logoCircle}>
-            <Image 
-              source={require('../../assets/Logo.jpg')}
+            <Image
+              source={{ uri: `${API_BASE.replace('/api', '')}/assets/Logo.jpg` }}
+              defaultSource={require('../../assets/Logo.jpg')}
               style={styles.logoCircleImage}
               resizeMode="cover"
             />
@@ -269,28 +285,6 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         {/* Login Card */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Sign In</Text>
-          
-          {/* Role Selection */}
-          <View style={styles.roleContainer}>
-            <TouchableOpacity 
-              style={[styles.roleTab, role === 'waiter' && styles.activeTab]}
-              onPress={() => { setRole('waiter'); setError(''); }}
-            >
-              <Text style={[styles.roleText, role === 'waiter' && styles.activeRoleText]}>Waiter</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.roleTab, role === 'kitchen' && styles.activeTab]}
-              onPress={() => { setRole('kitchen'); setError(''); }}
-            >
-              <Text style={[styles.roleText, role === 'kitchen' && styles.activeRoleText]}>Kitchen</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.roleTab, role === 'rider' && styles.activeTab]}
-              onPress={() => { setRole('rider'); setError(''); }}
-            >
-              <Text style={[styles.roleText, role === 'rider' && styles.activeRoleText]}>Rider</Text>
-            </TouchableOpacity>
-          </View>
 
           {/* Error Message */}
           {error ? (
@@ -299,74 +293,81 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             </View>
           ) : null}
 
-          {/* Username Field / Selector */}
+          {/* Username Field */}
           <View style={styles.inputGroup}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
               <Text style={styles.inputLabel}>Name</Text>
-              {dbUsers.filter(u => u.role === role).length > 0 && (
-                <TouchableOpacity onPress={() => setManualInputMode(!manualInputMode)}>
-                  <Text style={{ fontSize: 11, color: '#3b82f6', fontWeight: '700' }}>
-                    {manualInputMode ? 'Select from list' : 'Type name manually'}
-                  </Text>
-                </TouchableOpacity>
-              )}
             </View>
-            
-            {!manualInputMode && dbUsers.filter(u => u.role === role).length > 0 ? (
-              <TouchableOpacity 
-                style={styles.inputWrapper} 
-                onPress={() => setShowUserDropdown(true)}
-              >
-                <Users size={18} color="#9ca3af" style={styles.inputIcon} />
-                <Text style={{ 
-                  flex: 1, 
-                  color: username ? '#ffffff' : '#9ca3af', 
-                  fontSize: 14, 
-                  paddingLeft: 12,
-                  paddingVertical: 12,
-                  fontWeight: '600'
-                }}>
-                  {username || 'Select your name...'}
-                </Text>
-                <ChevronRight size={18} color="#9ca3af" style={{ marginRight: 12 }} />
-              </TouchableOpacity>
-            ) : (
-              <View style={styles.inputWrapper}>
-                <Users size={18} color="#9ca3af" style={styles.inputIcon} />
-                <TextInput 
-                  placeholder="e.g. Zahid Iqbal" 
-                  placeholderTextColor="#9ca3af"
-                  value={username}
-                  onChangeText={(txt) => { setUsername(txt); setError(''); }}
-                  style={styles.input}
-                />
-              </View>
-            )}
-          </View>
 
-          {/* PIN Code Field */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Passcode PIN</Text>
             <View style={styles.inputWrapper}>
-              <Lock size={18} color="#9ca3af" style={styles.inputIcon} />
-              <TextInput 
-                placeholder="Enter 4-digit PIN" 
+              <Users size={18} color="#9ca3af" style={styles.inputIcon} />
+              <TextInput
+                placeholder="e.g. Zahid Iqbal"
                 placeholderTextColor="#9ca3af"
-                secureTextEntry
-                keyboardType="numeric"
-                maxLength={4}
-                value={pin}
-                onChangeText={(txt) => { setPin(txt); setError(''); }}
+                value={username}
+                onChangeText={(txt) => { setUsername(txt); setError(''); }}
                 style={styles.input}
               />
             </View>
           </View>
 
+          {/* PIN Code Field */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>{pinSetupMode ? 'Create Access PIN / Password' : 'Passcode PIN'}</Text>
+            <View style={styles.inputWrapper}>
+              <Lock size={18} color="#9ca3af" style={styles.inputIcon} />
+              <TextInput
+                placeholder={pinSetupMode ? "Enter new PIN/Password" : "Enter Password or PIN"}
+                placeholderTextColor="#9ca3af"
+                secureTextEntry={!showPassword}
+                value={pin}
+                onChangeText={(txt) => { setPin(txt); setError(''); }}
+                style={styles.input}
+              />
+              <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={{ paddingRight: 16 }}>
+                {showPassword ? <EyeOff size={18} color="#9ca3af" /> : <Eye size={18} color="#9ca3af" />}
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {pinSetupMode && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Confirm Access PIN</Text>
+              <View style={styles.inputWrapper}>
+                <Lock size={18} color="#9ca3af" style={styles.inputIcon} />
+                <TextInput
+                  placeholder="Re-enter to confirm"
+                  placeholderTextColor="#9ca3af"
+                  secureTextEntry={!showConfirmPassword}
+                  value={confirmPin}
+                  onChangeText={(txt) => { setConfirmPin(txt); setError(''); }}
+                  style={styles.input}
+                />
+                <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={{ paddingRight: 16 }}>
+                  {showConfirmPassword ? <EyeOff size={18} color="#9ca3af" /> : <Eye size={18} color="#9ca3af" />}
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
           {/* Login Button */}
-          <TouchableOpacity style={styles.loginBtn} onPress={handleLogin}>
-            <Text style={styles.loginBtnText}>PROCEED TO WORKSPACE</Text>
-            <ChevronRight size={16} color="#ffffff" />
-          </TouchableOpacity>
+          {pinSetupMode ? (
+            <TouchableOpacity style={styles.loginBtn} onPress={handleSetPin}>
+              <Text style={styles.loginBtnText}>CONFIRM & LOGIN</Text>
+              <ChevronRight size={16} color="#ffffff" />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.loginBtn} onPress={handleLogin}>
+              <Text style={styles.loginBtnText}>PROCEED TO WORKSPACE</Text>
+              <ChevronRight size={16} color="#ffffff" />
+            </TouchableOpacity>
+          )}
+
+          {pinSetupMode && (
+            <TouchableOpacity style={{ alignItems: 'center', marginTop: 16 }} onPress={() => { setPinSetupMode(false); setConfirmPin(''); }}>
+              <Text style={{ color: '#94a3b8', fontSize: 12, fontWeight: '700' }}>Cancel Setup</Text>
+            </TouchableOpacity>
+          )}
 
         </View>
 
@@ -386,7 +387,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            
+
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Server & Updates Settings</Text>
               <TouchableOpacity onPress={() => setShowSettings(false)} style={styles.closeBtn}>
@@ -395,17 +396,17 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             </View>
 
             <ScrollView contentContainerStyle={styles.modalScroll}>
-              
+
               {/* Server IP Section */}
               <View style={styles.settingsSection}>
                 <Text style={styles.sectionTitle}>Server Connection Config</Text>
-                
+
                 <View style={styles.inputGroup}>
                   <Text style={styles.inputLabel}>Server IP Address</Text>
                   <View style={styles.inputWrapper}>
                     <Wifi size={18} color="#9ca3af" style={styles.inputIcon} />
-                    <TextInput 
-                      placeholder="e.g. 192.168.1.100" 
+                    <TextInput
+                      placeholder="e.g. 192.168.1.100"
                       placeholderTextColor="#9ca3af"
                       value={serverIPInput}
                       onChangeText={setServerIPInput}
@@ -429,8 +430,8 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                 )}
 
                 <View style={styles.buttonRow}>
-                  <TouchableOpacity 
-                    style={[styles.actionButton, styles.testBtn]} 
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.testBtn]}
                     onPress={handleTestConnection}
                     disabled={isTestingConn}
                   >
@@ -462,9 +463,9 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                     <Text style={styles.versionLabel}>Current Local version</Text>
                     <Text style={styles.versionVal}>v{activeJSVersion}</Text>
                   </View>
-                  
-                  <TouchableOpacity 
-                    style={[styles.checkUpdateBtn]} 
+
+                  <TouchableOpacity
+                    style={[styles.checkUpdateBtn]}
                     onPress={handleCheckUpdate}
                     disabled={isCheckingUpdate}
                   >
@@ -486,8 +487,8 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                     <Text style={styles.updateResultDetail}>Published at: {updateInfo.publishedAt}</Text>
 
                     {updateInfo.updateAvailable && (
-                      <TouchableOpacity 
-                        style={styles.downloadUpdateBtn} 
+                      <TouchableOpacity
+                        style={styles.downloadUpdateBtn}
                         onPress={handleDownloadUpdate}
                         disabled={isDownloadingUpdate}
                       >
@@ -521,62 +522,63 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         </View>
       </Modal>
 
-      {/* User Dropdown Selection Modal */}
+      {/* UNSUPPORTED ROLE MODAL */}
       <Modal
-        visible={showUserDropdown}
+        visible={unsupportedRoleInfo !== null}
+        transparent
         animationType="fade"
-        transparent={true}
-        onRequestClose={() => setShowUserDropdown(false)}
+        onRequestClose={() => setUnsupportedRoleInfo(null)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { maxHeight: '60%' }]}>
+          <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select {role === 'waiter' ? 'Waiter' : role === 'kitchen' ? 'Kitchen Staff' : 'Rider'}</Text>
-              <TouchableOpacity onPress={() => setShowUserDropdown(false)} style={styles.closeBtn}>
-                <X size={20} color="#ffffff" />
+              <View style={[styles.iconCircle, { backgroundColor: '#fef2f2' }]}>
+                <AlertTriangle size={32} color="#ef4444" />
+              </View>
+              <TouchableOpacity onPress={() => setUnsupportedRoleInfo(null)} style={styles.closeBtn}>
+                <X size={20} color="#64748b" />
               </TouchableOpacity>
             </View>
 
-            <ScrollView contentContainerStyle={styles.modalScroll}>
-              {dbUsers.filter(u => u.role === role).map((u) => (
-                <TouchableOpacity
-                  key={u.id}
-                  style={[
-                    styles.userSelectRow,
-                    username === u.username && styles.userSelectRowActive
-                  ]}
-                  onPress={() => {
-                    setUsername(u.username);
-                    setError('');
-                    setShowUserDropdown(false);
-                  }}
-                >
-                  <Text style={[
-                    styles.userSelectText,
-                    username === u.username && styles.userSelectTextActive
-                  ]}>
-                    {u.username}
-                  </Text>
-                  {username === u.username && <CheckCircle size={16} color="#22c55e" />}
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            <View style={{ alignItems: 'center', marginBottom: 20 }}>
+              <Text style={styles.modalTitle}>Desktop App Required</Text>
+              <Text style={styles.modalDesc}>
+                Hello <Text style={{fontWeight: 'bold', color: '#0f172a'}}>{unsupportedRoleInfo?.name}</Text>! 
+                The mobile application is specifically designed for Waiters, Kitchen Staff, and Riders.
+              </Text>
+              
+              <View style={{ backgroundColor: '#f1f5f9', padding: 12, borderRadius: 12, width: '100%', marginBottom: 16 }}>
+                <Text style={{ fontSize: 13, color: '#475569', textAlign: 'center', lineHeight: 20 }}>
+                  Since your role is <Text style={{fontWeight: '900', color: '#ea580c', textTransform: 'uppercase'}}>{unsupportedRoleInfo?.role}</Text>, you must use the <Text style={{fontWeight: 'bold', color: '#0f172a'}}>Desktop/Web Application</Text> to access the Admin Dashboard, POS, and settings.
+                </Text>
+              </View>
+            </View>
+
+            <TouchableOpacity 
+              style={[styles.saveBtn, { width: '100%' }]}
+              onPress={() => setUnsupportedRoleInfo(null)}
+            >
+              <Text style={styles.saveBtnText}>Understood</Text>
+            </TouchableOpacity>
           </View>
         </View>
-      </Modal>
-
-    </KeyboardAvoidingView>
+      </Modal>      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#0f172a',
+  },
   keyboardContainer: {
     flex: 1,
     backgroundColor: '#0f172a',
   },
   settingsIcon: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 50 : 20,
+    top: 20,
     right: 20,
     zIndex: 10,
     width: 44,
