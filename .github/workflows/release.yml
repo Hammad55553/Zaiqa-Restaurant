@@ -85,7 +85,7 @@ jobs:
 
       - name: Install Desktop Dependencies
         working-directory: desktop
-        run: npm install
+        run: npm install --legacy-peer-deps
 
       - name: Build Windows Installer
         working-directory: desktop
