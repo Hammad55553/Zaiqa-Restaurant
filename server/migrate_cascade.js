@@ -2,7 +2,7 @@
  * Migration: Add ON DELETE CASCADE to order_items.order_id
  * Run once: node migrate_cascade.js
  */
-const sqlite3 = require('sqlite3').verbose();
+const sqlite3 = require('@vscode/sqlite3').verbose();
 const path = require('path');
 
 const dbPath = path.resolve(__dirname, 'database/pos.db');

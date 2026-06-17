@@ -29,3 +29,6 @@ desktop/server/
 
 # Firebase service account
 server/config/firebase-service-account.json
+
+# Binaries
+*.dmg
