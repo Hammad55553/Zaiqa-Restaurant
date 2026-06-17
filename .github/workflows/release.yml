@@ -85,7 +85,13 @@ jobs:
 
       - name: Install Desktop Dependencies
         working-directory: desktop
-        run: yarn install
+        run: |
+          try {
+            yarn install
+          } catch {
+            if (Test-Path yarn-error.log) { Get-Content yarn-error.log -Tail 100 }
+            throw
+          }
 
       - name: Build Windows Installer
         working-directory: desktop

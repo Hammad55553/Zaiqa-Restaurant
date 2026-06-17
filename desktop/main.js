@@ -17,7 +17,7 @@ let mainWindow;
 
 function seedDatabaseIfNeeded() {
   if (!userDataPath) return;
-  const sqlite3 = require('sqlite3').verbose();
+  const sqlite3 = require('@vscode/sqlite3').verbose();
   const dbPath = path.join(userDataPath, 'pos.db');
   const db = new sqlite3.Database(dbPath);
 
