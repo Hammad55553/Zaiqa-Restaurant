@@ -135,19 +135,45 @@ function createWindow() {
 }
 
 console.log('About to call app.whenReady()...');
+
+// Single instance lock to prevent ghost processes from blocking
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  console.log('Another instance is already running. Quitting this one.');
+  app.quit();
+  return;
+} else {
+  app.on('second-instance', (event, commandLine, workingDirectory) => {
+    // Someone tried to run a second instance, we should focus our window.
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
+
 app.whenReady().then(() => {
   console.log('App ready!');
   userDataPath = app.getPath('userData');
   process.env.ELECTRON_USER_DATA_PATH = userDataPath;
   console.log('UserData directory:', userDataPath);
   
-  const updateServerPath = path.join(userDataPath, 'updates/server/index.js');
-  if (fs.existsSync(updateServerPath)) {
-    console.log('Loading updated server from:', updateServerPath);
-    require(updateServerPath);
-  } else {
-    console.log('Loading bundled server from:', path.join(__dirname, 'server/index.js'));
-    require('./server/index.js');
+  try {
+    const updateServerPath = path.join(userDataPath, 'updates/server/index.js');
+    if (fs.existsSync(updateServerPath)) {
+      console.log('Loading updated server from:', updateServerPath);
+      require(updateServerPath);
+    } else {
+      console.log('Loading bundled server from:', path.join(__dirname, 'server/index.js'));
+      require('./server/index.js');
+    }
+  } catch (error) {
+    console.error('CRITICAL ERROR loading server. Falling back to bundled server if possible.', error);
+    try {
+      require('./server/index.js');
+    } catch (e) {
+      console.error('Bundled server also failed!', e);
+    }
   }
   
   setTimeout(seedDatabaseIfNeeded, 1000);

@@ -819,7 +819,7 @@ const CreditManagement = ({ initialCustomerId }) => {
             {isAddModalOpen && (
                 <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: window.innerWidth <= 480 ? 'flex-end' : 'center', justifyContent: 'center' }}>
                     <div style={{ background: 'white', width: '100%', maxWidth: '420px', borderRadius: window.innerWidth <= 480 ? '24px 24px 0 0' : '16px', overflow: 'hidden' }}>
-                        <div style={{ background: '#f97316', padding: '20px', color: 'white', display: 'flex', justifyBetween: 'space-between', alignItems: 'center', display: 'flex', justifyContent: 'space-between' }}>
+                        <div style={{ background: '#f97316', padding: '20px', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <h3 style={{ fontWeight: 900, fontSize: '1rem', margin: 0 }}>REGISTER NEW {khataType.toUpperCase()}</h3>
                             <button onClick={() => setIsAddModalOpen(false)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: 'white', cursor: 'pointer', padding: '5px', borderRadius: '8px', display: 'flex' }}><X size={20} /></button>
                         </div>
