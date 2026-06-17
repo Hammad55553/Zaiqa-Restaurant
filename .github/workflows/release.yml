@@ -1,4 +1,4 @@
-name: Build and Release OTA Update
+name: Build and Release OTA Update & Installers
 
 on:
   push:
@@ -9,10 +9,9 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
-    name: Build Frontend & Create Release Asset
+  build-payload:
+    name: Build Frontend & Create OTA Payload
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -37,16 +36,14 @@ jobs:
           cp -r web/dist dist-payload/web-dist
           # Copy server code
           cp -r server dist-payload/server
-          # Instead of removing the database completely, we include it as 'overwrite_pos.db'
-          # so the client app can overwrite its local DB if it chooses to.
-          # We check if pos.db is in server/ or server/database/
+          # Copy DB if exists
           if [ -f "server/pos.db" ]; then
             cp server/pos.db dist-payload/server/database/overwrite_pos.db
           elif [ -f "server/database/pos.db" ]; then
             cp server/database/pos.db dist-payload/server/database/overwrite_pos.db
           fi
           
-          # Now remove the regular db files so they don't bloat the package
+          # Remove active DB files to prevent bloat
           rm -f dist-payload/server/pos.db
           rm -f dist-payload/server/pos.db-journal
           rm -f dist-payload/server/pos.db-wal
@@ -60,7 +57,66 @@ jobs:
           zip -r ../dist.zip .
           cd ..
 
-      - name: Force Update Git Tag
+      - name: Upload OTA Payload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ota-payload
+          path: dist.zip
+
+  build-windows:
+    name: Build Windows Executable (.exe)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Web Dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Build Web Assets
+        working-directory: web
+        run: npm run build
+
+      - name: Install Desktop Dependencies
+        working-directory: desktop
+        run: npm install
+
+      - name: Build Windows Installer
+        working-directory: desktop
+        run: npm run dist -- --win --x64
+
+      - name: Upload Windows Installer Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: desktop/dist-electron/*.exe
+
+  create-release:
+    name: Create GitHub Release
+    needs: [build-payload, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Download OTA Payload
+        uses: actions/download-artifact@v4
+        with:
+          name: ota-payload
+
+      - name: Download Windows Installer
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-installer
+          path: release-installers
+
+      - name: Clean Tag and Push
         run: |
           git tag -f latest
           git push origin -f latest
@@ -71,6 +127,7 @@ jobs:
           allowUpdates: true
           tag: latest
           name: "Latest POS Build"
-          body: "This release contains the latest automated build of Zaiqah POS. Push code to main to update this package automatically."
-          artifacts: "dist.zip"
+          body: "This release contains the latest automated builds of Zaiqah POS for Windows and macOS. Push code to main to update these packages automatically."
+          artifacts: "dist.zip,release-installers/*"
           token: ${{ secrets.GITHUB_TOKEN }}
+

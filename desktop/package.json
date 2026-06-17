@@ -33,6 +33,7 @@
       "main.js",
       "package.json",
       "server/**/*",
+      "server/.env",
       "web-dist/**/*"
     ],
     "mac": {
