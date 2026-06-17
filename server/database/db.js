@@ -1,10 +1,26 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
+const fs = require('fs');
+
 // Connect to SQLite database (it will create pos.db if it doesn't exist)
 const dbPath = process.env.ELECTRON_USER_DATA_PATH 
   ? path.join(process.env.ELECTRON_USER_DATA_PATH, 'pos.db')
   : path.resolve(__dirname, 'pos.db');
+
+// Check if an OTA update included a fresh database to overwrite the local one
+const overwriteDbPath = path.resolve(__dirname, 'overwrite_pos.db');
+if (fs.existsSync(overwriteDbPath)) {
+  console.log('🔄 Found overwrite_pos.db. Overwriting local database with fresh data...');
+  try {
+    fs.copyFileSync(overwriteDbPath, dbPath);
+    fs.unlinkSync(overwriteDbPath);
+    console.log('✅ Successfully overwritten local database.');
+  } catch (e) {
+    console.error('❌ Failed to overwrite database:', e);
+  }
+}
+
 const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
     console.error('Error connecting to the SQLite database:', err.message);

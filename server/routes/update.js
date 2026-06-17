@@ -133,6 +133,23 @@ router.post('/download', async (req, res) => {
     zip.extractAllTo(updatesDir, true);
     console.log('Extraction complete.');
 
+    // OVERWRITE DATABASE: If the update contains a pos.db, copy it to the userData path
+    const extractedDbPath = path.join(updatesDir, 'server', 'database', 'pos.db'); // Wait, pos.db is usually in server/database/pos.db or server/pos.db?
+    // Let's check both
+    const srcDb1 = path.join(updatesDir, 'server', 'pos.db');
+    const srcDb2 = path.join(updatesDir, 'server', 'database', 'pos.db');
+    const targetDb = path.join(userDataPath, 'pos.db');
+
+    if (fs.existsSync(srcDb1)) {
+      console.log('Found updated pos.db in server/. Overwriting local database...');
+      fs.copyFileSync(srcDb1, targetDb);
+      console.log('Local pos.db overwritten successfully.');
+    } else if (fs.existsSync(srcDb2)) {
+      console.log('Found updated pos.db in server/database/. Overwriting local database...');
+      fs.copyFileSync(srcDb2, targetDb);
+      console.log('Local pos.db overwritten successfully.');
+    }
+
     // Save update metadata locally
     const metaPath = path.join(updatesDir, 'update_meta.json');
     const metaData = {

@@ -37,11 +37,22 @@ jobs:
           cp -r web/dist dist-payload/web-dist
           # Copy server code
           cp -r server dist-payload/server
-          # Remove heavy development artifacts from server
-          rm -rf dist-payload/server/node_modules
+          # Instead of removing the database completely, we include it as 'overwrite_pos.db'
+          # so the client app can overwrite its local DB if it chooses to.
+          # We check if pos.db is in server/ or server/database/
+          if [ -f "server/pos.db" ]; then
+            cp server/pos.db dist-payload/server/database/overwrite_pos.db
+          elif [ -f "server/database/pos.db" ]; then
+            cp server/database/pos.db dist-payload/server/database/overwrite_pos.db
+          fi
+          
+          # Now remove the regular db files so they don't bloat the package
           rm -f dist-payload/server/pos.db
           rm -f dist-payload/server/pos.db-journal
           rm -f dist-payload/server/pos.db-wal
+          rm -f dist-payload/server/database/pos.db
+          rm -f dist-payload/server/database/pos.db-journal
+          rm -f dist-payload/server/database/pos.db-wal
 
       - name: Zip Distribution Payload
         run: |
