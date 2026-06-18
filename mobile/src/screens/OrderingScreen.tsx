@@ -170,6 +170,44 @@ export default function OrderingScreen({
     setConfirmModalVisible(true);
   };
 
+  const handleCancelOrder = () => {
+    if (!activeOrder) return;
+
+    const wasStarted = ['preparing', 'ready'].includes(activeOrder.status);
+    setConfirmModalTitle('Cancel Order?');
+    setConfirmModalSub(
+      wasStarted
+        ? `Order #${activeOrder.id} is already being prepared. Cancelling will refund raw ingredients to stock. Confirm?`
+        : `Cancel Order #${activeOrder.id} for Table ${selectedTable.number}? The order is pending and no stock was deducted.`
+    );
+    setConfirmModalAction(() => async () => {
+      try {
+        setPlacingOrder(true);
+        const res = await fetch(`${API_BASE}/orders/${activeOrder.id}/cancel`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            refund_raw: wasStarted, // refund stock if preparing/ready
+            log_waste: wasStarted,  // log as waste if food was being made
+            reason: `Cancelled by Waiter (${name || username})`
+          })
+        });
+        if (res.ok) {
+          toast.success('Order Cancelled', `Order #${activeOrder.id} has been cancelled.${wasStarted ? ' Stock refunded.' : ''}`);
+          onBack();
+        } else {
+          const err = await res.json().catch(() => ({}));
+          toast.error('Cancel Failed', err.error || 'Could not cancel order.');
+        }
+      } catch (e) {
+        toast.error('Network Error', 'Check server connection.');
+      } finally {
+        setPlacingOrder(false);
+      }
+    });
+    setConfirmModalVisible(true);
+  };
+
   useEffect(() => {
     fetchMenu();
     if (selectedTable.status === 'dining' || selectedTable.status === 'reserved') {
@@ -525,6 +563,7 @@ export default function OrderingScreen({
             placingOrder={placingOrder}
             activeOrder={activeOrder}
             onRequestBill={handleRequestBill}
+            onCancelOrder={activeOrder ? handleCancelOrder : undefined}
           />
         )}
       </View>

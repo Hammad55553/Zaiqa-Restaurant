@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { Trash2, Minus, Plus, Send, FileText, Receipt, ShoppingBag } from 'lucide-react-native';
+import { Trash2, Minus, Plus, Send, FileText, Receipt, ShoppingBag, Ban } from 'lucide-react-native';
 
 interface CartItem {
   id: any;
@@ -23,6 +23,7 @@ interface CartSectionProps {
   placingOrder: boolean;
   activeOrder?: any;
   onRequestBill?: () => void;
+  onCancelOrder?: () => void;
 }
 
 export default function CartSection({
@@ -35,7 +36,8 @@ export default function CartSection({
   handlePlaceOrder,
   placingOrder,
   activeOrder,
-  onRequestBill
+  onRequestBill,
+  onCancelOrder
 }: CartSectionProps) {
   const sentItems = cartItems.filter(item => item.sent);
   const newItems = cartItems.filter(item => !item.sent);
@@ -229,6 +231,26 @@ export default function CartSection({
             </TouchableOpacity>
           )}
         </View>
+
+        {activeOrder && onCancelOrder && (
+          <TouchableOpacity 
+            style={{ 
+              height: 48, 
+              borderRadius: 12, 
+              backgroundColor: '#ef4444', 
+              flexDirection: 'row', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              marginTop: 4 
+            }} 
+            onPress={onCancelOrder}
+            disabled={placingOrder}
+            activeOpacity={0.8}
+          >
+            <Text style={{ color: '#ffffff', fontWeight: '950', fontSize: 13, letterSpacing: 0.5 }}>CANCEL ORDER</Text>
+            <Ban size={12} color="#ffffff" style={{ marginLeft: 6 }} />
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );

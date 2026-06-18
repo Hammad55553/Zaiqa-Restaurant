@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import Menu from './Menu';
 import Cart from './Cart';
-import { ArrowLeft, Users, Clock, Edit2, LayoutGrid, CheckCircle, AlertCircle, X, Bike, Phone, MapPin, Plus, Trash2, Search, Printer, CreditCard, ShoppingBag, Lock, Unlock } from 'lucide-react';
+import { ArrowLeft, Users, Clock, Edit2, LayoutGrid, CheckCircle, AlertCircle, X, Bike, Phone, MapPin, Plus, Trash2, Search, Printer, CreditCard, ShoppingBag, Lock, Unlock, Ban } from 'lucide-react';
 import TableCard from './components/TableCard';
 import TableTimer from './components/TableTimer';
 import OrderConfirmationModal from './components/OrderConfirmationModal';
@@ -39,6 +39,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
 
   const [activeOrderId, setActiveOrderId] = useState(null);
   const [activeOrderStatus, setActiveOrderStatus] = useState('pending');
+  const [refreshKey, setRefreshKey] = useState(0);
   const [adminUnlockRemark, setAdminUnlockRemark] = useState('');
   const [billRequestAlert, setBillRequestAlert] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
@@ -356,7 +357,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
       unsubscribeOrders();
       unsubscribeTables();
     };
-  }, [selectedDelivery]);
+  }, [selectedDelivery, refreshKey]);
 
   // Load & sync delivery orders from IndexedDB
   const loadDeliveryOrders = async () => {
@@ -2169,6 +2170,41 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
                     </button>
                   )}
                 </div>
+
+                {/* Cancel Order - danger zone, shown only when order exists */}
+                {activeOrderId && (
+                  <button
+                    onClick={() => {
+                      if (!window.confirm(`Cancel Order #${activeOrderId}? Stock will be refunded if already in preparation.`)) return;
+                      const wasStarted = activeOrderStatus && ['preparing', 'ready'].includes(activeOrderStatus);
+                      fetch(`${API_BASE}/orders/${activeOrderId}/cancel`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          refund_raw: wasStarted,
+                          log_waste: wasStarted,
+                          reason: 'Cancelled by Cashier'
+                        })
+                      })
+                        .then(r => r.json())
+                        .then(d => {
+                          if (d.success) {
+                            setCartItems([]);
+                            setActiveOrderId(null);
+                            setActiveOrderStatus('pending');
+                            showToast('Order cancelled.' + (wasStarted ? ' Stock refunded.' : ''), 'success');
+                            setRefreshKey(k => k + 1);
+                          } else {
+                            alert(d.error || 'Failed to cancel order');
+                          }
+                        })
+                        .catch(() => alert('Network error while cancelling order'));
+                    }}
+                    className="w-full mt-2 py-3 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-black rounded-xl transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider"
+                  >
+                    <Ban size={14} /> Cancel Order #{activeOrderId}
+                  </button>
+                )}
               </div>
 
             </div>
