@@ -6,15 +6,15 @@ const { queueOrderChange } = require('../services/syncHelper');
 // @route   POST /api/orders
 // @desc    Create a new order (from POS)
 router.post('/', (req, res) => {
-  const { table_number, area, customer_name, remarks, items, subtotal, tax, total_amount } = req.body;
+  const { table_number, area, customer_name, remarks, items, subtotal, tax, total_amount, created_by } = req.body;
 
   if (!items || items.length === 0) {
     return res.status(400).json({ error: 'Order must have items' });
   }
 
   // Insert main order
-  const orderSql = `INSERT INTO orders (table_number, area, customer_name, remarks, status, subtotal, tax, total_amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
-  const orderParams = [table_number, area, customer_name, remarks, 'pending', subtotal, tax, total_amount];
+  const orderSql = `INSERT INTO orders (table_number, area, customer_name, remarks, status, subtotal, tax, total_amount, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  const orderParams = [table_number, area, customer_name, remarks, 'pending', subtotal, tax, total_amount, created_by || null];
 
   db.run(orderSql, orderParams, function(err) {
     if (err) {

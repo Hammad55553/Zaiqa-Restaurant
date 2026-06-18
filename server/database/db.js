@@ -178,6 +178,7 @@ const initDb = () => {
       db.run(`ALTER TABLE orders ADD COLUMN admin_edit_remark TEXT`, (err) => {});
       db.run(`ALTER TABLE orders ADD COLUMN has_new_updates BOOLEAN DEFAULT 0`, (err) => {});
       db.run(`ALTER TABLE orders ADD COLUMN deleted_at DATETIME DEFAULT NULL`, (err) => {});
+      db.run(`ALTER TABLE orders ADD COLUMN created_by TEXT`, (err) => {});
     });
 
     // Order Items (KOT)

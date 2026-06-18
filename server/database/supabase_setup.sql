@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS orders (
   remarks TEXT, -- Hold addresses / general notes
   admin_edit_remark TEXT,
   has_new_updates BOOLEAN DEFAULT FALSE,
+  created_by TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
   items JSONB -- Denormalized order items copy for easy reporting
 );

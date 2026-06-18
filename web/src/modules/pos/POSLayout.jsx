@@ -868,7 +868,8 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
               items: cartItems.map(i => ({ id: i.id, name: i.name, price: i.price, qty: i.qty, isFromPreparedWaste: i.isFromPreparedWaste || false })),
               subtotal,
               tax,
-              total_amount: total
+              total_amount: total,
+              created_by: currentUser?.username || 'admin'
             })
           });
           if (!response.ok) throw new Error('Failed to place order');
@@ -973,7 +974,8 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
             items: cartItems,
             subtotal: orderData.subtotal,
             tax: orderData.tax,
-            total_amount: orderData.total
+            total_amount: orderData.total,
+            created_by: currentUser?.username || 'admin'
           })
         });
 
@@ -1224,7 +1226,8 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
             items: cartItems.map(i => ({ id: i.id, name: i.name, price: i.price, qty: i.qty })),
             subtotal: sub,
             tax: taxAmt,
-            total_amount: tot
+            total_amount: tot,
+            created_by: currentUser?.username || 'admin'
           })
         });
       }
@@ -1686,7 +1689,8 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
               items: cartItems,
               subtotal: subtotal,
               tax: tax,
-              total_amount: total
+              total_amount: total,
+              created_by: currentUser?.username || 'admin'
             })
           });
           if (!response.ok) throw new Error('Failed to place order');
@@ -1734,7 +1738,8 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
               items: cartItems.map(i => ({ id: i.id, name: i.name, price: i.price, qty: i.qty, isFromPreparedWaste: i.isFromPreparedWaste || false })),
               subtotal: subtotal,
               tax: tax,
-              total_amount: total
+              total_amount: total,
+              created_by: currentUser?.username || 'admin'
             })
           });
           if (response.ok) {

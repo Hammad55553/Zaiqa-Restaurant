@@ -42,6 +42,7 @@ function queueOrderChange(orderId, action) {
         total_amount: order.total_amount,
         remarks: order.remarks,
         admin_edit_remark: order.admin_edit_remark,
+        created_by: order.created_by,
         created_at: order.created_at,
         items: items || [] // Nested items array
       };
