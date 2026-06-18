@@ -2192,7 +2192,6 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
 
                 {/* Cancel Order - danger zone, shown only when order exists */}
                 {activeOrderId && (
-                  {/* Smart Role-Based Cancel Order */}
                   <div className="w-full mt-2">
                     {activeOrderStatus === 'pending' && (
                       // PENDING — everyone can cancel directly
