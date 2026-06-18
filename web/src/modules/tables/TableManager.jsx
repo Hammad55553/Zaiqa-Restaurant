@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Plus, Pencil, Trash2, X, Users, AlertCircle, LayoutGrid, Check, Copy } from "lucide-react";
 import { API_BASE } from "../../config";
+import { syncService } from "../../services/syncService";
 
 const API = `${API_BASE}/tables`;
 
@@ -68,6 +69,15 @@ const TableManager = () => {
 
   useEffect(() => {
     fetchTables();
+
+    const unsubscribe = syncService.subscribe('tables:update', (updatedTables) => {
+      console.log("TableManager: Tables update event received! Refreshing tables...");
+      setTables(updatedTables);
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, [fetchTables]);
 
   const openAdd = () => {

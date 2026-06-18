@@ -5,6 +5,7 @@ import {
   Calendar, Table2, User, ShoppingBag, ArrowLeft
 } from 'lucide-react';
 import { API_BASE } from '../../config';
+import ReceiptSlip from '../pos/components/ReceiptSlip';
 
 const API = `${API_BASE}/orders`;
 
@@ -35,8 +36,35 @@ const OrdersHistory = ({ currentUser, onViewReceipt }) => {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [confirmModal, setConfirmModal] = useState(null); // { type: 'trash'|'restore'|'delete', order }
   const [acting, setActing] = useState(false);
+  const [printData, setPrintData] = useState(null);
 
   const isAdmin = currentUser?.role === 'admin' || currentUser?.username === 'admin';
+
+  const handlePrint = (order) => {
+    const data = {
+      items: (order.items || []).map(i => ({
+        qty: i.quantity,
+        name: i.item_name,
+        price: i.price
+      })),
+      subtotal: order.subtotal || 0,
+      tax: order.tax || 0,
+      total: order.total_amount || 0,
+      orderId: order.id,
+      date: order.created_at,
+      table: order.table_number ? { number: order.table_number, area: order.area || 'Main' } : 'Delivery',
+      customerName: order.customer_name || '',
+      paymentMethod: order.payment_method || 'cash',
+      remarks: order.remarks || '',
+      serviceCharges: (order.items || []).find(item => item.item_name === 'Service Charges' || item.name === 'Service Charges')?.price || 0
+    };
+
+    setPrintData(data);
+    setTimeout(() => {
+      window.print();
+      setTimeout(() => setPrintData(null), 1000);
+    }, 250);
+  };
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -340,6 +368,11 @@ const OrdersHistory = ({ currentUser, onViewReceipt }) => {
               <button onClick={() => setSelectedOrder(null)} style={{ flex: 1, padding: '11px', borderRadius: 12, border: '1.5px solid #e4e4e7', background: '#fff', fontSize: 14, fontWeight: 700, color: '#71717a', cursor: 'pointer' }}>
                 Close
               </button>
+              {!selectedOrder.deleted_at && (
+                <button onClick={() => handlePrint(selectedOrder)} style={{ flex: 1, padding: '11px', borderRadius: 12, border: 'none', background: '#f97316', fontSize: 14, fontWeight: 700, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                  <Receipt size={14} /> Print Bill
+                </button>
+              )}
               {isAdmin && !selectedOrder.deleted_at && (
                 <button onClick={() => { setConfirmModal({ type: 'trash', order: selectedOrder }); setSelectedOrder(null); }}
                   style={{ flex: 1, padding: '11px', borderRadius: 12, border: 'none', background: '#fef2f2', fontSize: 14, fontWeight: 700, color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
@@ -386,6 +419,12 @@ const OrdersHistory = ({ currentUser, onViewReceipt }) => {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {printData && (
+        <div className="print-only" style={{ display: 'none' }}>
+          <ReceiptSlip printData={printData} />
         </div>
       )}
 

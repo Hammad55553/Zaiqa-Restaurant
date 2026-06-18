@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShoppingCart, LayoutGrid, Package, FileText, Settings, Bell, Search, Menu as MenuIcon, X, Printer, Truck, Wallet, CreditCard, ChefHat, Utensils, BookOpen, Layers, Phone, Bike, Shield, LogOut, Ban, Eye, EyeOff, MessageSquare, Globe, Wifi, WifiOff, ClipboardList, Database } from 'lucide-react';
+import { ShoppingCart, LayoutGrid, Package, FileText, Settings, Bell, Search, Menu as MenuIcon, X, Printer, Truck, Wallet, CreditCard, ChefHat, Utensils, BookOpen, Layers, Phone, Bike, Shield, LogOut, Ban, Eye, EyeOff, MessageSquare, Globe, Wifi, WifiOff, ClipboardList, Database, AlertTriangle } from 'lucide-react';
 import POSLayout from './modules/pos/POSLayout';
 import KitchenDisplay from './modules/kds/KitchenDisplay';
 import SplashScreen from './components/SplashScreen';
 import ReceiptPreview from './modules/pos/components/ReceiptPreview';
 import InventorySystem from './modules/inventory/InventorySystem';
 import StockManager from './modules/stock/StockManager';
+import LowStockAlerts from './modules/stock/LowStockAlerts';
 import ReportsDashboard from './modules/reports/ReportsDashboard';
 import TableManager from './modules/tables/TableManager';
 import SupplierManagement from './modules/suppliers/SupplierManagement';
@@ -20,6 +21,7 @@ import OrdersHistory from './modules/orders/OrdersHistory';
 import SyncQueueViewer from './modules/sync/SyncQueueViewer';
 import CustomerQueueDisplay from './modules/queue/CustomerQueueDisplay';
 import { API_BASE } from './config';
+import { supabase } from './lib/supabase';
 import { getOfflineItem, setOfflineItem, removeOfflineItem } from './utils/offlineDB';
 import { purgeExpiredTrash } from './utils/trashDB';
 import { syncService } from './services/syncService';
@@ -86,24 +88,50 @@ function App() {
     setLoginError('');
     setLoginLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/users/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: loginUsername, password: loginPassword })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setCurrentUser(data.user);
-        localStorage.setItem('pos_current_user', JSON.stringify(data.user));
-        const perms = data.user.permissions || [];
-        if (perms.length > 0 && !perms.includes(currentView)) {
-          setCurrentView(perms[0]);
-        }
-      } else {
-        setLoginError(data.error || 'Invalid credentials');
+      // Direct Supabase login — no local server needed
+      const { data: onlineUser, error } = await supabase
+        .from('users')
+        .select('*')
+        .ilike('username', loginUsername.trim())
+        .single();
+
+      if (error || !onlineUser) {
+        setLoginError('Invalid username or password');
+        return;
+      }
+
+      if (onlineUser.password !== loginPassword) {
+        setLoginError('Invalid username or password');
+        return;
+      }
+
+      if (onlineUser.password === 'PENDING_PIN') {
+        setLoginError('PIN setup required — please contact Admin');
+        return;
+      }
+
+      // Parse permissions
+      let permissions = onlineUser.permissions || [];
+      if (typeof permissions === 'string') {
+        try { permissions = JSON.parse(permissions); } catch { permissions = []; }
+      }
+
+      const loggedUser = {
+        id: onlineUser.id,
+        username: onlineUser.username,
+        name: onlineUser.name,
+        role: onlineUser.role,
+        permissions
+      };
+
+      setCurrentUser(loggedUser);
+      localStorage.setItem('pos_current_user', JSON.stringify(loggedUser));
+
+      if (permissions.length > 0 && !permissions.includes(currentView)) {
+        setCurrentView(permissions[0]);
       }
     } catch (err) {
-      setLoginError('Could not connect to authentication server');
+      setLoginError('Could not reach Supabase — check your internet connection');
     } finally {
       setLoginLoading(false);
     }
@@ -163,46 +191,48 @@ function App() {
   // Unified Auto-Poller: Low Stock Levels & Kitchen KDS Ready Orders
   useEffect(() => {
     const runBackgroundPoller = async () => {
-      // 1. Check Low Stock Levels
-      try {
-        const res = await fetch(`${API_BASE}/stock`);
-        if (res.ok) {
-          const items = await res.json();
-          const lowItems = items.filter(item => item.quantity <= item.min_alert);
-          if (lowItems.length > 0) {
-            setNotifications(prev => {
-              let updated = [...prev];
-              let addedNew = false;
-              
-              lowItems.forEach(item => {
-                const lastTime = lastNotifiedStockTimesRef.current[item.id];
-                const oneHour = 60 * 60 * 1000;
+      // 1. Check Low Stock Levels (Admin only)
+      if (currentUser && (currentUser.role === 'admin' || currentUser.username === 'admin')) {
+        try {
+          const res = await fetch(`${API_BASE}/stock`);
+          if (res.ok) {
+            const items = await res.json();
+            const lowItems = items.filter(item => item.quantity <= item.min_alert);
+            if (lowItems.length > 0) {
+              setNotifications(prev => {
+                let updated = [...prev];
+                let addedNew = false;
                 
-                // Trigger notification if never notified in this session or last notified > 1 hour ago
-                if (!lastTime || (Date.now() - lastTime > oneHour)) {
-                  const exists = updated.some(n => n.itemId === item.id && n.type === 'warning');
-                  if (!exists) {
-                    updated.unshift({
-                      id: 'stock-' + item.id + '-' + Date.now(),
-                      itemId: item.id,
-                      title: `Low Stock: ${item.name}`,
-                      desc: `Only ${item.quantity} ${item.unit} remaining (Threshold: ${item.min_alert}). Please restock!`,
-                      time: new Date().toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' }),
-                      read: false,
-                      type: 'warning'
-                    });
-                    addedNew = true;
-                    lastNotifiedStockTimesRef.current[item.id] = Date.now();
+                lowItems.forEach(item => {
+                  const lastTime = lastNotifiedStockTimesRef.current[item.id];
+                  const oneHour = 60 * 60 * 1000;
+                  
+                  // Trigger notification if never notified in this session or last notified > 1 hour ago
+                  if (!lastTime || (Date.now() - lastTime > oneHour)) {
+                    const exists = updated.some(n => n.itemId === item.id && n.type === 'warning');
+                    if (!exists) {
+                      updated.unshift({
+                        id: 'stock-' + item.id + '-' + Date.now(),
+                        itemId: item.id,
+                        title: `Low Stock: ${item.name}`,
+                        desc: `Only ${item.quantity} ${item.unit} remaining (Threshold: ${item.min_alert}). Please restock!`,
+                        time: new Date().toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' }),
+                        read: false,
+                        type: 'warning'
+                      });
+                      addedNew = true;
+                      lastNotifiedStockTimesRef.current[item.id] = Date.now();
+                    }
                   }
-                }
+                });
+                if (addedNew) playNotificationSound();
+                return updated;
               });
-              if (addedNew) playNotificationSound();
-              return updated;
-            });
+            }
           }
+        } catch (err) {
+          console.error("Stock notification poller error:", err);
         }
-      } catch (err) {
-        console.error("Stock notification poller error:", err);
       }
 
       // 2. Check Kitchen Ready Orders
@@ -256,7 +286,7 @@ function App() {
     // Poll every 8 seconds for real-time responsiveness
     const interval = setInterval(runBackgroundPoller, 8000);
     return () => clearInterval(interval);
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => {
     const initAppOfflineData = async () => {
@@ -492,10 +522,27 @@ function App() {
         console.warn('Audio Context sound play blocked by browser policies:', err);
       }
     });
+
+    const unsubscribeInventory = syncService.subscribe('inventory:update', (items) => {
+      setMenuItems(items);
+    });
+    const unsubscribeCustomers = syncService.subscribe('customers:update', (customers) => {
+      setKhataCustomers(customers);
+    });
+    const unsubscribeStock = syncService.subscribe('stock:update', (stock) => {
+      setStockItems(stock);
+    });
+    const unsubscribeTables = syncService.subscribe('tables:update', (tables) => {
+      setTablesList(tables);
+    });
     
     return () => {
       syncService.stopSync();
       unsubscribe();
+      unsubscribeInventory();
+      unsubscribeCustomers();
+      unsubscribeStock();
+      unsubscribeTables();
       try { unsubscribeFcm(); } catch(e){}
     };
   }, [isLoaded, currentUser]);
@@ -536,7 +583,7 @@ function App() {
               <input 
                 type="text" 
                 value={loginUsername}
-                onChange={(e) => setLoginUsername(e.target.value.toLowerCase().replace(/\s/g, ''))}
+                onChange={(e) => setLoginUsername(e.target.value.replace(/\s/g, ''))}
                 placeholder="Enter staff username..."
                 className="w-full px-4 py-3 bg-white/[0.03] border border-white/10 rounded-xl focus:outline-none focus:border-orange-500 text-white font-medium text-sm transition-all placeholder:text-slate-600"
               />
@@ -666,6 +713,9 @@ function App() {
                   {(currentUser.username === 'admin' || currentUser.permissions.includes('stock')) && (
                     <NavItem icon={<Layers size={20} />} label="Kitchen Stock" active={currentView === 'stock'} onClick={() => navigateTo('stock')} />
                   )}
+                  {(currentUser.username === 'admin' || currentUser.permissions.includes('stock')) && (
+                    <NavItem icon={<AlertTriangle size={20} />} label="Stock Alerts" active={currentView === 'low-stock'} onClick={() => navigateTo('low-stock')} />
+                  )}
                   {(currentUser.username === 'admin' || currentUser.permissions.includes('suppliers')) && (
                     <NavItem icon={<Truck size={20} />} label="Suppliers" active={currentView === 'suppliers'} onClick={() => navigateTo('suppliers')} />
                   )}
@@ -687,7 +737,7 @@ function App() {
                   {(currentUser.username === 'admin' || currentUser.permissions.includes('reports')) && (
                     <NavItem icon={<FileText size={20} />} label="Financial Reports" active={currentView === 'reports'} onClick={() => navigateTo('reports')} />
                   )}
-                  {currentUser.username === 'admin' && (
+                  {(currentUser.username === 'admin' || currentUser.role === 'cashier') && (
                     <NavItem icon={<ClipboardList size={20} />} label="Orders History" active={currentView === 'orders'} onClick={() => navigateTo('orders')} />
                   )}
                   {(currentUser.username === 'admin' || currentUser.permissions.includes('pos')) && (
@@ -767,8 +817,9 @@ function App() {
                 {currentView === 'pos' && 'Dashboard'}
                 {currentView === 'delivery' && 'Home Delivery'}
                 {currentView === 'kds' && 'Kitchen'}
-                {currentView === 'inventory' && 'Menu Manager'}
+                 {currentView === 'inventory' && 'Menu Manager'}
                 {currentView === 'stock' && 'Stock Inventory'}
+                {currentView === 'low-stock' && 'Stock Alerts'}
                 {currentView === 'suppliers' && 'Suppliers'}
                 {currentView === 'tables' && 'Table Manager'}
                 {currentView === 'reports' && 'Reports'}
@@ -783,6 +834,7 @@ function App() {
                 {currentView === 'kds' && 'Kitchen Display System'}
                 {currentView === 'inventory' && 'POS Items Management'}
                 {currentView === 'stock' && 'Raw Materials & Supply'}
+                {currentView === 'low-stock' && 'Low Stock Safety Alerts'}
                 {currentView === 'reports' && 'Financial Reports'}
                 {currentView === 'expenses' && 'Outlet Expenditures'}
                 {currentView === 'khata' && 'Client & Company Credit Ledger'}
@@ -940,6 +992,7 @@ function App() {
         <div className="flex-1 min-h-0 relative">
           {currentView === 'pos' && (
             <POSLayout 
+              currentUser={currentUser}
               globalDirectSelectDeliveryId={globalSelectedDeliveryId}
               onClearGlobalDirectSelectDeliveryId={() => setGlobalSelectedDeliveryId(null)}
             />
@@ -949,6 +1002,7 @@ function App() {
           {currentView === 'receipt' && <ReceiptPreview onClose={() => navigateTo('pos')} initialInvoiceId={globalSelectedInvoiceId} />}
           {currentView === 'inventory' && <InventorySystem />}
           {currentView === 'stock' && <StockManager />}
+          {currentView === 'low-stock' && <LowStockAlerts />}
           {currentView === 'suppliers' && <SupplierManagement />}
           {currentView === 'tables' && <TableManager />}
           {currentView === 'reports' && <ReportsDashboard />}

@@ -11,10 +11,11 @@ import ReceiptSlip from './components/ReceiptSlip';
 import Logo from '../../assets/Logo.jpg';
 // import { INITIAL_TABLES } from './data/mockTables';
 import { API_BASE, WS_URL } from '../../config';
+import { syncService } from '../../services/syncService';
 import { getOfflineItem, setOfflineItem, removeOfflineItem } from '../../utils/offlineDB';
 import { moveToTrash } from '../../utils/trashDB';
 
-const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeliveryId }) => {
+const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeliveryId }) => {
   const [view, setView] = useState('floor'); // 'floor', 'order', or 'delivery-order'
   const [selectedTable, setSelectedTable] = useState(null);
   const [cartItems, setCartItems] = useState([]);
@@ -322,38 +323,21 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
 
     fetchTablesAndOrders();
 
-    // Setup WebSocket for real-time synchronization
-    let ws;
-    const connectWS = () => {
-      try {
-        ws = new WebSocket(WS_URL);
-        ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            if (data.type === 'SYNC_TRIGGER') {
-              console.log("WebSocket sync trigger received! Refreshing floor states...");
-              fetchTablesAndOrders();
-            }
-          } catch (e) {
-            console.error("WS message parse failed:", e);
-          }
-        };
-        ws.onclose = () => {
-          setTimeout(connectWS, 3000);
-        };
-        ws.onerror = (err) => {
-          ws.close();
-        };
-      } catch (err) {
-        console.error("Failed to connect WS:", err);
-      }
-    };
-    connectWS();
+    // Setup centralized event listeners for real-time synchronization
+    const unsubscribeOrders = syncService.subscribe('orders:update', () => {
+      console.log("POSLayout: Orders update event received! Refreshing floor states...");
+      fetchTablesAndOrders();
+    });
+    const unsubscribeTables = syncService.subscribe('tables:update', () => {
+      console.log("POSLayout: Tables update event received! Refreshing floor states...");
+      fetchTablesAndOrders();
+    });
 
     const interval = setInterval(fetchTablesAndOrders, 10000);
     return () => {
       clearInterval(interval);
-      if (ws) ws.close();
+      unsubscribeOrders();
+      unsubscribeTables();
     };
   }, [selectedDelivery]);
 
@@ -760,7 +744,7 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
       const response = await fetch(`${API_BASE}/orders/${activeOrderId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'completed' })
+        body: JSON.stringify({ status: 'completed', checkout: true })
       });
 
       if (response.ok) {
@@ -1618,6 +1602,7 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
               activeOrderStatus={'pending'}
               adminUnlockRemark={adminUnlockRemark}
               onAdminUnlock={(remark) => setAdminUnlockRemark(remark)}
+              currentUser={currentUser}
             />
           </div>
         </div>
@@ -2372,6 +2357,7 @@ const POSLayout = ({ globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeli
               activeOrderStatus={activeOrderStatus}
               adminUnlockRemark={adminUnlockRemark}
               onAdminUnlock={(remark) => setAdminUnlockRemark(remark)}
+              currentUser={currentUser}
             />
           </div>
         </div>

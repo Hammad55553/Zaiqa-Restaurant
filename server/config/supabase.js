@@ -1,12 +1,8 @@
 const { createClient } = require('@supabase/supabase-js');
 const ws = require('ws');
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_KEY;
-
-if (!SUPABASE_URL || !SUPABASE_KEY) {
-  console.error('❌ Supabase URL or Key is missing. Sync will not work.');
-}
+const SUPABASE_URL = 'https://pbhfxcjdupukgdpbeusc.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_cqyt1JDiEdiZGLwkRfH2Vw_d4XaJ1Vv';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: {

@@ -24,7 +24,7 @@ const isLocal = typeof window !== 'undefined' &&
    window.location.hostname === '' ||
    navigator.userAgent.toLowerCase().includes('electron'));
 
-const SERVER_IP = savedIP || (isLocal ? 'localhost' : (typeof window !== 'undefined' ? window.location.hostname : 'localhost'));
+const SERVER_IP = savedIP || (isLocal ? '127.0.0.1' : (typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1'));
 
 const getUrls = (ip) => {
   const cleanIp = ip.trim();

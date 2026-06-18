@@ -3,6 +3,7 @@ import { Clock, CheckCircle, ChefHat, Timer, AlertCircle, RefreshCw, History, Pl
 import lottie from 'lottie-web';
 import foodPrepData from '../../assets/foodpre.json';
 import { API_BASE, WS_URL } from '../../config';
+import { syncService } from '../../services/syncService';
 
 // ─── Ticket Timer ──────────────────────────────────────────────────────────────
 const TicketTimer = ({ startTime }) => {
@@ -285,37 +286,16 @@ const KitchenDisplay = () => {
   useEffect(() => {
     fetchActiveOrders();
 
-    let ws;
-    const connectWS = () => {
-      try {
-        ws = new WebSocket(WS_URL);
-        ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            if (data.type === 'SYNC_TRIGGER') {
-              console.log("KDS: WebSocket sync trigger received! Refreshing active board...");
-              fetchActiveOrders();
-            }
-          } catch (e) {
-            console.error("WS message parse failed:", e);
-          }
-        };
-        ws.onclose = () => {
-          setTimeout(connectWS, 3000);
-        };
-        ws.onerror = (err) => {
-          ws.close();
-        };
-      } catch (err) {
-        console.error("KDS: Failed to connect WS:", err);
-      }
-    };
-    connectWS();
+    // Setup centralized event listener for real-time synchronization
+    const unsubscribeOrders = syncService.subscribe('orders:update', () => {
+      console.log("KDS: Orders update event received! Refreshing active board...");
+      fetchActiveOrders();
+    });
 
     const interval = setInterval(fetchActiveOrders, 10000);
     return () => {
       clearInterval(interval);
-      if (ws) ws.close();
+      unsubscribeOrders();
     };
   }, [fetchActiveOrders]);
 

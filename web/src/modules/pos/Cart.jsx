@@ -10,10 +10,14 @@ const Cart = ({
   onSendToKitchen,
   activeOrderStatus = 'pending', 
   adminUnlockRemark, 
-  onAdminUnlock
+  onAdminUnlock,
+  currentUser
 }) => {
   const [showUnlock, setShowUnlock] = useState(false);
   const [unlockReason, setUnlockReason] = useState('');
+
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.username === 'admin';
+
 
   const isLocked = activeOrderStatus !== 'pending' && !adminUnlockRemark;
 
@@ -127,9 +131,11 @@ const Cart = ({
                   <Lock size={14} />
                   <span className="text-[10px] font-bold uppercase tracking-widest">Order is Preparing</span>
                 </div>
-                <button onClick={() => setShowUnlock(true)} className="text-[10px] font-black uppercase text-white bg-red-500 px-2.5 py-1 rounded-lg hover:bg-red-600 transition-colors">
-                  Admin Edit
-                </button>
+                {isAdmin && (
+                  <button onClick={() => setShowUnlock(true)} className="text-[10px] font-black uppercase text-white bg-red-500 px-2.5 py-1 rounded-lg hover:bg-red-600 transition-colors">
+                    Admin Edit
+                  </button>
+                )}
               </div>
             )}
             

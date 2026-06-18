@@ -104,16 +104,22 @@ router.patch('/:id/status', (req, res) => {
   const { id } = req.params;
   const { status, clear_updates } = req.body;
 
-  db.get(`SELECT status FROM orders WHERE id = ?`, [id], (errOrd, orderRow) => {
+  db.get(`SELECT status, table_number, area FROM orders WHERE id = ?`, [id], (errOrd, orderRow) => {
     if (errOrd || !orderRow) {
       return res.status(404).json({ error: 'Order not found' });
     }
 
+    let targetStatus = status;
+    // Dine-in table orders can only be marked 'completed' from the POS checkout (which sends checkout: true)
+    if (orderRow.table_number && orderRow.area !== 'Delivery' && status === 'completed' && !req.body.checkout) {
+      targetStatus = 'ready';
+    }
+
     const wasPending = orderRow.status === 'pending';
-    const becameActive = ['preparing', 'ready', 'completed'].includes(status);
+    const becameActive = ['preparing', 'ready', 'completed'].includes(targetStatus);
 
     let query = `UPDATE orders SET status = ?`;
-    let params = [status];
+    let params = [targetStatus];
 
     if (clear_updates) {
       query += `, has_new_updates = 0`;
@@ -154,7 +160,7 @@ router.patch('/:id/status', (req, res) => {
       // Sync order update to Supabase
       queueOrderChange(id, 'update');
 
-      res.json({ success: true, id, status });
+      res.json({ success: true, id, status: targetStatus });
     });
   });
 });

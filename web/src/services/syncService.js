@@ -19,6 +19,10 @@ class SyncService {
    */
   connectWebSocket() {
     if (this.ws) {
+      this.ws.onmessage = null;
+      this.ws.onopen = null;
+      this.ws.onclose = null;
+      this.ws.onerror = null;
       try { this.ws.close(); } catch(e){}
     }
 
@@ -64,10 +68,17 @@ class SyncService {
       this.emit('connection_status', { online: true });
     };
 
-    this.ws.onclose = () => {
-      console.warn('🔌 WebSocket connection closed. Reconnecting in 3s...');
-      this.emit('connection_status', { online: false });
-      setTimeout(() => this.connectWebSocket(), 3000);
+    this.ws.onclose = (event) => {
+      // Only reconnect if this is still the active socket instance and we haven't stopped sync
+      if (this.ws && event.target === this.ws) {
+        console.warn('🔌 WebSocket connection closed. Reconnecting in 3s...');
+        this.emit('connection_status', { online: false });
+        setTimeout(() => {
+          if (this.ws && event.target === this.ws) {
+            this.connectWebSocket();
+          }
+        }, 3000);
+      }
     };
 
     this.ws.onerror = (err) => {
@@ -196,6 +207,10 @@ class SyncService {
   stopSync() {
     console.log('⛔ Stopping real-time sync');
     if (this.ws) {
+      this.ws.onmessage = null;
+      this.ws.onopen = null;
+      this.ws.onclose = null;
+      this.ws.onerror = null;
       try { this.ws.close(); } catch(e){}
       this.ws = null;
     }

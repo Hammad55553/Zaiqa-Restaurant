@@ -5,120 +5,178 @@ const { queueUserChange } = require('../services/syncHelper');
 
 const { supabase } = require('../config/supabase');
 
+const dns = require('dns');
+
+// Helper to check active internet connectivity to Supabase
+function checkInternet() {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      resolve(false);
+    }, 3000);
+
+    dns.lookup('pbhfxcjdupukgdpbeusc.supabase.co', (err) => {
+      clearTimeout(timer);
+      if (err) {
+        resolve(false);
+      } else {
+        resolve(true);
+      }
+    });
+  });
+}
+
 // Login endpoint
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
   const { username, password } = req.body;
   if (!username) {
     return res.status(400).json({ error: 'Username is required' });
   }
 
-  db.get(
-    'SELECT id, username, name, password as dbPassword, role, permissions FROM users WHERE username = ?',
-    [username],
-    async (err, user) => {
-      if (err) {
-        return res.status(500).json({ error: err.message });
-      }
-
-      // Helper to process login locally
-      const processLocalLogin = (matchedUser) => {
-        if (matchedUser.dbPassword === 'PENDING_PIN') {
-          return res.json({ requirePinSetup: true, username: matchedUser.username });
+  // Helper to process login locally
+  const processLocalLogin = () => {
+    db.get(
+      'SELECT id, username, name, password as dbPassword, role, permissions FROM users WHERE username = ?',
+      [username],
+      (err, user) => {
+        if (err) {
+          return res.status(500).json({ error: err.message });
         }
 
-        if (matchedUser.dbPassword !== password) {
+        if (!user) {
+          return res.status(401).json({ error: 'Invalid username or password' });
+        }
+
+        if (user.dbPassword === 'PENDING_PIN') {
+          return res.json({ requirePinSetup: true, username: user.username });
+        }
+
+        if (user.dbPassword !== password) {
           return res.status(401).json({ error: 'Invalid username or password' });
         }
         
         // Parse permissions if stored as JSON string
         try {
-          matchedUser.permissions = matchedUser.permissions ? JSON.parse(matchedUser.permissions) : [];
+          user.permissions = user.permissions ? JSON.parse(user.permissions) : [];
         } catch (e) {
-          matchedUser.permissions = [];
+          user.permissions = [];
         }
 
-        delete matchedUser.dbPassword;
-        return res.json({ message: 'Login successful', user: matchedUser });
-      };
-
-      // If user exists locally and password matches, log in immediately
-      if (user && (user.dbPassword === password || user.dbPassword === 'PENDING_PIN')) {
-        return processLocalLogin(user);
+        delete user.dbPassword;
+        return res.json({ message: 'Login successful', user });
       }
+    );
+  };
 
-      // If user not found locally OR password didn't match, try to authenticate via Supabase
-      try {
-        console.log(`🌐 Checking Supabase for online credentials of user: ${username}`);
-        const { data: onlineUser, error: onlineErr } = await supabase
-          .from('users')
-          .select('*')
-          .eq('username', username)
-          .single();
+  // 1. Explicitly check internet connectivity first
+  const isOnline = await checkInternet();
 
-        if (onlineErr || !onlineUser) {
-          // No user found online either
-          if (!user) {
-            return res.status(401).json({ error: 'Invalid username' });
-          } else {
-            return res.status(401).json({ error: 'Invalid username or password' });
-          }
-        }
+  if (!isOnline) {
+    console.log(`📴 No internet connection detected. Falling back to local SQLite authentication immediately.`);
+    return processLocalLogin();
+  }
 
-        // Verify password against online record
-        if (onlineUser.password !== password && onlineUser.password !== 'PENDING_PIN') {
-          return res.status(401).json({ error: 'Invalid username or password' });
-        }
+  // 2. Try to authenticate via Supabase
+  try {
+    console.log(`🌐 Internet is ON. Checking Supabase for credentials of user: ${username}`);
+    const { data: onlineUser, error: onlineErr } = await supabase
+      .from('users')
+      .select('*')
+      .eq('username', username)
+      .single();
 
-        // Save/Sync this online user details to our local SQLite DB for future offline use
-        console.log(`💾 Syncing online user '${username}' details to local database.`);
-        const permsStr = typeof onlineUser.permissions === 'string' 
-          ? onlineUser.permissions 
-          : JSON.stringify(onlineUser.permissions || []);
-
-        db.run(
-          `INSERT INTO users (id, username, password, role, permissions, name) 
-           VALUES (?, ?, ?, ?, ?, ?)
-           ON CONFLICT(username) DO UPDATE SET 
-             id = excluded.id,
-             password = excluded.password,
-             role = excluded.role,
-             permissions = excluded.permissions,
-             name = excluded.name`,
-          [onlineUser.id, onlineUser.username, onlineUser.password, onlineUser.role, permsStr, onlineUser.name || ''],
-          (dbErr) => {
-            if (dbErr) {
-              console.error('❌ Failed to update local user DB with online credentials:', dbErr.message);
-            }
-            // Proceed with login
-            const loggedUser = {
-              id: onlineUser.id,
-              username: onlineUser.username,
-              name: onlineUser.name,
-              role: onlineUser.role,
-              permissions: typeof onlineUser.permissions === 'string' ? JSON.parse(onlineUser.permissions) : (onlineUser.permissions || [])
-            };
-
-            if (onlineUser.password === 'PENDING_PIN') {
-              return res.json({ requirePinSetup: true, username: onlineUser.username });
-            }
-
-            return res.json({ message: 'Login successful (Online Authenticated)', user: loggedUser });
-          }
-        );
-      } catch (catchErr) {
-        console.error('⚠️ Supabase login fallback failed:', catchErr.message);
-        // Fallback to local authentication check if Supabase is offline/errors
-        if (user) {
-          return processLocalLogin(user);
-        }
-        return res.status(401).json({ error: 'Invalid username or password (Offline)' });
-      }
+    if (onlineErr || !onlineUser) {
+      console.log(`⚠️ User not found on Supabase (or invalid query). Returning invalid credentials directly.`);
+      return res.status(401).json({ error: 'Invalid username or password' });
     }
-  );
+
+    // 3. Verify password against online record
+    if (onlineUser.password !== password && onlineUser.password !== 'PENDING_PIN') {
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
+
+    // 4. Save/Sync this online user details to our local SQLite DB for future offline use
+    console.log(`💾 Syncing online user '${username}' details to local database.`);
+    const permsStr = typeof onlineUser.permissions === 'string' 
+      ? onlineUser.permissions 
+      : JSON.stringify(onlineUser.permissions || []);
+
+    db.run(
+      `INSERT INTO users (id, username, password, role, permissions, name) 
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(username) DO UPDATE SET 
+         id = excluded.id,
+         password = excluded.password,
+         role = excluded.role,
+         permissions = excluded.permissions,
+         name = excluded.name`,
+      [onlineUser.id, onlineUser.username, onlineUser.password, onlineUser.role, permsStr, onlineUser.name || ''],
+      (dbErr) => {
+        if (dbErr) {
+          console.error('❌ Failed to update local user DB with online credentials:', dbErr.message);
+        }
+        // Proceed with login
+        const loggedUser = {
+          id: onlineUser.id,
+          username: onlineUser.username,
+          name: onlineUser.name,
+          role: onlineUser.role,
+          permissions: typeof onlineUser.permissions === 'string' ? JSON.parse(onlineUser.permissions) : (onlineUser.permissions || [])
+        };
+
+        if (onlineUser.password === 'PENDING_PIN') {
+          return res.json({ requirePinSetup: true, username: onlineUser.username });
+        }
+
+        return res.json({ message: 'Login successful (Online Authenticated)', user: loggedUser });
+      }
+    );
+  } catch (catchErr) {
+    console.error('⚠️ Supabase connection error during online check:', catchErr.message);
+    // Since we verified internet was ON, a connection exception means either Supabase service is down
+    // or a sudden drop occurred. In this case, we can log and fallback to local login.
+    console.log('⚠️ Falling back to local authentication as a safety measure.');
+    return processLocalLogin();
+  }
 });
 
 // Get all users (Admin only checks can be done in frontend, but we expose endpoint)
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
+  const isOnline = await checkInternet();
+  if (isOnline) {
+    try {
+      console.log('🌐 Fetching all users from Supabase to sync local users DB...');
+      const { data: onlineUsers, error: onlineErr } = await supabase
+        .from('users')
+        .select('*');
+
+      if (!onlineErr && onlineUsers) {
+        // Upsert all online users into local SQLite DB
+        for (const user of onlineUsers) {
+          const permsStr = typeof user.permissions === 'string'
+            ? user.permissions
+            : JSON.stringify(user.permissions || []);
+          
+          await new Promise((resolve) => {
+            db.run(
+              `INSERT INTO users (id, username, password, role, permissions, name) 
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(username) DO UPDATE SET 
+                 id = excluded.id,
+                 password = excluded.password,
+                 role = excluded.role,
+                 permissions = excluded.permissions,
+                 name = excluded.name`,
+              [user.id, user.username, user.password, user.role, permsStr, user.name || ''],
+              () => resolve()
+            );
+          });
+        }
+      }
+    } catch (err) {
+      console.error('⚠️ Failed to sync users from Supabase:', err.message);
+    }
+  }
+
   db.all('SELECT id, username, name, role, permissions FROM users', [], (err, rows) => {
     if (err) {
       return res.status(500).json({ error: err.message });
