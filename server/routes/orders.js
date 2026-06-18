@@ -581,9 +581,194 @@ router.delete('/:id', (req, res) => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CANCEL REQUEST WORKFLOW — Role-based approval system
+// ─────────────────────────────────────────────────────────────────────────────
+
+// @route   POST /api/orders/:id/cancel-request
+// @desc    Waiter submits a cancel request for a preparing/ready order
+router.post('/:id/cancel-request', (req, res) => {
+  const { id } = req.params;
+  const { requested_by, requested_role, reason } = req.body;
+  if (!requested_by || !requested_role) {
+    return res.status(400).json({ error: 'requested_by and requested_role are required' });
+  }
+  // Check order exists and is cancellable via request
+  db.get(`SELECT * FROM orders WHERE id = ?`, [id], (err, order) => {
+    if (err || !order) return res.status(404).json({ error: 'Order not found' });
+    if (['cancelled', 'completed'].includes(order.status)) {
+      return res.status(400).json({ error: `Cannot request cancel for a ${order.status} order` });
+    }
+    // Check no duplicate pending request
+    db.get(`SELECT id FROM cancel_requests WHERE order_id = ? AND status = 'pending'`, [id], (err2, existing) => {
+      if (existing) return res.status(409).json({ error: 'A cancel request is already pending for this order' });
+      db.run(
+        `INSERT INTO cancel_requests (order_id, requested_by, requested_role, reason) VALUES (?, ?, ?, ?)`,
+        [id, requested_by, requested_role, reason || 'Customer requested cancellation'],
+        function(err3) {
+          if (err3) return res.status(500).json({ error: 'Failed to create cancel request' });
+          queueOrderChange(id, 'update');
+          res.json({ success: true, requestId: this.lastID, message: 'Cancel request submitted successfully' });
+        }
+      );
+    });
+  });
+});
+
+// @route   GET /api/orders/cancel-requests
+// @desc    Get all cancel requests (optionally filter by status)
+router.get('/cancel-requests', (req, res) => {
+  const { status } = req.query; // 'pending', 'approved', 'rejected', or omit for all
+  const sql = status
+    ? `SELECT cr.*, o.table_number, o.area, o.status as order_status, o.total_amount
+       FROM cancel_requests cr
+       JOIN orders o ON cr.order_id = o.id
+       WHERE cr.status = ?
+       ORDER BY cr.created_at DESC`
+    : `SELECT cr.*, o.table_number, o.area, o.status as order_status, o.total_amount
+       FROM cancel_requests cr
+       JOIN orders o ON cr.order_id = o.id
+       ORDER BY cr.created_at DESC`;
+  const params = status ? [status] : [];
+  db.all(sql, params, (err, rows) => {
+    if (err) return res.status(500).json({ error: 'Failed to fetch cancel requests' });
+    // Attach order items to each request
+    if (!rows || rows.length === 0) return res.json([]);
+    const orderIds = [...new Set(rows.map(r => r.order_id))];
+    const placeholders = orderIds.map(() => '?').join(',');
+    db.all(`SELECT * FROM order_items WHERE order_id IN (${placeholders})`, orderIds, (err2, items) => {
+      const itemsMap = {};
+      (items || []).forEach(item => {
+        if (!itemsMap[item.order_id]) itemsMap[item.order_id] = [];
+        itemsMap[item.order_id].push(item);
+      });
+      const result = rows.map(r => ({ ...r, items: itemsMap[r.order_id] || [] }));
+      res.json(result);
+    });
+  });
+});
+
+// @route   PATCH /api/orders/cancel-requests/:reqId/approve
+// @desc    Cashier or Admin approves a cancel request — triggers actual cancellation
+router.patch('/cancel-requests/:reqId/approve', (req, res) => {
+  const { reqId } = req.params;
+  const { resolved_by, resolved_role, refund_raw, log_waste } = req.body;
+  if (!resolved_by || !resolved_role) {
+    return res.status(400).json({ error: 'resolved_by and resolved_role are required' });
+  }
+  db.get(`SELECT * FROM cancel_requests WHERE id = ?`, [reqId], (err, cancelReq) => {
+    if (err || !cancelReq) return res.status(404).json({ error: 'Cancel request not found' });
+    if (cancelReq.status !== 'pending') return res.status(400).json({ error: `Request already ${cancelReq.status}` });
+
+    // Role permission check
+    db.get(`SELECT * FROM orders WHERE id = ?`, [cancelReq.order_id], (err2, order) => {
+      if (err2 || !order) return res.status(404).json({ error: 'Order not found' });
+
+      const isReady = order.status === 'ready';
+      const isCompleted = order.status === 'completed';
+
+      // Only admin can cancel ready or completed orders
+      if ((isReady || isCompleted) && resolved_role !== 'admin') {
+        return res.status(403).json({ error: 'Only admin can approve cancellation of ready or completed orders' });
+      }
+
+      // 24-hour restriction for completed orders
+      if (isCompleted) {
+        const completedAt = new Date(order.created_at);
+        const hoursSince = (Date.now() - completedAt.getTime()) / (1000 * 60 * 60);
+        if (hoursSince > 24) {
+          return res.status(403).json({ error: 'Cannot cancel completed orders older than 24 hours' });
+        }
+      }
+
+      // Mark request approved
+      db.run(
+        `UPDATE cancel_requests SET status = 'approved', resolved_by = ?, resolved_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        [resolved_by, reqId],
+        (err3) => {
+          if (err3) return res.status(500).json({ error: 'Failed to approve request' });
+
+          // Fetch items and execute cancellation
+          db.all(`SELECT * FROM order_items WHERE order_id = ?`, [cancelReq.order_id], (err4, orderItems) => {
+            db.run(`UPDATE orders SET status = 'cancelled' WHERE id = ?`, [cancelReq.order_id], (err5) => {
+              if (err5) return res.status(500).json({ error: 'Failed to cancel order' });
+
+              // Free the table
+              if (order.table_number && order.area !== 'Delivery') {
+                db.run(`UPDATE tables SET status = 'available' WHERE table_number = ?`, [order.table_number], () => {
+                  db.get(`SELECT id FROM tables WHERE table_number = ?`, [order.table_number], (e, row) => {
+                    if (!e && row) queueTableChange(row.id, 'update');
+                  });
+                });
+              }
+
+              const wasDeducted = ['preparing', 'ready', 'completed'].includes(order.status);
+              const doRefund = refund_raw !== false && wasDeducted;
+              const doWaste = log_waste !== false && wasDeducted;
+
+              // Refund raw stock
+              if (doRefund && orderItems && orderItems.length > 0) {
+                orderItems.forEach(item => {
+                  if (item.item_id) {
+                    db.all(`SELECT stock_item_id, quantity_required FROM item_ingredients WHERE menu_item_id = ?`, [item.item_id], (e2, ingredients) => {
+                      if (!e2 && ingredients) {
+                        ingredients.forEach(ing => {
+                          const total = ing.quantity_required * item.quantity;
+                          db.run(`UPDATE stock_items SET quantity = quantity + ? WHERE id = ?`, [total, ing.stock_item_id]);
+                          db.run(`INSERT INTO stock_logs (item_id, action, qty_changed, remarks) VALUES (?, 'add', ?, ?)`,
+                            [ing.stock_item_id, total, `Refund — Approved Cancel Request #${reqId} Order #${cancelReq.order_id} (${item.item_name} x${item.quantity})`]);
+                        });
+                      }
+                    });
+                  }
+                });
+              }
+
+              // Log prepared waste
+              if (doWaste && orderItems && orderItems.length > 0) {
+                orderItems.forEach(item => {
+                  if (item.item_name !== 'Service Charges') {
+                    db.run(`INSERT INTO prepared_waste (item_name, quantity, reason) VALUES (?, ?, ?)`,
+                      [item.item_name, item.quantity, `Approved Cancel Request #${reqId} — Order #${cancelReq.order_id} (by ${resolved_by})`]);
+                  }
+                });
+              }
+
+              queueOrderChange(cancelReq.order_id, 'update');
+              res.json({ success: true, message: 'Cancel request approved and order cancelled' });
+            });
+          });
+        }
+      );
+    });
+  });
+});
+
+// @route   PATCH /api/orders/cancel-requests/:reqId/reject
+// @desc    Cashier or Admin rejects a cancel request
+router.patch('/cancel-requests/:reqId/reject', (req, res) => {
+  const { reqId } = req.params;
+  const { resolved_by, reject_reason } = req.body;
+  if (!resolved_by) return res.status(400).json({ error: 'resolved_by is required' });
+  db.get(`SELECT * FROM cancel_requests WHERE id = ?`, [reqId], (err, cancelReq) => {
+    if (err || !cancelReq) return res.status(404).json({ error: 'Cancel request not found' });
+    if (cancelReq.status !== 'pending') return res.status(400).json({ error: `Request already ${cancelReq.status}` });
+    db.run(
+      `UPDATE cancel_requests SET status = 'rejected', resolved_by = ?, reject_reason = ?, resolved_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      [resolved_by, reject_reason || 'Rejected by staff', reqId],
+      (err2) => {
+        if (err2) return res.status(500).json({ error: 'Failed to reject request' });
+        queueOrderChange(cancelReq.order_id, 'update');
+        res.json({ success: true, message: 'Cancel request rejected' });
+      }
+    );
+  });
+});
+
 // @route   PATCH /api/orders/:id/cancel
 // @desc    Cancel an order, refund stock if selected, and log waste if selected
 router.patch('/:id/cancel', (req, res) => {
+
   const { id } = req.params;
   const { refund_raw, log_waste, reason = 'Customer Cancelled' } = req.body;
 

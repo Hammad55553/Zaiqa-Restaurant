@@ -96,6 +96,20 @@ export default function OrderingScreen({
   const [confirmModalSub, setConfirmModalSub] = useState('');
   const [confirmModalAction, setConfirmModalAction] = useState<any>(null);
 
+  // User role (for cancel permission gating)
+  const [userRole, setUserRole] = useState<string>('waiter');
+  // Cancel request status for the active order
+  const [cancelRequestStatus, setCancelRequestStatus] = useState<string | null>(null);
+
+  // Load user role from storage
+  useEffect(() => {
+    AsyncStorage.getItem('pos_current_user').then(raw => {
+      if (raw) {
+        try { setUserRole(JSON.parse(raw).role || 'waiter'); } catch {}
+      }
+    });
+  }, []);
+
   const handleReleaseTable = () => {
     if (activeOrder && activeOrder.status !== 'completed') {
       toast.error('Payment Pending', 'Cannot free table. The bill has not been paid at the counter yet.');
@@ -208,12 +222,78 @@ export default function OrderingScreen({
     setConfirmModalVisible(true);
   };
 
+  const handleRequestCancel = () => {
+    if (!activeOrder) return;
+    const targetRole = activeOrder.status === 'ready' ? 'Admin' : 'Cashier';
+    setConfirmModalTitle('Request Cancellation?');
+    setConfirmModalSub(
+      `Send a cancellation request for Order #${activeOrder.id} to the ${targetRole}? The kitchen will continue until the ${targetRole} approves.`
+    );
+    setConfirmModalAction(() => async () => {
+      try {
+        setPlacingOrder(true);
+        const res = await fetch(`${API_BASE}/orders/${activeOrder.id}/cancel-request`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            requested_by: username,
+            requested_role: userRole,
+            reason: `Customer requested cancel (via ${username})`
+          })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          toast.success('Request Sent!', `Cancellation request sent to ${targetRole}. Awaiting approval.`);
+          setCancelRequestStatus('pending');
+        } else {
+          toast.error('Failed', data.error || 'Could not send cancel request.');
+        }
+      } catch {
+        toast.error('Network Error', 'Check server connection.');
+      } finally {
+        setPlacingOrder(false);
+      }
+    });
+    setConfirmModalVisible(true);
+  };
+
   useEffect(() => {
     fetchMenu();
     if (selectedTable.status === 'dining' || selectedTable.status === 'reserved') {
       fetchActiveOrder();
     }
   }, []);
+
+  // Poll cancel request status every 10s to detect approval/rejection
+  useEffect(() => {
+    if (!activeOrder || cancelRequestStatus !== 'pending') return;
+    const interval = setInterval(async () => {
+      try {
+        const pendRes = await fetch(`${API_BASE}/orders/cancel-requests?status=pending`);
+        if (pendRes.ok) {
+          const pending = await pendRes.json();
+          const stillPending = pending.find((r: any) => r.order_id === activeOrder.id);
+          if (!stillPending) {
+            const allRes = await fetch(`${API_BASE}/orders/cancel-requests`);
+            if (allRes.ok) {
+              const all = await allRes.json();
+              const resolved = all.find((r: any) => r.order_id === activeOrder.id && r.status !== 'pending');
+              if (resolved?.status === 'approved') {
+                toast.success('Cancelled!', 'Cancellation approved. Stock refunded.');
+                clearInterval(interval);
+                onBack();
+              } else if (resolved?.status === 'rejected') {
+                setCancelRequestStatus('rejected');
+                toast.error('Rejected', resolved.reject_reason || 'Cancel request was rejected by staff.');
+                clearInterval(interval);
+              }
+            }
+          }
+        }
+      } catch {}
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [activeOrder?.id, cancelRequestStatus]);
 
   const fetchActiveOrder = async () => {
     try {
@@ -222,6 +302,15 @@ export default function OrderingScreen({
         const data = await res.json();
         if (data) {
           setActiveOrder(data);
+          // Check for pending cancel request for this order
+          try {
+            const crRes = await fetch(`${API_BASE}/orders/cancel-requests?status=pending`);
+            if (crRes.ok) {
+              const crs = await crRes.json();
+              const myReq = crs.find((r: any) => r.order_id === data.id);
+              setCancelRequestStatus(myReq ? myReq.status : null);
+            }
+          } catch {}
           if (data.items && data.items.length > 0) {
             const mappedItems = data.items.map((item: any) => ({
               id: item.item_id,
@@ -241,6 +330,7 @@ export default function OrderingScreen({
             }
           }
         }
+
       }
     } catch (e) {
       console.warn('Failed to fetch active order:', e);
@@ -564,6 +654,9 @@ export default function OrderingScreen({
             activeOrder={activeOrder}
             onRequestBill={handleRequestBill}
             onCancelOrder={activeOrder ? handleCancelOrder : undefined}
+            onRequestCancel={activeOrder ? handleRequestCancel : undefined}
+            cancelRequestStatus={cancelRequestStatus}
+            role={userRole}
           />
         )}
       </View>

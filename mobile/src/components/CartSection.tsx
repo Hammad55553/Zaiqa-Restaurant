@@ -23,7 +23,10 @@ interface CartSectionProps {
   placingOrder: boolean;
   activeOrder?: any;
   onRequestBill?: () => void;
-  onCancelOrder?: () => void;
+  onCancelOrder?: () => void;        // direct cancel (pending orders only)
+  onRequestCancel?: () => void;      // request cancel (preparing/ready)
+  cancelRequestStatus?: string | null; // 'pending' | 'approved' | 'rejected' | null
+  role?: string;                     // 'waiter' | 'cashier' | 'admin'
 }
 
 export default function CartSection({
@@ -37,7 +40,10 @@ export default function CartSection({
   placingOrder,
   activeOrder,
   onRequestBill,
-  onCancelOrder
+  onCancelOrder,
+  onRequestCancel,
+  cancelRequestStatus,
+  role = 'waiter'
 }: CartSectionProps) {
   const sentItems = cartItems.filter(item => item.sent);
   const newItems = cartItems.filter(item => !item.sent);
@@ -232,24 +238,84 @@ export default function CartSection({
           )}
         </View>
 
-        {activeOrder && onCancelOrder && (
-          <TouchableOpacity 
-            style={{ 
-              height: 48, 
-              borderRadius: 12, 
-              backgroundColor: '#ef4444', 
-              flexDirection: 'row', 
-              alignItems: 'center', 
-              justifyContent: 'center', 
-              marginTop: 4 
-            }} 
-            onPress={onCancelOrder}
-            disabled={placingOrder}
-            activeOpacity={0.8}
-          >
-            <Text style={{ color: '#ffffff', fontWeight: '950', fontSize: 13, letterSpacing: 0.5 }}>CANCEL ORDER</Text>
-            <Ban size={12} color="#ffffff" style={{ marginLeft: 6 }} />
-          </TouchableOpacity>
+        {/* Smart Cancel / Request Cancel Block */}
+        {activeOrder && (
+          <View style={{ marginTop: 4 }}>
+            {/* Pending cancel request banner */}
+            {cancelRequestStatus === 'pending' && (
+              <View style={{ backgroundColor: '#fef3c7', borderRadius: 12, borderWidth: 1, borderColor: '#fcd34d', padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 6 }}>
+                <Text style={{ color: '#92400e', fontWeight: '700', fontSize: 12, letterSpacing: 0.3 }}>⏳  Cancellation Requested — Awaiting Approval</Text>
+              </View>
+            )}
+            {cancelRequestStatus === 'rejected' && (
+              <View style={{ backgroundColor: '#fef2f2', borderRadius: 12, borderWidth: 1, borderColor: '#fca5a5', padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 6 }}>
+                <Text style={{ color: '#991b1b', fontWeight: '700', fontSize: 12, letterSpacing: 0.3 }}>❌  Cancellation Rejected by Staff</Text>
+              </View>
+            )}
+
+            {/* PENDING order — direct cancel for all */}
+            {activeOrder.status === 'pending' && onCancelOrder && !cancelRequestStatus && (
+              <TouchableOpacity
+                style={{ height: 48, borderRadius: 12, backgroundColor: '#ef4444', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
+                onPress={onCancelOrder}
+                disabled={placingOrder}
+                activeOpacity={0.8}
+              >
+                <Ban size={12} color="#ffffff" style={{ marginRight: 6 }} />
+                <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 13, letterSpacing: 0.5 }}>CANCEL ORDER</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* PREPARING order — waiter can only request cancel */}
+            {activeOrder.status === 'preparing' && role === 'waiter' && onRequestCancel && !cancelRequestStatus && (
+              <TouchableOpacity
+                style={{ height: 48, borderRadius: 12, backgroundColor: '#f59e0b', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
+                onPress={onRequestCancel}
+                disabled={placingOrder}
+                activeOpacity={0.8}
+              >
+                <Ban size={12} color="#ffffff" style={{ marginRight: 6 }} />
+                <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 12, letterSpacing: 0.5 }}>REQUEST CANCELLATION</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* PREPARING order — cashier/admin can cancel directly */}
+            {activeOrder.status === 'preparing' && (role === 'cashier' || role === 'admin') && onCancelOrder && (
+              <TouchableOpacity
+                style={{ height: 48, borderRadius: 12, backgroundColor: '#ef4444', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
+                onPress={onCancelOrder}
+                disabled={placingOrder}
+                activeOpacity={0.8}
+              >
+                <Ban size={12} color="#ffffff" style={{ marginRight: 6 }} />
+                <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 13, letterSpacing: 0.5 }}>CANCEL ORDER (Stock Refund)</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* READY order — waiter/cashier request, admin direct cancel */}
+            {activeOrder.status === 'ready' && role !== 'admin' && onRequestCancel && !cancelRequestStatus && (
+              <TouchableOpacity
+                style={{ height: 48, borderRadius: 12, backgroundColor: '#f59e0b', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
+                onPress={onRequestCancel}
+                disabled={placingOrder}
+                activeOpacity={0.8}
+              >
+                <Ban size={12} color="#ffffff" style={{ marginRight: 6 }} />
+                <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 12, letterSpacing: 0.5 }}>REQUEST CANCEL (→ Admin)</Text>
+              </TouchableOpacity>
+            )}
+            {activeOrder.status === 'ready' && role === 'admin' && onCancelOrder && (
+              <TouchableOpacity
+                style={{ height: 48, borderRadius: 12, backgroundColor: '#7f1d1d', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
+                onPress={onCancelOrder}
+                disabled={placingOrder}
+                activeOpacity={0.8}
+              >
+                <Ban size={12} color="#ffffff" style={{ marginRight: 6 }} />
+                <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 12, letterSpacing: 0.5 }}>ADMIN FORCE-CANCEL</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         )}
       </View>
     </View>

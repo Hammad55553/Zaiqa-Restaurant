@@ -368,6 +368,24 @@ const initDb = () => {
         FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE
       )`);
 
+      // Cancel Requests Table — role-based approval workflow
+      db.run(`CREATE TABLE IF NOT EXISTS cancel_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_id INTEGER NOT NULL,
+        requested_by TEXT NOT NULL,
+        requested_role TEXT NOT NULL,
+        reason TEXT,
+        status TEXT DEFAULT 'pending',
+        resolved_by TEXT,
+        reject_reason TEXT,
+        resolved_at DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE
+      )`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_cancel_req_order ON cancel_requests(order_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_cancel_req_status ON cancel_requests(status)`);
+
+
       // ── Performance Indexes ────────────────────────────────────────────
       // Orders — most frequently queried columns
       db.run(`CREATE INDEX IF NOT EXISTS idx_orders_status        ON orders(status)`);

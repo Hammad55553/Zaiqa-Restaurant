@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, Trash2, ShieldAlert, Archive, CheckCircle2, ShoppingBag, Clock, FileText, Ban, ExternalLink, RefreshCw, Send, Check } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Trash2, ShieldAlert, Archive, CheckCircle2, ShoppingBag, Clock, FileText, Ban, ExternalLink, RefreshCw, Send, Check, XCircle, User } from 'lucide-react';
 
 const API_BASE = 'http://localhost:5005/api';
 
 const ReturnsPending = ({ onBack }) => {
-  const [activeTab, setActiveTab] = useState('pending'); // 'pending', 'cancelled', 'waste', 'voided'
+  const [activeTab, setActiveTab] = useState('pending'); // 'pending', 'cancelled', 'waste', 'voided', 'cancel-requests'
   const [orders, setOrders] = useState([]);
   const [wasteList, setWasteList] = useState([]);
   const [outflowList, setOutflowList] = useState([]);
   const [voidedList, setVoidedList] = useState([]);
+  const [cancelRequests, setCancelRequests] = useState([]);
   const [tablesList, setTablesList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
@@ -86,6 +87,14 @@ const ReturnsPending = ({ onBack }) => {
         }
       } catch (voidErr) {
         console.error("Failed to fetch voided items:", voidErr);
+      }
+
+      // 1.2 Fetch cancel requests
+      try {
+        const crRes = await fetch(`${API_BASE}/orders/cancel-requests`);
+        if (crRes.ok) setCancelRequests(await crRes.json());
+      } catch (crErr) {
+        console.error("Failed to fetch cancel requests:", crErr);
       }
       
       // 2. Fetch tables list
@@ -325,6 +334,17 @@ const ReturnsPending = ({ onBack }) => {
           }`}
         >
           Voided Items ({voidedList.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('cancel-requests')}
+          className={`px-5 py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition-all active:scale-95 flex items-center gap-2 ${
+            activeTab === 'cancel-requests'
+              ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-[0_0_20px_rgba(245,158,11,0.3)]'
+              : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-white'
+          }`}
+        >
+          <AlertTriangle size={12} />
+          Cancel Requests ({cancelRequests.filter(r => r.status === 'pending').length})
         </button>
       </div>
 
@@ -647,6 +667,94 @@ const ReturnsPending = ({ onBack }) => {
           </div>
         )}
       </div>
+
+      {/* CANCEL REQUESTS TAB */}
+      {activeTab === 'cancel-requests' && (
+        <div className="space-y-3">
+          {cancelRequests.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-zinc-500">
+              <AlertTriangle size={40} className="mb-3 text-zinc-700" />
+              <p className="text-sm font-medium">No cancel requests found</p>
+            </div>
+          ) : cancelRequests.map(req => {
+            const statusColors = {
+              pending:  { bg: 'bg-amber-500/10',  text: 'text-amber-400',   border: 'border-amber-500/20' },
+              approved: { bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/20' },
+              rejected: { bg: 'bg-red-500/10',     text: 'text-red-400',     border: 'border-red-500/20' },
+            };
+            const sc = statusColors[req.status] || statusColors.pending;
+            return (
+              <div key={req.id} className={`rounded-2xl border ${sc.border} ${sc.bg} p-4`}>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs font-black text-white">Order #{req.order_id}</span>
+                      <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border ${sc.border} ${sc.text}`}>{req.status}</span>
+                      {req.order_status && (
+                        <span className="text-[10px] font-bold text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded-full uppercase">{req.order_status}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-zinc-500">
+                      <span className="flex items-center gap-1"><User size={10}/> {req.requested_by} ({req.requested_role})</span>
+                      <span className="flex items-center gap-1"><Clock size={10}/> {new Date(req.created_at).toLocaleString()}</span>
+                    </div>
+                    {req.table_number && <p className="text-xs text-zinc-400 mt-1">Table {req.table_number} · {req.area}</p>}
+                    {req.reason && <p className="text-xs italic text-zinc-500 mt-1">"{req.reason}"</p>}
+                    {req.resolved_by && (
+                      <p className="text-xs mt-1 text-zinc-400">
+                        {req.status === 'approved' ? '✅' : '❌'} By {req.resolved_by}
+                        {req.resolved_at ? ` at ${new Date(req.resolved_at).toLocaleString()}` : ''}
+                        {req.reject_reason ? ` — "${req.reject_reason}"` : ''}
+                      </p>
+                    )}
+                    {req.items && req.items.length > 0 && (
+                      <div className="mt-2 space-y-0.5">
+                        {req.items.map(item => (
+                          <p key={item.id} className="text-[11px] text-zinc-500">{item.item_name} × {item.quantity}</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {req.status === 'pending' && isAdmin && (
+                    <div className="flex flex-col gap-2 shrink-0">
+                      <button
+                        onClick={async () => {
+                          const wasStarted = ['preparing', 'ready', 'completed'].includes(req.order_status);
+                          const res = await fetch(`${API_BASE}/orders/cancel-requests/${req.id}/approve`, {
+                            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ resolved_by: currentUser?.username || 'admin', resolved_role: currentUser?.role || 'admin', refund_raw: wasStarted, log_waste: wasStarted })
+                          });
+                          const d = await res.json();
+                          if (res.ok) { showToast('Approved & order cancelled', 'success'); fetchData(); }
+                          else showToast(d.error || 'Failed to approve', 'error');
+                        }}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-lg flex items-center gap-1"
+                      >
+                        <CheckCircle2 size={11}/> Approve
+                      </button>
+                      <button
+                        onClick={async () => {
+                          const reason = window.prompt('Reject reason (optional):') || 'Rejected by admin';
+                          const res = await fetch(`${API_BASE}/orders/cancel-requests/${req.id}/reject`, {
+                            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ resolved_by: currentUser?.username || 'admin', reject_reason: reason })
+                          });
+                          const d = await res.json();
+                          if (res.ok) { showToast('Request rejected', 'success'); fetchData(); }
+                          else showToast(d.error || 'Failed to reject', 'error');
+                        }}
+                        className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-black rounded-lg flex items-center gap-1"
+                      >
+                        <XCircle size={11}/> Reject
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Sell Modal Dialog */}
       {sellModalItem && (

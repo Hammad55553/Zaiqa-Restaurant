@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import Menu from './Menu';
 import Cart from './Cart';
-import { ArrowLeft, Users, Clock, Edit2, LayoutGrid, CheckCircle, AlertCircle, X, Bike, Phone, MapPin, Plus, Trash2, Search, Printer, CreditCard, ShoppingBag, Lock, Unlock, Ban } from 'lucide-react';
+import { ArrowLeft, Users, Clock, Edit2, LayoutGrid, CheckCircle, AlertCircle, AlertTriangle, X, Bike, Phone, MapPin, Plus, Trash2, Search, Printer, CreditCard, ShoppingBag, Lock, Unlock, Ban } from 'lucide-react';
 import TableCard from './components/TableCard';
 import TableTimer from './components/TableTimer';
 import OrderConfirmationModal from './components/OrderConfirmationModal';
@@ -14,6 +14,7 @@ import { API_BASE, WS_URL } from '../../config';
 import { syncService } from '../../services/syncService';
 import { getOfflineItem, setOfflineItem, removeOfflineItem } from '../../utils/offlineDB';
 import { moveToTrash } from '../../utils/trashDB';
+import CancelRequestsPanel from './components/CancelRequestsPanel';
 
 const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeliveryId }) => {
   const [view, setView] = useState('floor'); // 'floor', 'order', or 'delivery-order'
@@ -40,6 +41,8 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
   const [activeOrderId, setActiveOrderId] = useState(null);
   const [activeOrderStatus, setActiveOrderStatus] = useState('pending');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [cancelRequestsOpen, setCancelRequestsOpen] = useState(false);
+  const [pendingCancelCount, setPendingCancelCount] = useState(0);
   const [adminUnlockRemark, setAdminUnlockRemark] = useState('');
   const [billRequestAlert, setBillRequestAlert] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
@@ -358,6 +361,22 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
       unsubscribeTables();
     };
   }, [selectedDelivery, refreshKey]);
+
+  // Poll pending cancel requests for badge
+  useEffect(() => {
+    const pollCancelRequests = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/orders/cancel-requests?status=pending`);
+        if (res.ok) {
+          const data = await res.json();
+          setPendingCancelCount(Array.isArray(data) ? data.length : 0);
+        }
+      } catch {}
+    };
+    pollCancelRequests();
+    const interval = setInterval(pollCancelRequests, 15000);
+    return () => clearInterval(interval);
+  }, [cancelRequestsOpen]);
 
   // Load & sync delivery orders from IndexedDB
   const loadDeliveryOrders = async () => {
@@ -2173,37 +2192,78 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
 
                 {/* Cancel Order - danger zone, shown only when order exists */}
                 {activeOrderId && (
-                  <button
-                    onClick={() => {
-                      if (!window.confirm(`Cancel Order #${activeOrderId}? Stock will be refunded if already in preparation.`)) return;
-                      const wasStarted = activeOrderStatus && ['preparing', 'ready'].includes(activeOrderStatus);
-                      fetch(`${API_BASE}/orders/${activeOrderId}/cancel`, {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          refund_raw: wasStarted,
-                          log_waste: wasStarted,
-                          reason: 'Cancelled by Cashier'
-                        })
-                      })
-                        .then(r => r.json())
-                        .then(d => {
-                          if (d.success) {
-                            setCartItems([]);
-                            setActiveOrderId(null);
-                            setActiveOrderStatus('pending');
-                            showToast('Order cancelled.' + (wasStarted ? ' Stock refunded.' : ''), 'success');
-                            setRefreshKey(k => k + 1);
-                          } else {
-                            alert(d.error || 'Failed to cancel order');
-                          }
-                        })
-                        .catch(() => alert('Network error while cancelling order'));
-                    }}
-                    className="w-full mt-2 py-3 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-black rounded-xl transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider"
-                  >
-                    <Ban size={14} /> Cancel Order #{activeOrderId}
-                  </button>
+                  {/* Smart Role-Based Cancel Order */}
+                  <div className="w-full mt-2">
+                    {activeOrderStatus === 'pending' && (
+                      // PENDING — everyone can cancel directly
+                      <button
+                        onClick={() => {
+                          if (!window.confirm(`Cancel Order #${activeOrderId}?`)) return;
+                          fetch(`${API_BASE}/orders/${activeOrderId}/cancel`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ refund_raw: false, log_waste: false, reason: 'Cancelled at POS' })
+                          }).then(r => r.json()).then(d => {
+                            if (d.success) {
+                              setCartItems([]); setActiveOrderId(null); setActiveOrderStatus('pending');
+                              showToast('Order cancelled.', 'success'); setRefreshKey(k => k + 1);
+                            } else { showToast(d.error || 'Failed to cancel', 'error'); }
+                          }).catch(() => showToast('Network error', 'error'));
+                        }}
+                        className="w-full py-3 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-black rounded-xl transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider"
+                      >
+                        <Ban size={14} /> Cancel Order #{activeOrderId}
+                      </button>
+                    )}
+                    {activeOrderStatus === 'preparing' && (currentUser?.role === 'cashier' || currentUser?.role === 'admin') && (
+                      // PREPARING — cashier/admin can cancel directly
+                      <button
+                        onClick={() => {
+                          if (!window.confirm(`Cancel Order #${activeOrderId}? Kitchen is preparing — stock will be refunded.`)) return;
+                          fetch(`${API_BASE}/orders/${activeOrderId}/cancel`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ refund_raw: true, log_waste: true, reason: `Cancelled by ${currentUser?.role}` })
+                          }).then(r => r.json()).then(d => {
+                            if (d.success) {
+                              setCartItems([]); setActiveOrderId(null); setActiveOrderStatus('pending');
+                              showToast('Order cancelled. Stock refunded.', 'success'); setRefreshKey(k => k + 1);
+                            } else { showToast(d.error || 'Failed to cancel', 'error'); }
+                          }).catch(() => showToast('Network error', 'error'));
+                        }}
+                        className="w-full py-3 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 font-black rounded-xl transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider"
+                      >
+                        <Ban size={14} /> Cancel Preparing Order #{activeOrderId}
+                      </button>
+                    )}
+                    {activeOrderStatus === 'ready' && currentUser?.role === 'admin' && (
+                      // READY — only admin can cancel
+                      <button
+                        onClick={() => {
+                          if (!window.confirm(`Cancel Order #${activeOrderId}? Food is ready — stock will be refunded and food logged as waste.`)) return;
+                          fetch(`${API_BASE}/orders/${activeOrderId}/cancel`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ refund_raw: true, log_waste: true, reason: 'Admin force-cancelled (ready)' })
+                          }).then(r => r.json()).then(d => {
+                            if (d.success) {
+                              setCartItems([]); setActiveOrderId(null); setActiveOrderStatus('pending');
+                              showToast('Order cancelled. Food logged as waste.', 'success'); setRefreshKey(k => k + 1);
+                            } else { showToast(d.error || 'Failed to cancel', 'error'); }
+                          }).catch(() => showToast('Network error', 'error'));
+                        }}
+                        className="w-full py-3 bg-red-100 hover:bg-red-200 text-red-700 border border-red-300 font-black rounded-xl transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider"
+                      >
+                        <Ban size={14} /> Admin Force-Cancel Order #{activeOrderId}
+                      </button>
+                    )}
+                    {activeOrderStatus === 'ready' && currentUser?.role === 'cashier' && (
+                      <div className="w-full py-3 bg-zinc-50 border border-zinc-200 text-zinc-500 rounded-xl flex items-center justify-center gap-2 text-xs font-bold">
+                        <AlertTriangle size={13} className="text-amber-500" />
+                        Order ready — Contact Admin to cancel
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -3477,6 +3537,38 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
                 </button>
               </div>
             </div>
+          )}
+          {/* Cancel Requests Floating Badge — Cashier & Admin Only */}
+          {(currentUser?.role === 'cashier' || currentUser?.role === 'admin') && (
+            <button
+              onClick={() => setCancelRequestsOpen(true)}
+              className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-2xl shadow-2xl transition-all font-black text-xs uppercase tracking-wider"
+              style={{
+                background: pendingCancelCount > 0 ? 'linear-gradient(135deg,#f59e0b,#ef4444)' : '#1c1917',
+                color: '#fff',
+                boxShadow: pendingCancelCount > 0 ? '0 8px 32px rgba(239,68,68,0.4)' : '0 4px 16px rgba(0,0,0,0.3)',
+                animation: pendingCancelCount > 0 ? 'pulse 2s infinite' : 'none',
+              }}
+            >
+              <AlertTriangle size={14} />
+              Cancel Requests
+              {pendingCancelCount > 0 && (
+                <span className="bg-white text-red-600 font-black text-xs px-2 py-0.5 rounded-full ml-1">{pendingCancelCount}</span>
+              )}
+            </button>
+          )}
+
+          {/* Cancel Requests Panel Modal */}
+          {cancelRequestsOpen && (
+            <CancelRequestsPanel
+              currentUser={currentUser}
+              onClose={() => {
+                setCancelRequestsOpen(false);
+                // Refresh badge count after closing
+                fetch(`${API_BASE}/orders/cancel-requests?status=pending`)
+                  .then(r => r.json()).then(d => setPendingCancelCount(Array.isArray(d) ? d.length : 0)).catch(() => {});
+              }}
+            />
           )}
         </div>
       )}
