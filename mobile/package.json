@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^3.1.1",
+    "@react-native-firebase/app": "^24.1.1",
+    "@react-native-firebase/messaging": "^24.1.1",
     "@react-native/new-app-screen": "0.85.3",
     "lottie-react-native": "^7.3.8",
     "lucide-react-native": "^1.17.0",

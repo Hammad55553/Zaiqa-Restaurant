@@ -326,53 +326,52 @@ export default function UserManager() {
                   <p className="text-sm font-semibold">No registered staff users match your search.</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[580px] overflow-y-auto pr-2 custom-scrollbar">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {filteredUsers.map(u => (
                     <div
                       key={u.id}
-                      className={`p-5 rounded-2xl border transition-all duration-300 flex flex-col justify-between gap-4 ${selectedUser?.id === u.id
-                        ? 'border-orange-500 bg-orange-50/10 shadow-md shadow-orange-500/5'
-                        : 'border-slate-100 bg-white hover:border-slate-200 hover:shadow-md'
+                      className={`p-2 rounded-lg border transition-all duration-300 flex items-center justify-between gap-2 ${selectedUser?.id === u.id
+                        ? 'border-orange-500 bg-orange-50/10 shadow-sm'
+                        : 'border-slate-100 bg-white hover:border-slate-200 hover:shadow-sm'
                         }`}
                     >
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <p className="font-extrabold text-slate-900 text-base">{u.name || u.username.toUpperCase()}</p>
-                          <p className="text-xs text-slate-400 font-bold mt-0.5">@{u.username}</p>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-7 h-7 rounded bg-slate-100 text-slate-600 flex items-center justify-center font-black shrink-0 uppercase text-[10px]">
+                          {u.username.substring(0, 2)}
                         </div>
-                        <span className={`px-2.5 py-1 text-[10px] font-black tracking-widest uppercase rounded-lg ${u.role === 'admin' ? 'bg-orange-100 text-orange-700' :
-                          u.role === 'cashier' ? 'bg-blue-100 text-blue-700' :
-                            u.role === 'waiter' ? 'bg-purple-100 text-purple-700' :
-                              u.role === 'kitchen' ? 'bg-green-100 text-green-700' :
-                                'bg-teal-100 text-teal-700'
-                          }`}>
-                          {u.role}
-                        </span>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <p className="font-extrabold text-slate-900 text-xs truncate leading-none">{u.name || u.username.toUpperCase()}</p>
+                            <span className={`px-1 py-0.2 text-[7px] font-black tracking-wider uppercase rounded shrink-0 leading-none ${u.role === 'admin' ? 'bg-orange-100 text-orange-700' :
+                              u.role === 'cashier' ? 'bg-blue-100 text-blue-700' :
+                                u.role === 'waiter' ? 'bg-purple-100 text-purple-700' :
+                                  u.role === 'kitchen' ? 'bg-green-100 text-green-700' :
+                                    'bg-teal-100 text-teal-700'
+                              }`}>
+                              {u.role}
+                            </span>
+                          </div>
+                          <p className="text-[9px] text-slate-400 font-bold truncate mt-0.5 leading-none">@{u.username} · {u.permissions ? `${u.permissions.length} modules` : '0 modules'}</p>
+                        </div>
                       </div>
 
-                      <div className="flex items-center justify-between border-t border-slate-50 pt-3 mt-1">
-                        <span className="text-[10px] font-black text-slate-400 uppercase">
-                          {u.permissions ? `${u.permissions.length} Modules Allowed` : '0 Modules'}
-                        </span>
-
-                        <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => handleOpenEdit(u)}
+                          className="p-1 bg-slate-50 border border-slate-200 rounded text-slate-600 hover:text-orange-500 hover:border-orange-200 transition-all"
+                          title="Edit User"
+                        >
+                          <Edit size={10} />
+                        </button>
+                        {u.username !== 'admin' && (
                           <button
-                            onClick={() => handleOpenEdit(u)}
-                            className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-600 hover:text-orange-500 hover:border-orange-200 transition-all"
-                            title="Edit User"
+                            onClick={() => handleDeleteUser(u.id)}
+                            className="p-1 bg-red-50 border border-red-100 rounded text-red-500 hover:bg-red-100 transition-all"
+                            title="Delete User"
                           >
-                            <Edit size={14} />
+                            <Trash2 size={10} />
                           </button>
-                          {u.username !== 'admin' && (
-                            <button
-                              onClick={() => handleDeleteUser(u.id)}
-                              className="p-2 bg-red-50 border border-red-100 rounded-lg text-red-500 hover:bg-red-100 transition-all"
-                              title="Delete User"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          )}
-                        </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -381,10 +380,10 @@ export default function UserManager() {
             </div>
           </div>
 
-          {/* Right Side: Create/Edit Form (Styled Card Viewport-bounded) */}
+          {/* Right Side: Create/Edit Form (Flow layout, scroll handled by page) */}
           <div className="lg:col-span-5">
             {formOpen ? (
-              <div className="bg-white rounded-3xl border border-slate-100 shadow-lg overflow-hidden flex flex-col max-h-[620px] animate-fadeIn">
+              <div className="bg-white rounded-3xl border border-slate-100 shadow-lg overflow-hidden flex flex-col animate-fadeIn">
 
                 {/* Form Header */}
                 <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-900 text-white flex-shrink-0">
@@ -403,10 +402,10 @@ export default function UserManager() {
                 </div>
 
                 {/* Form Element */}
-                <form onSubmit={handleSubmit} className="flex flex-col min-h-0 flex-1" autoComplete="off">
+                <form onSubmit={handleSubmit} className="flex flex-col bg-white" autoComplete="off">
 
-                  {/* Scrollable Input Area */}
-                  <div className="p-6 space-y-5 overflow-y-auto flex-1 min-h-0 custom-scrollbar bg-white">
+                  {/* Input Area */}
+                  <div className="p-6 space-y-5 bg-white">
 
                     {/* Username Input */}
                     <div>
@@ -513,7 +512,7 @@ export default function UserManager() {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 gap-2 max-h-56 overflow-y-auto border border-slate-100 rounded-xl p-2 bg-slate-50/50 custom-scrollbar">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 border border-slate-100 rounded-xl p-2 bg-slate-50/50">
                         {AVAILABLE_PERMISSIONS.map(perm => {
                           const isChecked = formData.permissions.includes(perm.id);
                           return (
@@ -521,7 +520,7 @@ export default function UserManager() {
                               key={perm.id}
                               type="button"
                               onClick={() => handleTogglePermission(perm.id)}
-                              className={`flex items-start gap-3 p-2.5 rounded-lg border text-left transition-all ${isChecked
+                              className={`flex items-start gap-3 p-2 rounded-lg border text-left transition-all ${isChecked
                                 ? 'bg-white border-orange-200 shadow-sm'
                                 : 'bg-transparent border-transparent hover:bg-slate-100/50'
                                 }`}
@@ -540,8 +539,8 @@ export default function UserManager() {
                     </div>
                   </div>
 
-                  {/* Fixed Button Footer */}
-                  <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center gap-3 flex-shrink-0 sticky bottom-0">
+                  {/* Button Footer */}
+                  <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center gap-3">
                     <button
                       type="submit"
                       className="flex-1 py-3 bg-slate-900 text-white font-extrabold rounded-xl shadow hover:bg-slate-800 transition-all flex items-center justify-center gap-2 text-xs"

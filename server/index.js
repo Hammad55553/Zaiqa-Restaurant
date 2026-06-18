@@ -305,6 +305,7 @@ app.use('/api/users',     require('./routes/users'));
 app.use('/api/update',    require('./routes/update'));
 app.use('/api/chat',      chatRouter);
 app.use('/api/sync',      syncRouter);
+app.use('/api/settings',  require('./routes/settings'));
 
 // ── 404 fallback ──────────────────────────────────────────────────────────────
 app.use((req, res) => {

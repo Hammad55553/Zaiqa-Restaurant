@@ -179,7 +179,7 @@ export default function KitchenDashboard({ username, name, permissions, onLogout
     pollTimer.current = setInterval(() => fetchLive(), 8000);
 
     const syncSub = DeviceEventEmitter.addListener('SYNC_TRIGGER', (event) => {
-      if (event.url.includes('/orders')) {
+      if (event && typeof event.url === 'string' && event.url.includes('/orders')) {
         fetchLive();
       }
     });

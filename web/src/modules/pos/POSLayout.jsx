@@ -40,6 +40,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
   const [activeOrderId, setActiveOrderId] = useState(null);
   const [activeOrderStatus, setActiveOrderStatus] = useState('pending');
   const [adminUnlockRemark, setAdminUnlockRemark] = useState('');
+  const [billRequestAlert, setBillRequestAlert] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
   const [editingTime, setEditingTime] = useState(false);
   const [timeValue, setTimeValue] = useState('');
@@ -170,6 +171,22 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
                 t.startTime = order.created_at ? new Date(order.created_at + 'Z').toISOString() : new Date().toISOString();
               }
             });
+
+            // Check if any active order has requested the bill
+            const requested = activeOrders.find(o => o.remarks && o.remarks.includes('[BILL REQUESTED]'));
+            if (requested) {
+              const tbl = dbTables.find(t => t.number === requested.table_number);
+              setBillRequestAlert({
+                orderId: requested.id,
+                tableNumber: requested.table_number,
+                area: tbl ? tbl.area : 'Male',
+                tableObj: tbl
+              });
+            } else {
+              setBillRequestAlert(null);
+            }
+          } else {
+            setBillRequestAlert(null);
           }
 
           // Inbound KDS status sync & auto-import for active Delivery orders from SQLite central DB!
@@ -545,6 +562,15 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
 
   const showToast = (message, type = 'error') => {
     setToastMessage({ message, type });
+  };
+
+  const handleViewBillRequest = (tableNumber) => {
+    const targetTable = tables.find(t => t.number === tableNumber);
+    if (targetTable) {
+      setActiveArea(targetTable.area);
+      handleTableClick(targetTable);
+      setBillRequestAlert(null);
+    }
   };
 
   const areaTables = tables.filter(t => t.area === activeArea);
@@ -2343,6 +2369,24 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
           )}
         </div>
 
+        {orderRemarks && orderRemarks.includes('[BILL REQUESTED]') && (
+          <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-xl shadow-sm flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-3">
+              <span className="text-red-500 font-extrabold text-lg animate-pulse">⚠️</span>
+              <div>
+                <p className="text-xs font-black text-red-700 uppercase tracking-wider">Bill Requested by Waiter</p>
+                <p className="text-[11px] text-red-600 font-medium">The waiter has requested the checkout bill for Table {selectedTable?.number}. Review details and process checkout.</p>
+              </div>
+            </div>
+            <button
+              onClick={handleCheckout}
+              className="bg-red-600 hover:bg-red-700 text-white font-black text-[10px] uppercase tracking-wider px-4 py-2 rounded-xl transition-all shadow-md active:scale-95"
+            >
+              Process Checkout
+            </button>
+          </div>
+        )}
+
         {/* Menu & Cart Container */}
         <div className="flex-1 flex flex-col lg:flex-row gap-3 lg:gap-4 min-h-0 overflow-hidden z-10">
           {/* Menu Section */}
@@ -3369,6 +3413,33 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
               <AlertCircle size={18} className={toastMessage.type === 'error' ? 'text-red-500' : 'text-emerald-500'} />
               <span className="font-bold text-sm tracking-wide">{toastMessage.message}</span>
               <button onClick={() => setToastMessage(null)} className="ml-2 text-zinc-500 hover:text-white transition-colors"><X size={16} /></button>
+            </div>
+          )}
+
+          {/* Bill Request Popup Notification */}
+          {billRequestAlert && (
+            <div className="fixed top-6 right-6 z-50 max-w-sm w-full bg-zinc-900 border border-red-500/30 p-4 rounded-2xl shadow-[0_20px_50px_rgba(239,68,68,0.2)] flex flex-col gap-3 animate-slideIn">
+              <div className="flex items-start gap-3">
+                <span className="text-xl text-red-500 animate-pulse mt-0.5">⚠️</span>
+                <div className="flex-1">
+                  <h4 className="text-xs font-black text-white uppercase tracking-wider">Bill Requested</h4>
+                  <p className="text-[11px] text-zinc-400 mt-1 font-medium">Table {billRequestAlert.tableNumber} ({billRequestAlert.area}) has requested the checkout bill.</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleViewBillRequest(billRequestAlert.tableNumber)}
+                  className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white font-black text-[10px] uppercase tracking-wider rounded-xl transition-all shadow-md"
+                >
+                  View Details & Print
+                </button>
+                <button
+                  onClick={() => setBillRequestAlert(null)}
+                  className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white font-black text-[10px] uppercase tracking-wider rounded-xl transition-all"
+                >
+                  Dismiss
+                </button>
+              </div>
             </div>
           )}
         </div>

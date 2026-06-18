@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../database/db');
-const { queueOrderChange } = require('../services/syncHelper');
+const { queueOrderChange, queueTableChange } = require('../services/syncHelper');
 
 // @route   POST /api/orders
 // @desc    Create a new order (from POS)
@@ -47,6 +47,18 @@ router.post('/', (req, res) => {
         });
       }
     });
+
+    // Update table status to dining if this is a dine-in order
+    if (table_number && area !== 'Delivery') {
+      db.run(`UPDATE tables SET status = 'dining' WHERE table_number = ?`, [table_number], (errT) => {
+        if (errT) console.error("Error updating table status:", errT);
+        db.get(`SELECT id FROM tables WHERE table_number = ?`, [table_number], (errG, row) => {
+          if (!errG && row) {
+            queueTableChange(row.id, 'update');
+          }
+        });
+      });
+    }
 
     // Sync order to Supabase
     queueOrderChange(orderId, 'insert');
@@ -104,7 +116,7 @@ router.patch('/:id/status', (req, res) => {
   const { id } = req.params;
   const { status, clear_updates } = req.body;
 
-  db.get(`SELECT status FROM orders WHERE id = ?`, [id], (errOrd, orderRow) => {
+  db.get(`SELECT status, table_number, area FROM orders WHERE id = ?`, [id], (errOrd, orderRow) => {
     if (errOrd || !orderRow) {
       return res.status(404).json({ error: 'Order not found' });
     }
@@ -118,12 +130,28 @@ router.patch('/:id/status', (req, res) => {
     if (clear_updates) {
       query += `, has_new_updates = 0`;
     }
+    if (req.body.delivered_by) {
+      query += `, delivered_by = ?`;
+      params.push(req.body.delivered_by);
+    }
     query += ` WHERE id = ?`;
     params.push(id);
 
     db.run(query, params, function(err) {
       if (err) {
         return res.status(500).json({ error: 'Failed to update order status' });
+      }
+
+      // If order is completed, set table to available
+      if (orderRow.table_number && orderRow.area !== 'Delivery' && status === 'completed') {
+        db.run(`UPDATE tables SET status = 'available' WHERE table_number = ?`, [orderRow.table_number], (errT) => {
+          if (errT) console.error("Error updating table status on complete:", errT);
+          db.get(`SELECT id FROM tables WHERE table_number = ?`, [orderRow.table_number], (errG, row) => {
+            if (!errG && row) {
+              queueTableChange(row.id, 'update');
+            }
+          });
+        });
       }
 
       // If transitioning from pending to active (preparing or later), deduct stock for all items
@@ -522,7 +550,15 @@ router.patch('/:id/cancel', (req, res) => {
 
         // Set table to available if it is a table
         if (order.table_number && order.area !== 'Delivery') {
-          db.run(`UPDATE tables SET status = 'available' WHERE table_number = ?`, [order.table_number]);
+          db.run(`UPDATE tables SET status = 'available' WHERE table_number = ?`, [order.table_number], (errT) => {
+            if (!errT) {
+              db.get(`SELECT id FROM tables WHERE table_number = ?`, [order.table_number], (errG, row) => {
+                if (!errG && row) {
+                  queueTableChange(row.id, 'update');
+                }
+              });
+            }
+          });
         }
 
         // 1. If refund raw is true, refund ingredient stock only if it was previously deducted (status preparing or later)
@@ -655,6 +691,45 @@ router.delete('/prepared-waste-outflow/:id', (req, res) => {
   db.run(`DELETE FROM prepared_waste_outflow WHERE id = ?`, [id], function(err) {
     if (err) return res.status(500).json({ error: 'Failed to delete waste outflow log' });
     res.json({ success: true, id });
+  });
+});
+
+// @route   GET /api/orders/rider/:username
+// @desc    Get all completed orders delivered by a specific rider (for rider dashboard history)
+router.get('/rider/:username', (req, res) => {
+  const { username } = req.params;
+  const sql = `
+    SELECT * FROM orders 
+    WHERE status = 'completed' AND delivered_by = ?
+    ORDER BY created_at DESC
+  `;
+
+  db.all(sql, [username], (err, orders) => {
+    if (err) {
+      return res.status(500).json({ error: 'Failed to fetch rider report' });
+    }
+
+    if (orders.length === 0) {
+      return res.json([]);
+    }
+
+    const orderIds = orders.map(o => o.id);
+    const placeholders = orderIds.map(() => '?').join(',');
+    const itemsSql = `SELECT * FROM order_items WHERE order_id IN (${placeholders})`;
+
+    db.all(itemsSql, orderIds, (err, items) => {
+      if (err) {
+        return res.status(500).json({ error: 'Failed to fetch order items' });
+      }
+
+      const ordersWithItems = orders.map(order => ({
+        ...order,
+        time: new Date(order.created_at).toISOString(),
+        items: items.filter(item => item.order_id === order.id)
+      }));
+
+      res.json(ordersWithItems);
+    });
   });
 });
 

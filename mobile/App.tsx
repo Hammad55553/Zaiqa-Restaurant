@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { StatusBar, StyleSheet, View, Alert, Modal, Text, TouchableOpacity, TouchableWithoutFeedback } from 'react-native';
 import { LogOut } from 'lucide-react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import messaging from '@react-native-firebase/messaging';
 import LoginScreen from './src/screens/LoginScreen';
 import WaiterDashboard from './src/screens/WaiterDashboard';
 import KitchenDashboard from './src/screens/kitchen/KitchenDashboard';
@@ -86,6 +87,46 @@ function WebSocketManager() {
   return null;
 }
 
+function FCMManager() {
+  const toast = useToast();
+
+  useEffect(() => {
+    async function requestUserPermission() {
+      try {
+        const authStatus = await messaging().requestPermission();
+        const enabled =
+          authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
+          authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+
+        if (enabled) {
+          console.log('🔥 FCM Authorization status:', authStatus);
+          
+          messaging()
+            .subscribeToTopic('chat')
+            .then(() => console.log('🔥 Subscribed to FCM topic: chat'))
+            .catch((err) => console.warn('🔥 Failed to subscribe to topic:', err));
+        }
+      } catch (err) {
+        console.warn('FCM Permission Request error:', err);
+      }
+    }
+
+    requestUserPermission();
+
+    const unsubscribe = messaging().onMessage(async (remoteMessage) => {
+      console.log('🔥 Foreground FCM Message received:', remoteMessage);
+      const title = remoteMessage.notification?.title || 'New Message';
+      const body = remoteMessage.notification?.body || '';
+      toast.info(title, body);
+      Vibration.vibrate([0, 400, 100, 400]);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  return null;
+}
+
 function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [user, setUser] = useState<{ username: string; role: 'waiter' | 'kitchen' | 'rider', name?: string, permissions?: string[] } | null>(null);
@@ -134,6 +175,7 @@ function App() {
   return (
     <ToastProvider>
       <WebSocketManager />
+      <FCMManager />
       <SafeAreaProvider>
         <StatusBar barStyle="light-content" backgroundColor="#0f172a" translucent={false} />
         <SafeAreaView style={styles.container}>

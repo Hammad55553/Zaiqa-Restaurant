@@ -9,6 +9,7 @@ interface CartItem {
   qty: number;
   notes?: string;
   category_name?: string;
+  sent?: boolean;
 }
 
 interface CartSectionProps {
@@ -36,6 +37,9 @@ export default function CartSection({
   activeOrder,
   onRequestBill
 }: CartSectionProps) {
+  const sentItems = cartItems.filter(item => item.sent);
+  const newItems = cartItems.filter(item => !item.sent);
+
   return (
     <View style={styles.cartDrawer}>
       {/* Premium Header */}
@@ -71,35 +75,97 @@ export default function CartSection({
             <Text style={styles.emptyCartSub}>Select items from the catalog on the left to build the order.</Text>
           </View>
         ) : (
-          cartItems.map(item => (
-            <View key={item.id} style={styles.cartItemRow}>
-              <View style={{ flex: 1, paddingRight: 8 }}>
-                <Text style={styles.cartItemName} numberOfLines={2}>{item.name}</Text>
-                <Text style={styles.cartItemPrice}>Rs. {item.price} x {item.qty}</Text>
-                <TextInput 
-                  placeholder="Add comments (e.g. extra gravy)..."
-                  placeholderTextColor="#94a3b8"
-                  value={item.notes || ''}
-                  onChangeText={(text) => {
-                    setCartItems((prev: any) => prev.map((i: any) => i.id === item.id ? { ...i, notes: text } : i));
-                  }}
-                  style={styles.itemNotesInput}
-                />
-              </View>
-              <View style={styles.rightControlRow}>
-                <Text style={styles.itemSubtotal}>Rs. {item.price * item.qty}</Text>
-                <View style={styles.qtyContainer}>
-                  <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQty(item.id, -1)}>
-                    <Minus size={11} color="#64748b" />
-                  </TouchableOpacity>
-                  <Text style={styles.qtyText}>{item.qty}</Text>
-                  <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQty(item.id, 1)}>
-                    <Plus size={11} color="#64748b" />
-                  </TouchableOpacity>
+          <View style={{ gap: 14 }}>
+            {sentItems.length > 0 && (
+              <View style={styles.sentContainer}>
+                <Text style={styles.sentHeaderTitle}>SENT ITEMS (COOKING IN KITCHEN)</Text>
+                <View style={{ gap: 8 }}>
+                  {sentItems.map(item => (
+                    <View key={item.id} style={[styles.cartItemRow, { backgroundColor: '#f8fafc', borderColor: '#e2e8f0' }]}>
+                      <View style={{ flex: 1, paddingRight: 8 }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Text style={[styles.cartItemName, { color: '#334155' }]} numberOfLines={1}>{item.name}</Text>
+                          <TouchableOpacity 
+                            onPress={() => setCartItems((prev: any) => prev.filter((i: any) => i.id !== item.id))}
+                            activeOpacity={0.7}
+                          >
+                            <Trash2 size={13} color="#ef4444" />
+                          </TouchableOpacity>
+                        </View>
+                        <Text style={styles.cartItemPrice}>Rs. {item.price} x {item.qty}</Text>
+                        <TextInput 
+                          placeholder="Add comments (e.g. extra gravy)..."
+                          placeholderTextColor="#94a3b8"
+                          value={item.notes || ''}
+                          onChangeText={(text) => {
+                            setCartItems((prev: any) => prev.map((i: any) => i.id === item.id ? { ...i, notes: text } : i));
+                          }}
+                          style={styles.itemNotesInput}
+                        />
+                      </View>
+                      <View style={styles.rightControlRow}>
+                        <Text style={[styles.itemSubtotal, { color: '#475569' }]}>Rs. {item.price * item.qty}</Text>
+                        <View style={styles.qtyContainer}>
+                          <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQty(item.id, -1)}>
+                            <Minus size={11} color="#64748b" />
+                          </TouchableOpacity>
+                          <Text style={styles.qtyText}>{item.qty}</Text>
+                          <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQty(item.id, 1)}>
+                            <Plus size={11} color="#64748b" />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
+                  ))}
                 </View>
               </View>
-            </View>
-          ))
+            )}
+
+            {newItems.length > 0 && (
+              <View>
+                <Text style={styles.newHeaderTitle}>NEW ITEMS TO SEND</Text>
+                <View style={{ gap: 8 }}>
+                  {newItems.map(item => (
+                    <View key={item.id} style={styles.cartItemRow}>
+                      <View style={{ flex: 1, paddingRight: 8 }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Text style={styles.cartItemName} numberOfLines={1}>{item.name}</Text>
+                          <TouchableOpacity 
+                            onPress={() => setCartItems((prev: any) => prev.filter((i: any) => i.id !== item.id))}
+                            activeOpacity={0.7}
+                          >
+                            <Trash2 size={13} color="#ef4444" />
+                          </TouchableOpacity>
+                        </View>
+                        <Text style={styles.cartItemPrice}>Rs. {item.price} x {item.qty}</Text>
+                        <TextInput 
+                          placeholder="Add comments (e.g. extra gravy)..."
+                          placeholderTextColor="#94a3b8"
+                          value={item.notes || ''}
+                          onChangeText={(text) => {
+                            setCartItems((prev: any) => prev.map((i: any) => i.id === item.id ? { ...i, notes: text } : i));
+                          }}
+                          style={styles.itemNotesInput}
+                        />
+                      </View>
+                      <View style={styles.rightControlRow}>
+                        <Text style={styles.itemSubtotal}>Rs. {item.price * item.qty}</Text>
+                        <View style={styles.qtyContainer}>
+                          <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQty(item.id, -1)}>
+                            <Minus size={11} color="#64748b" />
+                          </TouchableOpacity>
+                          <Text style={styles.qtyText}>{item.qty}</Text>
+                          <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQty(item.id, 1)}>
+                            <Plus size={11} color="#64748b" />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+          </View>
         )}
       </ScrollView>
 
@@ -122,15 +188,19 @@ export default function CartSection({
       </View>
 
       {/* Order Summary & Dispatch Trigger */}
-      <View style={styles.cartFooter}>
-        <View style={styles.totalBlock}>
-          <Text style={styles.totalLabel}>TOTAL PAYLOAD</Text>
-          <Text style={styles.totalValue}>Rs. {cartTotal}</Text>
+      <View style={[styles.cartFooter, { flexDirection: 'column', alignItems: 'stretch', gap: 12 }]}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderColor: '#f1f5f9', paddingBottom: 8 }}>
+          <Text style={styles.totalLabel}>TOTAL BILL VALUE</Text>
+          <Text style={[styles.totalValue, { marginTop: 0, fontSize: 22 }]}>Rs. {cartTotal}</Text>
         </View>
 
-        <View style={{ gap: 8 }}>
+        <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'space-between' }}>
           <TouchableOpacity 
-            style={[styles.submitOrderBtn, cartItems.length === 0 && styles.submitOrderBtnDisabled]} 
+            style={[
+              styles.submitOrderBtn, 
+              cartItems.length === 0 && styles.submitOrderBtnDisabled,
+              { flex: 1, height: 48, borderRadius: 12 }
+            ]} 
             onPress={handlePlaceOrder}
             disabled={placingOrder || cartItems.length === 0}
             activeOpacity={0.8}
@@ -140,7 +210,7 @@ export default function CartSection({
             ) : (
               <>
                 <Text style={styles.submitOrderText}>
-                  {activeOrder ? 'UPDATE RUNNING ORDER' : 'SEND TO KITCHEN'}
+                  {activeOrder ? 'UPDATE ORDER' : 'SEND TO KITCHEN'}
                 </Text>
                 <Send size={12} color="#ffffff" style={{ marginLeft: 6 }} />
               </>
@@ -149,12 +219,12 @@ export default function CartSection({
 
           {activeOrder && (
             <TouchableOpacity 
-              style={styles.requestBillBtn} 
+              style={[styles.requestBillBtn, { flex: 1, height: 48, borderRadius: 12, backgroundColor: '#0f172a' }]} 
               onPress={onRequestBill}
               disabled={placingOrder}
               activeOpacity={0.8}
             >
-              <Text style={styles.requestBillText}>REQUEST BILL / CHECKOUT</Text>
+              <Text style={styles.requestBillText}>REQUEST BILL</Text>
               <Receipt size={12} color="#ffffff" style={{ marginLeft: 6 }} />
             </TouchableOpacity>
           )}

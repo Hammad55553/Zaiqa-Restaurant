@@ -60,6 +60,23 @@ const initDb = () => {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
 
+    // Settings Table
+    db.run(`CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    )`, () => {
+      db.get("SELECT COUNT(*) as count FROM settings WHERE key = 'global_gst_rate'", [], (err, row) => {
+        if (row && row.count === 0) {
+          db.run("INSERT INTO settings (key, value) VALUES ('global_gst_rate', '0')");
+        }
+      });
+      db.get("SELECT COUNT(*) as count FROM settings WHERE key = 'global_service_charges'", [], (err, row) => {
+        if (row && row.count === 0) {
+          db.run("INSERT INTO settings (key, value) VALUES ('global_service_charges', '0')");
+        }
+      });
+    });
+
     // Users Table
     db.run(`CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -179,6 +196,7 @@ const initDb = () => {
       db.run(`ALTER TABLE orders ADD COLUMN has_new_updates BOOLEAN DEFAULT 0`, (err) => {});
       db.run(`ALTER TABLE orders ADD COLUMN deleted_at DATETIME DEFAULT NULL`, (err) => {});
       db.run(`ALTER TABLE orders ADD COLUMN created_by TEXT`, (err) => {});
+      db.run(`ALTER TABLE orders ADD COLUMN delivered_by TEXT`, (err) => {});
     });
 
     // Order Items (KOT)
@@ -336,6 +354,18 @@ const initDb = () => {
         destination TEXT NOT NULL, -- 'Staff Consumed', 'Owner Consumed', 'Spoiled/Discarded', 'Other'
         notes TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`);
+
+      // Voided Items Table (audit log for items deleted or reduced after sending)
+      db.run(`CREATE TABLE IF NOT EXISTS voided_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_id INTEGER,
+        item_name TEXT NOT NULL,
+        price REAL NOT NULL,
+        quantity INTEGER NOT NULL,
+        admin_remark TEXT,
+        voided_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE
       )`);
 
       // ── Performance Indexes ────────────────────────────────────────────

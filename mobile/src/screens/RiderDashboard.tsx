@@ -127,13 +127,34 @@ export default function RiderDashboard({ username, name, permissions, onLogout }
   const [updatingId, setUpdatingId] = useState<number | null>(null);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Rider history report states
+  const [activeTab, setActiveTab] = useState<'active' | 'report'>('active');
+  const [completedOrders, setCompletedOrders] = useState<DeliveryOrder[]>([]);
+  const [loadingReport, setLoadingReport] = useState(false);
+
+  const fetchRiderReport = useCallback(async () => {
+    try {
+      setLoadingReport(true);
+      const res = await fetch(`${API_BASE}/orders/rider/${username}`);
+      if (res.ok) {
+        const data = await res.json();
+        setCompletedOrders(data);
+      }
+    } catch (err) {
+      console.warn("Failed to fetch rider report:", err);
+    } finally {
+      setLoadingReport(false);
+    }
+  }, [username]);
+
   // ── Network Status ──
   const { status: netStatus, ping: pingServer } = useServerStatus({
     pingInterval: 8000,
     onComeOnline: useCallback(() => {
       toast.success('Back Online', 'Rider reconnected to server.');
       fetchOrders(true);
-    }, []),
+      if (activeTab === 'report') fetchRiderReport();
+    }, [activeTab]),
     onGoOffline: useCallback(() => {
       toast.warning('Connection Lost', 'Rider display is offline.');
     }, []),
@@ -146,8 +167,8 @@ export default function RiderDashboard({ username, name, permissions, onLogout }
       if (!res.ok) throw new Error('Server error');
       const data: DeliveryOrder[] = await res.json();
 
-      // Filter only delivery orders (area === 'Delivery')
-      const deliveryOrders = data.filter(o => o.area === 'Delivery');
+      // Filter only delivery orders (area === 'Delivery') that are ready
+      const deliveryOrders = data.filter(o => o.area === 'Delivery' && o.status === 'ready');
       setOrders(deliveryOrders);
     } catch (err) {
       console.error(err);
@@ -164,7 +185,7 @@ export default function RiderDashboard({ username, name, permissions, onLogout }
     pollTimer.current = setInterval(() => fetchOrders(), 8000);
 
     const syncSub = DeviceEventEmitter.addListener('SYNC_TRIGGER', (event) => {
-      if (event.url.includes('/orders') || event.url.includes('/deliveries')) {
+      if (event && typeof event.url === 'string' && (event.url.includes('/orders') || event.url.includes('/deliveries'))) {
         fetchOrders();
       }
     });
@@ -192,7 +213,7 @@ export default function RiderDashboard({ username, name, permissions, onLogout }
       const res = await fetch(`${API_BASE}/orders/${orderId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus, clear_updates: true }),
+        body: JSON.stringify({ status: newStatus, clear_updates: true, delivered_by: username }),
       });
       if (!res.ok) throw new Error();
 
@@ -201,6 +222,8 @@ export default function RiderDashboard({ username, name, permissions, onLogout }
       if (selectedOrder?.id === orderId) {
         setSelectedOrder(null);
       }
+      // Refresh the report dynamically
+      fetchRiderReport();
     } catch (err) {
       toast.error('Update Failed', 'Could not update delivery status.');
     } finally {
@@ -243,115 +266,178 @@ export default function RiderDashboard({ username, name, permissions, onLogout }
 
       {!showChat ? (
         <>
-
-          {/* Stats Bar */}
-          <View style={styles.statsBar}>
-            <View style={styles.statItem}>
-              <Text style={[styles.statNum, { color: '#f97316' }]}>{pendingDeliveries.length}</Text>
-              <Text style={styles.statLabel}>NEW</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={[styles.statNum, { color: '#3b82f6' }]}>{preparingDeliveries.length}</Text>
-              <Text style={styles.statLabel}>PREPARING</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={[styles.statNum, { color: '#16a34a' }]}>{readyDeliveries.length}</Text>
-              <Text style={styles.statLabel}>READY FOR DELIVERY</Text>
-            </View>
+          {/* Sub Tab Bar */}
+          <View style={styles.subTabBar}>
+            <TouchableOpacity 
+              style={[styles.subTabBtn, activeTab === 'active' && styles.subTabBtnActive]} 
+              onPress={() => setActiveTab('active')}
+            >
+              <Text style={[styles.subTabLabel, activeTab === 'active' && styles.subTabLabelActive]}>
+                ACTIVE DELIVERIES ({orders.length})
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.subTabBtn, activeTab === 'report' && styles.subTabBtnActive]} 
+              onPress={() => {
+                setActiveTab('report');
+                fetchRiderReport();
+              }}
+            >
+              <Text style={[styles.subTabLabel, activeTab === 'report' && styles.subTabLabelActive]}>
+                MY DAILY REPORT
+              </Text>
+            </TouchableOpacity>
           </View>
 
-          {/* Deliveries List */}
-          {loading ? (
-            <View style={styles.centerLoading}>
-              <LogoLoader />
-            </View>
-          ) : orders.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <View style={styles.emptyIcon}>
-                <Bike size={44} color="#64748b" />
+          {activeTab === 'report' ? (
+            loadingReport ? (
+              <View style={styles.centerLoading}>
+                <LogoLoader />
               </View>
-              <Text style={styles.emptyTitle}>No active deliveries</Text>
-              <Text style={styles.emptySub}>Home delivery orders ready for delivery will appear here.</Text>
-            </View>
-          ) : (
-            <ScrollView
-              style={{ flex: 1 }}
-              contentContainerStyle={styles.scrollContent}
-              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchOrders(true)} tintColor="#f97316" />}
-              showsVerticalScrollIndicator={false}
-            >
-              {orders.map(order => {
-                const isReady = order.status === 'ready';
-                const isPreparing = order.status === 'preparing';
-                const isPending = order.status === 'pending';
+            ) : completedOrders.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <View style={styles.emptyIcon}>
+                  <FileText size={44} color="#64748b" />
+                </View>
+                <Text style={styles.emptyTitle}>No deliveries completed today</Text>
+                <Text style={styles.emptySub}>Your delivered home orders will show up here as a daily summary.</Text>
+              </View>
+            ) : (
+              <ScrollView
+                style={{ flex: 1 }}
+                contentContainerStyle={styles.scrollContent}
+                refreshControl={<RefreshControl refreshing={loadingReport} onRefresh={fetchRiderReport} tintColor="#f97316" />}
+                showsVerticalScrollIndicator={false}
+              >
+                {/* Rider Stats Summary */}
+                <View style={styles.reportSummaryCard}>
+                  <View style={styles.summaryCol}>
+                    <Text style={styles.summaryVal}>{completedOrders.length}</Text>
+                    <Text style={styles.summaryLabel}>TOTAL DELIVERED</Text>
+                  </View>
+                  <View style={styles.summaryDivider} />
+                  <View style={styles.summaryCol}>
+                    <Text style={[styles.summaryVal, { color: '#16a34a' }]}>
+                      Rs. {completedOrders.reduce((acc, o) => acc + o.total_amount, 0).toFixed(0)}
+                    </Text>
+                    <Text style={styles.summaryLabel}>CASH COLLECTED</Text>
+                  </View>
+                </View>
 
-                return (
-                  <View key={order.id} style={[styles.card, isReady && styles.readyCard]}>
-                    {/* Header of Card */}
+                {completedOrders.map(order => (
+                  <View key={order.id} style={[styles.card, styles.completedOrderCard]}>
                     <View style={styles.cardHeader}>
-                      <View style={styles.orderIdBadge}>
+                      <View style={[styles.orderIdBadge, { backgroundColor: '#1e293b' }]}>
                         <Text style={styles.orderIdText}>Order #{order.id}</Text>
                       </View>
-                      <View style={{ flex: 1 }} />
-                      <View style={[
-                        styles.statusPill,
-                        isReady ? styles.statusReady : isPreparing ? styles.statusPreparing : styles.statusPending
-                      ]}>
-                        <Text style={[
-                          styles.statusPillText,
-                          isReady ? { color: '#16a34a' } : isPreparing ? { color: '#3b82f6' } : { color: '#f97316' }
-                        ]}>
-                          {order.status.toUpperCase()}
-                        </Text>
-                      </View>
+                      <Text style={styles.completedTimeText}>
+                        {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </Text>
                     </View>
 
-                    {/* Customer Info */}
                     <View style={styles.customerInfo}>
                       <View style={styles.infoRow}>
                         <User size={14} color="#64748b" />
-                        <Text style={styles.customerName}>{order.customer_name || 'Walk-in Guest'}</Text>
+                        <Text style={styles.customerName}>{order.customer_name}</Text>
                       </View>
-
-                      {order.table_number && order.table_number !== 'Delivery' && (
-                        <View style={styles.infoRow}>
-                          <Phone size={14} color="#64748b" />
-                          <Text style={styles.customerPhone} onPress={() => handleCallCustomer(order.table_number)}>
-                            📞 Call Customer: {order.table_number}
-                          </Text>
-                        </View>
-                      )}
-
                       {order.remarks && (
                         <View style={[styles.infoRow, { alignItems: 'flex-start' }]}>
                           <MapPin size={14} color="#64748b" style={{ marginTop: 2 }} />
-                          <Text style={styles.customerAddress} numberOfLines={2}>
-                            {order.remarks || 'No Address Listed'}
-                          </Text>
+                          <Text style={styles.customerAddress}>{order.remarks}</Text>
                         </View>
                       )}
                     </View>
 
-                    {/* Bill Row */}
                     <View style={styles.billSummaryRow}>
-                      <Text style={styles.billLabel}>Total Bill:</Text>
-                      <Text style={styles.billValue}>Rs. {order.total_amount.toFixed(0)}</Text>
+                      <Text style={styles.billLabel}>Delivered Total:</Text>
+                      <Text style={[styles.billValue, { color: '#16a34a' }]}>Rs. {order.total_amount.toFixed(0)}</Text>
                     </View>
+                  </View>
+                ))}
+              </ScrollView>
+            )
+          ) : (
+            /* ACTIVE DELIVERIES LIST */
+            loading ? (
+              <View style={styles.centerLoading}>
+                <LogoLoader />
+              </View>
+            ) : orders.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <View style={styles.emptyIcon}>
+                  <Bike size={44} color="#64748b" />
+                </View>
+                <Text style={styles.emptyTitle}>No ready deliveries</Text>
+                <Text style={styles.emptySub}>Orders marked as READY by the kitchen will appear here for you to deliver.</Text>
+              </View>
+            ) : (
+              <ScrollView
+                style={{ flex: 1 }}
+                contentContainerStyle={styles.scrollContent}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchOrders(true)} tintColor="#f97316" />}
+                showsVerticalScrollIndicator={false}
+              >
+                {orders.map(order => {
+                  const isReady = order.status === 'ready';
 
-                    {/* Actions */}
-                    <View style={styles.actionRow}>
-                      <TouchableOpacity
-                        style={styles.detailBtn}
-                        onPress={() => setSelectedOrder(order)}
-                        activeOpacity={0.7}
-                      >
-                        <FileText size={14} color="#64748b" />
-                        <Text style={styles.detailBtnText}>View Bill Details</Text>
-                      </TouchableOpacity>
+                  return (
+                    <View key={order.id} style={[styles.card, isReady && styles.readyCard]}>
+                      {/* Header of Card */}
+                      <View style={styles.cardHeader}>
+                        <View style={styles.orderIdBadge}>
+                          <Text style={styles.orderIdText}>Order #{order.id}</Text>
+                        </View>
+                        <View style={{ flex: 1 }} />
+                        <View style={[styles.statusPill, styles.statusReady]}>
+                          <Text style={[styles.statusPillText, { color: '#16a34a' }]}>
+                            {order.status.toUpperCase()}
+                          </Text>
+                        </View>
+                      </View>
 
-                      {isReady ? (
+                      {/* Customer Info */}
+                      <View style={styles.customerInfo}>
+                        <View style={styles.infoRow}>
+                          <User size={14} color="#64748b" />
+                          <Text style={styles.customerName}>{order.customer_name || 'Walk-in Guest'}</Text>
+                        </View>
+
+                        {order.table_number && order.table_number !== 'Delivery' && (
+                          <View style={styles.infoRow}>
+                            <Phone size={14} color="#64748b" />
+                            <Text style={styles.customerPhone} onPress={() => handleCallCustomer(order.table_number)}>
+                              📞 Call Customer: {order.table_number}
+                            </Text>
+                          </View>
+                        )}
+
+                        {order.remarks && (
+                          <View style={[styles.infoRow, { alignItems: 'flex-start' }]}>
+                            <MapPin size={14} color="#64748b" style={{ marginTop: 2 }} />
+                            <Text style={styles.customerAddress} numberOfLines={2}>
+                              {order.remarks || 'No Address Listed'}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+
+                      {/* Bill Row */}
+                      <View style={styles.billSummaryRow}>
+                        <Text style={styles.billLabel}>Total Bill:</Text>
+                        <Text style={styles.billValue}>Rs. {order.total_amount.toFixed(0)}</Text>
+                      </View>
+
+                      {/* Actions */}
+                      <View style={styles.actionRow}>
+                        <TouchableOpacity
+                          style={styles.detailBtn}
+                          onPress={() => setSelectedOrder(order)}
+                          activeOpacity={0.7}
+                        >
+                          <FileText size={14} color="#64748b" />
+                          <Text style={styles.detailBtnText}>View Bill Details</Text>
+                        </TouchableOpacity>
+
                         <TouchableOpacity
                           style={styles.deliverBtn}
                           onPress={() => handleUpdateStatus(order.id, 'completed')}
@@ -367,17 +453,12 @@ export default function RiderDashboard({ username, name, permissions, onLogout }
                             </>
                           )}
                         </TouchableOpacity>
-                      ) : (
-                        <View style={styles.waitBadge}>
-                          <Clock size={12} color="#64748b" />
-                          <Text style={styles.waitBadgeText}>Waiting for kitchen...</Text>
-                        </View>
-                      )}
+                      </View>
                     </View>
-                  </View>
-                );
-              })}
-            </ScrollView>
+                  );
+                })}
+              </ScrollView>
+            )
           )}
 
           {/* Bill Detail Modal */}
@@ -840,5 +921,72 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 13,
     fontWeight: '800',
+  },
+  subTabBar: {
+    flexDirection: 'row',
+    backgroundColor: '#0f172a',
+    padding: 4,
+    borderRadius: 10,
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  subTabBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  subTabBtnActive: {
+    backgroundColor: '#ea580c',
+  },
+  subTabLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#94a3b8',
+    letterSpacing: 0.5,
+  },
+  subTabLabelActive: {
+    color: '#ffffff',
+  },
+  reportSummaryCard: {
+    flexDirection: 'row',
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1.5,
+    borderColor: '#e2e8f0',
+    marginBottom: 8,
+  },
+  summaryCol: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  summaryVal: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#0f172a',
+  },
+  summaryLabel: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#64748b',
+    letterSpacing: 0.8,
+  },
+  summaryDivider: {
+    width: 1.5,
+    backgroundColor: '#e2e8f0',
+    marginVertical: 4,
+  },
+  completedOrderCard: {
+    borderColor: '#cbd5e1',
+    opacity: 0.85,
+  },
+  completedTimeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748b',
   },
 });

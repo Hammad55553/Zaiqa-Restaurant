@@ -24,13 +24,13 @@ export default function SplashScreen({ onComplete }: SplashScreenProps) {
             toValue: 1.05,
             duration: 1000,
             easing: Easing.ease,
-            useNativeDriver: true,
+            useNativeDriver: false,
           }),
           Animated.timing(logoPulseVal, {
             toValue: 1,
             duration: 1000,
             easing: Easing.ease,
-            useNativeDriver: true,
+            useNativeDriver: false,
           }),
         ])
       ).start();
@@ -57,7 +57,7 @@ export default function SplashScreen({ onComplete }: SplashScreenProps) {
           toValue: 1,
           duration: 1400,
           easing: Easing.bezier(0.25, 1, 0.5, 1),
-          useNativeDriver: true,
+          useNativeDriver: false,
         }).start(() => {
           if (onComplete) onComplete();
         });

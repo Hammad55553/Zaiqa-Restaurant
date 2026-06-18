@@ -37,16 +37,18 @@ class SyncService {
         
         if (data.type === 'SYNC_TRIGGER') {
           // Trigger local state refreshes instantly!
-          if (data.url.includes('/orders')) {
-            this.syncOrders();
-          } else if (data.url.includes('/tables')) {
-            this.syncTables();
-          } else if (data.url.includes('/inventory')) {
-            this.syncInventory();
-          } else if (data.url.includes('/customers')) {
-            this.syncCustomers();
-          } else if (data.url.includes('/stock')) {
-            this.syncStock();
+          if (data && typeof data.url === 'string') {
+            if (data.url.includes('/orders')) {
+              this.syncOrders();
+            } else if (data.url.includes('/tables')) {
+              this.syncTables();
+            } else if (data.url.includes('/inventory')) {
+              this.syncInventory();
+            } else if (data.url.includes('/customers')) {
+              this.syncCustomers();
+            } else if (data.url.includes('/stock')) {
+              this.syncStock();
+            }
           }
         } else if (data.type === 'NOTIFICATION') {
           // Broadcast notification to all listeners

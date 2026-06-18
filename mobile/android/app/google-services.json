@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "661723304117",
+    "project_id": "zaiqa-692d0",
+    "storage_bucket": "zaiqa-692d0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:661723304117:android:3e60900a5f1ec51bf5eefc",
+        "android_client_info": {
+          "package_name": "com.zaiqahmobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA8vRuZePoxHsvFg2wEQd3c3HBekrRjajM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

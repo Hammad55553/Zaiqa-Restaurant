@@ -27,6 +27,8 @@ export default function TableCard({ table, onPress }: TableCardProps) {
 
   // Pulse animation value for external border ripple
   const [pulseVal] = useState(new Animated.Value(0));
+  // Blink animation value for the main card overlay
+  const [blinkVal] = useState(new Animated.Value(0.4));
 
   useEffect(() => {
     if (isOccupied) {
@@ -38,8 +40,24 @@ export default function TableCard({ table, onPress }: TableCardProps) {
           useNativeDriver: true,
         })
       ).start();
+
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(blinkVal, {
+            toValue: 0.85,
+            duration: 1200,
+            useNativeDriver: true,
+          }),
+          Animated.timing(blinkVal, {
+            toValue: 0.4,
+            duration: 1200,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
     } else {
       pulseVal.setValue(0);
+      blinkVal.setValue(1);
     }
   }, [isOccupied]);
 
@@ -55,11 +73,11 @@ export default function TableCard({ table, onPress }: TableCardProps) {
       }
 
       // Safe cross-platform date parsing
-      const normalizedTime = table.startTime.includes('T') 
-        ? table.startTime 
+      const normalizedTime = table.startTime.includes('T')
+        ? table.startTime
         : table.startTime.replace(' ', 'T');
       const startTimeMs = new Date(normalizedTime).getTime();
-      
+
       if (isNaN(startTimeMs)) {
         // Fallback if parsing fails
         setTheme({ bg: 'rgba(249, 115, 22, 0.7)', border: 'rgb(249, 115, 22)', statusBg: 'rgba(255,255,255,0.25)' });
@@ -74,10 +92,10 @@ export default function TableCard({ table, onPress }: TableCardProps) {
       const minutes = Math.floor((totalSecs % 3600) / 60);
       const seconds = totalSecs % 60;
 
-      const timeStr = hours > 0 
+      const timeStr = hours > 0
         ? `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
         : `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-      
+
       setElapsed(timeStr);
 
       let r, g, b;
@@ -159,19 +177,21 @@ export default function TableCard({ table, onPress }: TableCardProps) {
         onPress={() => onPress(table)}
       >
         {/* Table Background Image */}
-        <Image 
-          source={{ uri: `${API_BASE.replace('/api', '')}/assets/table.png` }} 
-          style={styles.tableCardBackgroundImage} 
+        <Image
+          source={require('../../assets/table.png')}
+          style={styles.tableCardBackgroundImage}
           resizeMode="cover"
-          defaultSource={require('../../assets/table.png')}
         />
-        
+
         {/* Dark overlay / state color overlay */}
-        <View 
+        <Animated.View
           style={[
-            styles.tableCardOverlay, 
-            { backgroundColor: theme.bg }
-          ]} 
+            styles.tableCardOverlay,
+            {
+              backgroundColor: theme.bg,
+              opacity: isOccupied ? blinkVal : 1
+            }
+          ]}
         />
 
         <View style={styles.tableCardContent}>
@@ -188,7 +208,7 @@ export default function TableCard({ table, onPress }: TableCardProps) {
           <View style={styles.tableCardFooter}>
             <View style={{ flex: 1 }}>
               <Text style={styles.tableAreaText}>{table.area.toUpperCase()} AREA</Text>
-              <Text style={styles.tableNumberText}>T-{table.number}</Text>
+              <Text style={styles.tableNumberText}>{table.number}</Text>
             </View>
 
             {isOccupied && table.startTime && (

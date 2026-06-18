@@ -127,13 +127,35 @@ const ReceiptSlip = ({ printData }) => {
 
       <div style={dash} />
 
+      {/* CUSTOMER DETAILS */}
+      {customerName && 
+       customerName !== 'Walk-in Customer' && 
+       customerName !== 'Walk-in Guest' && 
+       customerName !== 'Table Guest' && 
+       customerName !== 'Walk-in' && 
+       customerName.trim() !== '' && (
+        <>
+          <div style={{ marginBottom: '1.5mm', fontSize: '10px' }}>
+            <div style={row}>
+              <span style={{ fontWeight: '700' }}>Customer:</span>
+              <span style={{ fontWeight: '900' }}>{customerName}</span>
+            </div>
+            {customerPhone && customerPhone !== 'N/A' && customerPhone.trim() !== '' && (
+              <div style={row}>
+                <span>Phone:</span>
+                <span>{customerPhone}</span>
+              </div>
+            )}
+          </div>
+          <div style={dash} />
+        </>
+      )}
+
       {/* DELIVERY DETAILS */}
       {(table === 'Delivery' || (table && typeof table === 'object' && table.area === 'Delivery')) && (
         <>
           <div style={{ marginBottom: '2.5mm', fontSize: '10px' }}>
             <div style={{ fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '1.5mm' }}>Delivery Details:</div>
-            {customerName && <div style={row}><span>Name:</span><span style={{ fontWeight: '700' }}>{customerName}</span></div>}
-            {customerPhone && <div style={row}><span>Phone:</span><span style={{ fontWeight: '700' }}>{customerPhone}</span></div>}
             {deliveryAddress && (
               <div style={{ ...row, display: 'block', marginBottom: '1.5mm' }}>
                 <span>Address:</span>

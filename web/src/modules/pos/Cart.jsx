@@ -67,7 +67,7 @@ const Cart = ({
                     </div>
                     <p className="text-orange-600 font-extrabold text-xs mt-0.5">Rs. {item.price}</p>
                   </div>
-                  {!item.sent && (
+                  {(!item.sent || !isLocked) && (
                     <button 
                       onClick={() => onRemove(item.cartId || item.id)}
                       className="absolute top-2 right-2 text-gray-300 hover:text-red-500 transition-colors p-1"

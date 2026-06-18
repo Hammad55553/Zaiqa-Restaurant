@@ -61,7 +61,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       const res = await fetch(`${API_BASE}/users/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password: pin }),
+        body: JSON.stringify({ username: username.trim().toLowerCase(), password: pin }),
         signal: controller.signal
       });
       clearTimeout(timeoutId);
@@ -79,7 +79,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         const loggedInUser = data.user;
 
         // Ensure they have a valid mobile role
-        if (!['waiter', 'kitchen', 'rider'].includes(loggedInUser.role)) {
+        if (!['waiter', 'kitchen', 'rider', 'cashier', 'admin'].includes(loggedInUser.role)) {
           setUnsupportedRoleInfo({ role: loggedInUser.role, name: loggedInUser.name || loggedInUser.username });
           setIsTestingConn(false);
           return;
@@ -93,8 +93,12 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         }));
         onLoginSuccess(loggedInUser.username, loggedInUser.role, loggedInUser.name, loggedInUser.permissions || []);
       } else {
-        const data = await res.json();
-        setError(data.error || 'Invalid username or passcode PIN');
+        let errorMsg = 'Invalid username or passcode PIN';
+        try {
+          const data = await res.json();
+          errorMsg = data.error || errorMsg;
+        } catch (jsonErr) { }
+        setError(errorMsg);
       }
     } catch (err) {
       console.warn('Network error during login', err);
@@ -115,15 +119,19 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       const res = await fetch(`${API_BASE}/users/set-pin`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, pin })
+        body: JSON.stringify({ username: username.trim().toLowerCase(), pin })
       });
       if (res.ok) {
         setPinSetupMode(false);
         // Automatically login now that PIN is set
         await handleLogin();
       } else {
-        const data = await res.json();
-        setError(data.error || 'Failed to set PIN');
+        let errorMsg = 'Failed to set PIN';
+        try {
+          const data = await res.json();
+          errorMsg = data.error || errorMsg;
+        } catch (jsonErr) { }
+        setError(errorMsg);
         setIsTestingConn(false);
       }
     } catch (err) {
@@ -247,322 +255,321 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         style={styles.keyboardContainer}
       >
         {/* Settings Gear Icon at Top Right */}
-      <TouchableOpacity
-        style={styles.settingsIcon}
-        onPress={() => {
-          setServerIPInput(serverIP);
-          setShowSettings(true);
-        }}
-      >
-        <Settings size={24} color="#ffffff" />
-      </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.settingsIcon}
+          onPress={() => {
+            setServerIPInput(serverIP);
+            setShowSettings(true);
+          }}
+        >
+          <Settings size={24} color="#ffffff" />
+        </TouchableOpacity>
 
-      {/* Background Watermark Logo */}
-      <Image
-        source={{ uri: `${API_BASE.replace('/api', '')}/assets/Logo.jpg` }}
-        style={styles.backgroundWatermark}
-        resizeMode="cover"
-        defaultSource={require('../../assets/Logo.jpg')}
-      />
+        {/* Background Watermark Logo */}
+        <Image
+          source={require('../../assets/Logo.jpg')}
+          style={styles.backgroundWatermark}
+          resizeMode="cover"
+        />
 
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
 
-        {/* Brand Logo & Name */}
-        <View style={styles.brandContainer}>
-          <View style={styles.logoCircle}>
-            <Image
-              source={{ uri: `${API_BASE.replace('/api', '')}/assets/Logo.jpg` }}
-              defaultSource={require('../../assets/Logo.jpg')}
-              style={styles.logoCircleImage}
-              resizeMode="cover"
-            />
-          </View>
-          <Text style={styles.brandName}>ZAIQA MAHAL</Text>
-          <Text style={styles.brandSub}>Digital Ordering App (CLI)</Text>
-          <Text style={styles.versionTag}>v{activeJSVersion}</Text>
-        </View>
-
-        {/* Login Card */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Sign In</Text>
-
-          {/* Error Message */}
-          {error ? (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
-          ) : null}
-
-          {/* Username Field */}
-          <View style={styles.inputGroup}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-              <Text style={styles.inputLabel}>Name</Text>
-            </View>
-
-            <View style={styles.inputWrapper}>
-              <Users size={18} color="#9ca3af" style={styles.inputIcon} />
-              <TextInput
-                placeholder="e.g. Zahid Iqbal"
-                placeholderTextColor="#9ca3af"
-                value={username}
-                onChangeText={(txt) => { setUsername(txt); setError(''); }}
-                style={styles.input}
+          {/* Brand Logo & Name */}
+          <View style={styles.brandContainer}>
+            <View style={styles.logoCircle}>
+              <Image
+                source={require('../../assets/Logo.jpg')}
+                style={styles.logoCircleImage}
+                resizeMode="cover"
               />
             </View>
+            <Text style={styles.brandName}>ZAIQA MAHAL</Text>
+            <Text style={styles.brandSub}>Digital Ordering App (CLI)</Text>
+            <Text style={styles.versionTag}>v{activeJSVersion}</Text>
           </View>
 
-          {/* PIN Code Field */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>{pinSetupMode ? 'Create Access PIN / Password' : 'Passcode PIN'}</Text>
-            <View style={styles.inputWrapper}>
-              <Lock size={18} color="#9ca3af" style={styles.inputIcon} />
-              <TextInput
-                placeholder={pinSetupMode ? "Enter new PIN/Password" : "Enter Password or PIN"}
-                placeholderTextColor="#9ca3af"
-                secureTextEntry={!showPassword}
-                value={pin}
-                onChangeText={(txt) => { setPin(txt); setError(''); }}
-                style={styles.input}
-              />
-              <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={{ paddingRight: 16 }}>
-                {showPassword ? <EyeOff size={18} color="#9ca3af" /> : <Eye size={18} color="#9ca3af" />}
-              </TouchableOpacity>
-            </View>
-          </View>
+          {/* Login Card */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Sign In</Text>
 
-          {pinSetupMode && (
+            {/* Error Message */}
+            {error ? (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            ) : null}
+
+            {/* Username Field */}
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Confirm Access PIN</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <Text style={styles.inputLabel}>Name</Text>
+              </View>
+
+              <View style={styles.inputWrapper}>
+                <Users size={18} color="#9ca3af" style={styles.inputIcon} />
+                <TextInput
+                  placeholder="e.g. Zahid Iqbal"
+                  placeholderTextColor="#9ca3af"
+                  autoCapitalize="none"
+                  value={username}
+                  onChangeText={(txt) => { setUsername(txt.toLowerCase()); setError(''); }}
+                  style={styles.input}
+                />
+              </View>
+            </View>
+
+            {/* PIN Code Field */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>{pinSetupMode ? 'Create Access PIN / Password' : 'Passcode PIN'}</Text>
               <View style={styles.inputWrapper}>
                 <Lock size={18} color="#9ca3af" style={styles.inputIcon} />
                 <TextInput
-                  placeholder="Re-enter to confirm"
+                  placeholder={pinSetupMode ? "Enter new PIN/Password" : "Enter Password or PIN"}
                   placeholderTextColor="#9ca3af"
-                  secureTextEntry={!showConfirmPassword}
-                  value={confirmPin}
-                  onChangeText={(txt) => { setConfirmPin(txt); setError(''); }}
+                  secureTextEntry={!showPassword}
+                  value={pin}
+                  onChangeText={(txt) => { setPin(txt); setError(''); }}
                   style={styles.input}
                 />
-                <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={{ paddingRight: 16 }}>
-                  {showConfirmPassword ? <EyeOff size={18} color="#9ca3af" /> : <Eye size={18} color="#9ca3af" />}
+                <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={{ paddingRight: 16 }}>
+                  {showPassword ? <EyeOff size={18} color="#9ca3af" /> : <Eye size={18} color="#9ca3af" />}
                 </TouchableOpacity>
               </View>
             </View>
-          )}
 
-          {/* Login Button */}
-          {pinSetupMode ? (
-            <TouchableOpacity style={styles.loginBtn} onPress={handleSetPin}>
-              <Text style={styles.loginBtnText}>CONFIRM & LOGIN</Text>
-              <ChevronRight size={16} color="#ffffff" />
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity style={styles.loginBtn} onPress={handleLogin}>
-              <Text style={styles.loginBtnText}>PROCEED TO WORKSPACE</Text>
-              <ChevronRight size={16} color="#ffffff" />
-            </TouchableOpacity>
-          )}
-
-          {pinSetupMode && (
-            <TouchableOpacity style={{ alignItems: 'center', marginTop: 16 }} onPress={() => { setPinSetupMode(false); setConfirmPin(''); }}>
-              <Text style={{ color: '#94a3b8', fontSize: 12, fontWeight: '700' }}>Cancel Setup</Text>
-            </TouchableOpacity>
-          )}
-
-        </View>
-
-        {/* Quick Info / Hints */}
-        <View style={styles.hintContainer}>
-          <Text style={styles.hintText}>Server: {serverIP}</Text>
-        </View>
-
-      </ScrollView>
-
-      {/* Connection & OTA Update Settings Modal */}
-      <Modal
-        visible={showSettings}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowSettings(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Server & Updates Settings</Text>
-              <TouchableOpacity onPress={() => setShowSettings(false)} style={styles.closeBtn}>
-                <X size={20} color="#ffffff" />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView contentContainerStyle={styles.modalScroll}>
-
-              {/* Server IP Section */}
-              <View style={styles.settingsSection}>
-                <Text style={styles.sectionTitle}>Server Connection Config</Text>
-
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Server IP Address</Text>
-                  <View style={styles.inputWrapper}>
-                    <Wifi size={18} color="#9ca3af" style={styles.inputIcon} />
-                    <TextInput
-                      placeholder="e.g. 192.168.1.100"
-                      placeholderTextColor="#9ca3af"
-                      value={serverIPInput}
-                      onChangeText={setServerIPInput}
-                      style={styles.input}
-                    />
-                  </View>
-                </View>
-
-                {/* Connection Status Box */}
-                {connStatus === 'success' && (
-                  <View style={[styles.statusBox, styles.statusSuccess]}>
-                    <CheckCircle size={16} color="#4ade80" style={{ marginRight: 6 }} />
-                    <Text style={styles.statusTextSuccess}>Connected successfully to server!</Text>
-                  </View>
-                )}
-                {connStatus === 'failed' && (
-                  <View style={[styles.statusBox, styles.statusError]}>
-                    <AlertTriangle size={16} color="#f87171" style={{ marginRight: 6 }} />
-                    <Text style={styles.statusTextError}>Failed to connect. Verify IP & server state.</Text>
-                  </View>
-                )}
-
-                <View style={styles.buttonRow}>
-                  <TouchableOpacity
-                    style={[styles.actionButton, styles.testBtn]}
-                    onPress={handleTestConnection}
-                    disabled={isTestingConn}
-                  >
-                    {isTestingConn ? (
-                      <ActivityIndicator size="small" color="#ffffff" />
-                    ) : (
-                      <>
-                        <RefreshCw size={14} color="#ffffff" style={{ marginRight: 6 }} />
-                        <Text style={styles.btnText}>Test Connection</Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-
-                  <TouchableOpacity style={[styles.actionButton, styles.saveBtn]} onPress={handleSaveIP}>
-                    <Text style={styles.btnText}>Save Config</Text>
+            {pinSetupMode && (
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Confirm Access PIN</Text>
+                <View style={styles.inputWrapper}>
+                  <Lock size={18} color="#9ca3af" style={styles.inputIcon} />
+                  <TextInput
+                    placeholder="Re-enter to confirm"
+                    placeholderTextColor="#9ca3af"
+                    secureTextEntry={!showConfirmPassword}
+                    value={confirmPin}
+                    onChangeText={(txt) => { setConfirmPin(txt); setError(''); }}
+                    style={styles.input}
+                  />
+                  <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={{ paddingRight: 16 }}>
+                    {showConfirmPassword ? <EyeOff size={18} color="#9ca3af" /> : <Eye size={18} color="#9ca3af" />}
                   </TouchableOpacity>
                 </View>
               </View>
+            )}
 
-              {/* OTA Updater Section */}
-              <View style={styles.settingsSection}>
-                <Text style={styles.sectionTitle}>Over-the-Air App Updates</Text>
-                <Text style={styles.infoText}>
-                  Your app can download the latest frontend and logic bundles directly from the local server.
+            {/* Login Button */}
+            {pinSetupMode ? (
+              <TouchableOpacity style={styles.loginBtn} onPress={handleSetPin}>
+                <Text style={styles.loginBtnText}>CONFIRM & LOGIN</Text>
+                <ChevronRight size={16} color="#ffffff" />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={styles.loginBtn} onPress={handleLogin}>
+                <Text style={styles.loginBtnText}>PROCEED TO WORKSPACE</Text>
+                <ChevronRight size={16} color="#ffffff" />
+              </TouchableOpacity>
+            )}
+
+            {pinSetupMode && (
+              <TouchableOpacity style={{ alignItems: 'center', marginTop: 16 }} onPress={() => { setPinSetupMode(false); setConfirmPin(''); }}>
+                <Text style={{ color: '#94a3b8', fontSize: 12, fontWeight: '700' }}>Cancel Setup</Text>
+              </TouchableOpacity>
+            )}
+
+          </View>
+
+          {/* Quick Info / Hints */}
+          <View style={styles.hintContainer}>
+            <Text style={styles.hintText}>Server: {serverIP}</Text>
+          </View>
+
+        </ScrollView>
+
+        {/* Connection & OTA Update Settings Modal */}
+        <Modal
+          visible={showSettings}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => setShowSettings(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Server & Updates Settings</Text>
+                <TouchableOpacity onPress={() => setShowSettings(false)} style={styles.closeBtn}>
+                  <X size={20} color="#ffffff" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView contentContainerStyle={styles.modalScroll}>
+
+                {/* Server IP Section */}
+                <View style={styles.settingsSection}>
+                  <Text style={styles.sectionTitle}>Server Connection Config</Text>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Server IP Address</Text>
+                    <View style={styles.inputWrapper}>
+                      <Wifi size={18} color="#9ca3af" style={styles.inputIcon} />
+                      <TextInput
+                        placeholder="e.g. 192.168.1.100"
+                        placeholderTextColor="#9ca3af"
+                        value={serverIPInput}
+                        onChangeText={setServerIPInput}
+                        style={styles.input}
+                      />
+                    </View>
+                  </View>
+
+                  {/* Connection Status Box */}
+                  {connStatus === 'success' && (
+                    <View style={[styles.statusBox, styles.statusSuccess]}>
+                      <CheckCircle size={16} color="#4ade80" style={{ marginRight: 6 }} />
+                      <Text style={styles.statusTextSuccess}>Connected successfully to server!</Text>
+                    </View>
+                  )}
+                  {connStatus === 'failed' && (
+                    <View style={[styles.statusBox, styles.statusError]}>
+                      <AlertTriangle size={16} color="#f87171" style={{ marginRight: 6 }} />
+                      <Text style={styles.statusTextError}>Failed to connect. Verify IP & server state.</Text>
+                    </View>
+                  )}
+
+                  <View style={styles.buttonRow}>
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.testBtn]}
+                      onPress={handleTestConnection}
+                      disabled={isTestingConn}
+                    >
+                      {isTestingConn ? (
+                        <ActivityIndicator size="small" color="#ffffff" />
+                      ) : (
+                        <>
+                          <RefreshCw size={14} color="#ffffff" style={{ marginRight: 6 }} />
+                          <Text style={styles.btnText}>Test Connection</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={[styles.actionButton, styles.saveBtn]} onPress={handleSaveIP}>
+                      <Text style={styles.btnText}>Save Config</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* OTA Updater Section */}
+                <View style={styles.settingsSection}>
+                  <Text style={styles.sectionTitle}>Over-the-Air App Updates</Text>
+                  <Text style={styles.infoText}>
+                    Your app can download the latest frontend and logic bundles directly from the local server.
+                  </Text>
+
+                  <View style={styles.versionRow}>
+                    <View>
+                      <Text style={styles.versionLabel}>Current Local version</Text>
+                      <Text style={styles.versionVal}>v{activeJSVersion}</Text>
+                    </View>
+
+                    <TouchableOpacity
+                      style={[styles.checkUpdateBtn]}
+                      onPress={handleCheckUpdate}
+                      disabled={isCheckingUpdate}
+                    >
+                      {isCheckingUpdate ? (
+                        <ActivityIndicator size="small" color="#ffffff" />
+                      ) : (
+                        <Text style={styles.btnText}>Check for Updates</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Update Info Results */}
+                  {updateInfo && (
+                    <View style={styles.updateResultBox}>
+                      <Text style={styles.updateResultTitle}>
+                        {updateInfo.updateAvailable ? '⚡ New Update Available!' : '✅ App is Up to Date'}
+                      </Text>
+                      <Text style={styles.updateResultDetail}>Server version: v{updateInfo.serverVersion}</Text>
+                      <Text style={styles.updateResultDetail}>Published at: {updateInfo.publishedAt}</Text>
+
+                      {updateInfo.updateAvailable && (
+                        <TouchableOpacity
+                          style={styles.downloadUpdateBtn}
+                          onPress={handleDownloadUpdate}
+                          disabled={isDownloadingUpdate}
+                        >
+                          {isDownloadingUpdate ? (
+                            <ActivityIndicator size="small" color="#ffffff" />
+                          ) : (
+                            <>
+                              <Download size={16} color="#ffffff" style={{ marginRight: 8 }} />
+                              <Text style={styles.btnText}>Download & Apply Update</Text>
+                            </>
+                          )}
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )}
+
+                  {isDownloadingUpdate && (
+                    <Text style={styles.progressText}>{downloadProgress}</Text>
+                  )}
+
+                  {/* Reset Bundle Option */}
+                  {activeJSVersion !== LOCAL_APP_VERSION && (
+                    <TouchableOpacity style={styles.revertBtn} onPress={handleClearUpdate}>
+                      <Text style={styles.revertBtnText}>Revert to Default Bundle</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+
+        {/* UNSUPPORTED ROLE MODAL */}
+        <Modal
+          visible={unsupportedRoleInfo !== null}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setUnsupportedRoleInfo(null)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <View style={[styles.iconCircle, { backgroundColor: '#fef2f2' }]}>
+                  <AlertTriangle size={32} color="#ef4444" />
+                </View>
+                <TouchableOpacity onPress={() => setUnsupportedRoleInfo(null)} style={styles.closeBtn}>
+                  <X size={20} color="#64748b" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={{ alignItems: 'center', marginBottom: 20 }}>
+                <Text style={styles.modalTitle}>Desktop App Required</Text>
+                <Text style={styles.modalDesc}>
+                  Hello <Text style={{ fontWeight: 'bold', color: '#0f172a' }}>{unsupportedRoleInfo?.name}</Text>!
+                  The mobile application is specifically designed for Waiters, Kitchen Staff, and Riders.
                 </Text>
 
-                <View style={styles.versionRow}>
-                  <View>
-                    <Text style={styles.versionLabel}>Current Local version</Text>
-                    <Text style={styles.versionVal}>v{activeJSVersion}</Text>
-                  </View>
-
-                  <TouchableOpacity
-                    style={[styles.checkUpdateBtn]}
-                    onPress={handleCheckUpdate}
-                    disabled={isCheckingUpdate}
-                  >
-                    {isCheckingUpdate ? (
-                      <ActivityIndicator size="small" color="#ffffff" />
-                    ) : (
-                      <Text style={styles.btnText}>Check for Updates</Text>
-                    )}
-                  </TouchableOpacity>
+                <View style={{ backgroundColor: '#f1f5f9', padding: 12, borderRadius: 12, width: '100%', marginBottom: 16 }}>
+                  <Text style={{ fontSize: 13, color: '#475569', textAlign: 'center', lineHeight: 20 }}>
+                    Since your role is <Text style={{ fontWeight: '900', color: '#ea580c', textTransform: 'uppercase' }}>{unsupportedRoleInfo?.role}</Text>, you must use the <Text style={{ fontWeight: 'bold', color: '#0f172a' }}>Desktop/Web Application</Text> to access the Admin Dashboard, POS, and settings.
+                  </Text>
                 </View>
-
-                {/* Update Info Results */}
-                {updateInfo && (
-                  <View style={styles.updateResultBox}>
-                    <Text style={styles.updateResultTitle}>
-                      {updateInfo.updateAvailable ? '⚡ New Update Available!' : '✅ App is Up to Date'}
-                    </Text>
-                    <Text style={styles.updateResultDetail}>Server version: v{updateInfo.serverVersion}</Text>
-                    <Text style={styles.updateResultDetail}>Published at: {updateInfo.publishedAt}</Text>
-
-                    {updateInfo.updateAvailable && (
-                      <TouchableOpacity
-                        style={styles.downloadUpdateBtn}
-                        onPress={handleDownloadUpdate}
-                        disabled={isDownloadingUpdate}
-                      >
-                        {isDownloadingUpdate ? (
-                          <ActivityIndicator size="small" color="#ffffff" />
-                        ) : (
-                          <>
-                            <Download size={16} color="#ffffff" style={{ marginRight: 8 }} />
-                            <Text style={styles.btnText}>Download & Apply Update</Text>
-                          </>
-                        )}
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                )}
-
-                {isDownloadingUpdate && (
-                  <Text style={styles.progressText}>{downloadProgress}</Text>
-                )}
-
-                {/* Reset Bundle Option */}
-                {activeJSVersion !== LOCAL_APP_VERSION && (
-                  <TouchableOpacity style={styles.revertBtn} onPress={handleClearUpdate}>
-                    <Text style={styles.revertBtnText}>Revert to Default Bundle</Text>
-                  </TouchableOpacity>
-                )}
               </View>
 
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
-      {/* UNSUPPORTED ROLE MODAL */}
-      <Modal
-        visible={unsupportedRoleInfo !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setUnsupportedRoleInfo(null)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <View style={[styles.iconCircle, { backgroundColor: '#fef2f2' }]}>
-                <AlertTriangle size={32} color="#ef4444" />
-              </View>
-              <TouchableOpacity onPress={() => setUnsupportedRoleInfo(null)} style={styles.closeBtn}>
-                <X size={20} color="#64748b" />
+              <TouchableOpacity
+                style={[styles.saveBtn, { width: '100%' }]}
+                onPress={() => setUnsupportedRoleInfo(null)}
+              >
+                <Text style={styles.saveBtnText}>Understood</Text>
               </TouchableOpacity>
             </View>
-
-            <View style={{ alignItems: 'center', marginBottom: 20 }}>
-              <Text style={styles.modalTitle}>Desktop App Required</Text>
-              <Text style={styles.modalDesc}>
-                Hello <Text style={{fontWeight: 'bold', color: '#0f172a'}}>{unsupportedRoleInfo?.name}</Text>! 
-                The mobile application is specifically designed for Waiters, Kitchen Staff, and Riders.
-              </Text>
-              
-              <View style={{ backgroundColor: '#f1f5f9', padding: 12, borderRadius: 12, width: '100%', marginBottom: 16 }}>
-                <Text style={{ fontSize: 13, color: '#475569', textAlign: 'center', lineHeight: 20 }}>
-                  Since your role is <Text style={{fontWeight: '900', color: '#ea580c', textTransform: 'uppercase'}}>{unsupportedRoleInfo?.role}</Text>, you must use the <Text style={{fontWeight: 'bold', color: '#0f172a'}}>Desktop/Web Application</Text> to access the Admin Dashboard, POS, and settings.
-                </Text>
-              </View>
-            </View>
-
-            <TouchableOpacity 
-              style={[styles.saveBtn, { width: '100%' }]}
-              onPress={() => setUnsupportedRoleInfo(null)}
-            >
-              <Text style={styles.saveBtnText}>Understood</Text>
-            </TouchableOpacity>
           </View>
-        </View>
-      </Modal>      </KeyboardAvoidingView>
+        </Modal>      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -964,5 +971,28 @@ const styles = StyleSheet.create({
   userSelectTextActive: {
     color: '#3b82f6',
     fontWeight: '700',
+  },
+  modalDesc: {
+    fontSize: 12,
+    color: '#94a3b8',
+    lineHeight: 18,
+    marginBottom: 16,
+
+  },
+  iconCircle: {
+    borderRadius: 50,
+    padding: 6,
+    marginRight: 8,
+    marginTop: 2,
+  },
+  iconCircleRed: {
+    backgroundColor: '#fef2f2',
+  },
+  saveBtnText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '800',
+    marginRight: 6,
+    letterSpacing: 0.8,
   },
 });

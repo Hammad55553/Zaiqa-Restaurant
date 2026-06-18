@@ -155,10 +155,28 @@ const Settings = () => {
         const loadSettings = async () => {
             const pin = await getOfflineItem('zaiqa_mahal_terminal_pin', '1234');
             setTerminalPin(pin);
-            const gst = await getOfflineItem('zaiqa_mahal_global_gst_rate', 16);
-            setGlobalGstRate(gst);
-            const sc = await getOfflineItem('zaiqa_mahal_global_service_charges', 0);
-            setGlobalServiceCharges(sc);
+            
+            // Try to fetch settings from server first
+            try {
+                const res = await fetch(`${API_BASE}/settings`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.global_gst_rate !== undefined) {
+                        setGlobalGstRate(parseFloat(data.global_gst_rate));
+                        await setOfflineItem('zaiqa_mahal_global_gst_rate', parseFloat(data.global_gst_rate));
+                    }
+                    if (data.global_service_charges !== undefined) {
+                        setGlobalServiceCharges(parseFloat(data.global_service_charges));
+                        await setOfflineItem('zaiqa_mahal_global_service_charges', parseFloat(data.global_service_charges));
+                    }
+                }
+            } catch (e) {
+                const gst = await getOfflineItem('zaiqa_mahal_global_gst_rate', 16);
+                setGlobalGstRate(gst);
+                const sc = await getOfflineItem('zaiqa_mahal_global_service_charges', 0);
+                setGlobalServiceCharges(sc);
+            }
+
             const chatOpt = await getOfflineItem('zaiqa_mahal_enable_chat', true);
             setChatEnabled(chatOpt);
             const logs = await getOfflineItem('zaiqa_mahal_audit_logs', []);
@@ -244,6 +262,15 @@ const Settings = () => {
             showToast("Invalid GST Rate! Please enter a percentage between 0 and 100.", "error");
             return;
         }
+        try {
+            await fetch(`${API_BASE}/settings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ global_gst_rate: rate })
+            });
+        } catch (err) {
+            console.error("Failed to sync GST rate to server", err);
+        }
         await setOfflineItem('zaiqa_mahal_global_gst_rate', rate);
         showToast("Global Default GST Rate updated successfully!", "success");
         addRealAuditLog(`Global default GST rate updated to ${rate}%`, "system", "success");
@@ -255,6 +282,15 @@ const Settings = () => {
         if (isNaN(amt) || amt < 0) {
             showToast("Invalid Service Charges! Please enter a valid number.", "error");
             return;
+        }
+        try {
+            await fetch(`${API_BASE}/settings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ global_service_charges: amt })
+            });
+        } catch (err) {
+            console.error("Failed to sync service charges to server", err);
         }
         await setOfflineItem('zaiqa_mahal_global_service_charges', amt);
         showToast("Global Default Service Charges updated successfully!", "success");

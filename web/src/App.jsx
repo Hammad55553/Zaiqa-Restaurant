@@ -629,7 +629,7 @@ function App() {
   };
 
   if (currentView === 'queue') {
-    return <CustomerQueueDisplay />;
+    return <CustomerQueueDisplay onBack={() => navigateTo('pos')} />;
   }
 
   return (
@@ -678,7 +678,7 @@ function App() {
           </div>
 
           {/* Navigation */}
-          <nav className="mt-6 flex flex-col gap-6 px-4 overflow-y-auto max-h-[calc(100vh-280px)] hide-scrollbar pb-6">
+          <nav className="mt-6 flex flex-col gap-6 px-4 pb-6">
             {/* Section 1: FOH & Kitchen Operations */}
             {(currentUser.username === 'admin' || currentUser.permissions.some(p => ['pos', 'delivery', 'tables', 'kds'].includes(p))) && (
               <div>
@@ -725,7 +725,7 @@ function App() {
             )}
 
             {/* Section 3: Accounts & Reports */}
-            {(currentUser.username === 'admin' || currentUser.permissions.some(p => ['khata', 'expenses', 'reports'].includes(p))) && (
+            {(currentUser.username === 'admin' || currentUser.role === 'cashier' || currentUser.permissions.some(p => ['khata', 'expenses', 'reports', 'pos'].includes(p))) && (
               <div>
                 <p className="text-orange-500/70 text-[9px] font-black uppercase tracking-widest px-4 mb-2.5">Accounts</p>
                 <div className="flex flex-col gap-1.5">
@@ -749,7 +749,7 @@ function App() {
             )}
             
             {/* Section 4: System Administration */}
-            {(currentUser.username === 'admin' || currentUser.permissions.some(p => ['settings', 'users'].includes(p))) && (
+            {(currentUser.username === 'admin' || currentUser.permissions.some(p => ['settings', 'users', 'sync', 'queue'].includes(p))) && (
               <div>
                 <p className="text-orange-500/70 text-[9px] font-black uppercase tracking-widest px-4 mb-2.5">System</p>
                 <div className="flex flex-col gap-1.5">

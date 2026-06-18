@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, ScrollView, ActivityIndicator, Alert, TouchableOpacity, Text } from 'react-native';
+import { StyleSheet, View, ScrollView, ActivityIndicator, Alert, TouchableOpacity, Text, DeviceEventEmitter } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE } from '../config';
 import TableCard from '../components/TableCard';
@@ -61,6 +61,16 @@ export default function TablesScreen({
 
   useEffect(() => {
     fetchTables();
+
+    const syncSub = DeviceEventEmitter.addListener('SYNC_TRIGGER', (event) => {
+      if (event && typeof event.url === 'string' && (event.url.includes('/orders') || event.url.includes('/tables'))) {
+        fetchTables();
+      }
+    });
+
+    return () => {
+      syncSub.remove();
+    };
   }, []);
 
   const fetchWithTimeout = (url: string, options: RequestInit = {}, timeout = 2000): Promise<Response> => {
@@ -75,9 +85,39 @@ export default function TablesScreen({
   const fetchTables = async () => {
     try {
       setLoadingTables(true);
-      const res = await fetchWithTimeout(`${API_BASE}/tables`);
-      if (res.ok) {
-        const data: Table[] = await res.json();
+      const [tablesRes, ordersRes] = await Promise.all([
+        fetchWithTimeout(`${API_BASE}/tables`),
+        fetchWithTimeout(`${API_BASE}/orders/active`).catch(e => {
+          console.warn("Failed to fetch active orders:", e);
+          return null;
+        })
+      ]);
+
+      if (tablesRes && tablesRes.ok) {
+        const rawTables: Table[] = await tablesRes.json();
+        
+        let activeOrders: any[] = [];
+        if (ordersRes && ordersRes.ok) {
+          try {
+            activeOrders = await ordersRes.json();
+          } catch (jsonErr) {
+            console.warn("Failed to parse active orders JSON:", jsonErr);
+          }
+        }
+
+        // Map active orders to tables
+        const data = rawTables.map(t => {
+          const activeOrder = activeOrders.find((o: any) => o.table_number === t.number && o.area !== 'Delivery');
+          if (activeOrder) {
+            return {
+              ...t,
+              status: 'dining',
+              startTime: activeOrder.created_at ? new Date(activeOrder.created_at + 'Z').toISOString() : new Date().toISOString()
+            };
+          }
+          return t;
+        });
+
         setTables(data);
         
         const pref = ['Male', 'Family', 'Lawn'];

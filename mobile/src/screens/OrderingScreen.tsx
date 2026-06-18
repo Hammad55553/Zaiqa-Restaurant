@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, Dimensions, Alert } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, Dimensions, Alert, Modal, TextInput } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Clipboard, ArrowLeft } from 'lucide-react-native';
@@ -28,6 +28,7 @@ interface MenuItem {
 interface CartItem extends MenuItem {
   qty: number;
   notes?: string;
+  sent?: boolean;
 }
 
 interface QueuedOrder {
@@ -79,95 +80,94 @@ export default function OrderingScreen({
   const [cartItems, setCartItems] = useState<CartItem[]>(initialCartItems || []);
   const [remarks, setRemarks] = useState('');
   const [placingOrder, setPlacingOrder] = useState(false);
-  const [activeOrder, setActiveOrder] = useState<any | null>(null);
   const toast = useToast();
+
+  const [activeOrder, setActiveOrder] = useState<any | null>(null);
+  const [originalCartItems, setOriginalCartItems] = useState<CartItem[]>([]);
+  const [adminRemarkModalVisible, setAdminRemarkModalVisible] = useState(false);
+  const [adminRemarkText, setAdminRemarkText] = useState('');
 
   const [customName, setCustomName] = useState('');
   const [customPrice, setCustomPrice] = useState('');
   const [showCustomForm, setShowCustomForm] = useState(false);
 
+  const [confirmModalVisible, setConfirmModalVisible] = useState(false);
+  const [confirmModalTitle, setConfirmModalTitle] = useState('');
+  const [confirmModalSub, setConfirmModalSub] = useState('');
+  const [confirmModalAction, setConfirmModalAction] = useState<any>(null);
+
   const handleReleaseTable = () => {
-    Alert.alert(
-      'Vacate Table',
-      `Are you sure you want to mark Table ${selectedTable.number} as vacant/available?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Yes, Vacate',
-          onPress: async () => {
-            try {
-              const res = await fetch(`${API_BASE}/tables/${selectedTable.id}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: 'available' }),
-              });
-              if (res.ok) {
-                toast.success('Table Vacated', `Table ${selectedTable.number} is now available.`);
-                onBack();
-              } else {
-                toast.error('Failed', 'Could not vacate table.');
-              }
-            } catch (err) {
-              toast.error('Connection Error', 'Could not reach server.');
-            }
-          }
+    if (activeOrder && activeOrder.status !== 'completed') {
+      toast.error('Payment Pending', 'Cannot free table. The bill has not been paid at the counter yet.');
+      return;
+    }
+    setConfirmModalTitle('Free Table?');
+    setConfirmModalSub(`Are you sure you want to make Table ${selectedTable.number} free and available?`);
+    setConfirmModalAction(() => async () => {
+      try {
+        const res = await fetch(`${API_BASE}/tables/${selectedTable.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'available' }),
+        });
+        if (res.ok) {
+          toast.success('Table Freed', `Table ${selectedTable.number} is now available.`);
+          onBack();
+        } else {
+          toast.error('Failed', 'Could not free the table.');
         }
-      ]
-    );
+      } catch (err) {
+        toast.error('Connection Error', 'Could not reach server.');
+      }
+    });
+    setConfirmModalVisible(true);
   };
 
   const handleRequestBill = () => {
     if (!activeOrder) return;
-    Alert.alert(
-      'Request Bill',
-      `Do you want to request the bill for Table ${selectedTable.number}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Request Bill',
-          onPress: async () => {
-            try {
-              setPlacingOrder(true);
-              const subtotal = cartTotal;
-              const tax = Math.round(subtotal * GST_RATE);
-              const total_amount = subtotal + tax;
+    setConfirmModalTitle('Request Bill?');
+    setConfirmModalSub(`Do you want to send a checkout bill request for Table ${selectedTable.number} to the Cashier?`);
+    setConfirmModalAction(() => async () => {
+      try {
+        setPlacingOrder(true);
+        const subtotal = cartTotal;
+        const tax = Math.round(subtotal * (GST_RATE / 100));
+        const total_amount = subtotal + tax;
 
-              const cleanRemarks = remarks.replace(/^\[BILL REQUESTED\]\s*/, '');
-              const updatedRemarks = `[BILL REQUESTED] ${cleanRemarks}`;
+        const cleanRemarks = remarks.replace(/^\[BILL REQUESTED\]\s*/, '');
+        const updatedRemarks = `[BILL REQUESTED] ${cleanRemarks}`;
 
-              const res = await fetch(`${API_BASE}/orders/${activeOrder.id}/sync`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  items: cartItems.map(item => ({
-                    item_id: item.id,
-                    item_name: item.name,
-                    price: item.price,
-                    quantity: item.qty,
-                    notes: item.notes || ''
-                  })),
-                  subtotal,
-                  tax,
-                  total_amount,
-                  remarks: `[Waiter: ${name || username}] ${updatedRemarks}`
-                })
-              });
+        const res = await fetch(`${API_BASE}/orders/${activeOrder.id}/sync`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: cartItems.map(item => ({
+              item_id: item.id,
+              item_name: item.name,
+              price: item.price,
+              quantity: item.qty,
+              notes: item.notes || ''
+            })),
+            subtotal,
+            tax,
+            total_amount,
+            remarks: `[Waiter: ${name || username}] ${updatedRemarks}`
+          })
+        });
 
-              if (res.ok) {
-                toast.success('Bill Requested!', 'Notification sent to cashier.');
-                onBack();
-              } else {
-                toast.error('Request Failed', 'Could not sync bill request.');
-              }
-            } catch (e) {
-              toast.error('Network Error', 'Check server connection.');
-            } finally {
-              setPlacingOrder(false);
-            }
-          }
+        if (res.ok) {
+          toast.success('Bill Requested!', 'Notification sent to cashier.');
+          onBack();
+        } else {
+          toast.error('Request Failed', 'Could not sync bill request.');
         }
-      ]
-    );
+      } catch (e) {
+        toast.error('Network Error', 'Check server connection.');
+      } finally {
+        setPlacingOrder(false);
+      }
+    });
+    setConfirmModalVisible(true);
   };
 
   useEffect(() => {
@@ -191,9 +191,11 @@ export default function OrderingScreen({
               price: item.price,
               qty: item.quantity,
               notes: item.notes || '',
-              category_name: ''
+              category_name: '',
+              sent: true
             }));
             setCartItems(mappedItems);
+            setOriginalCartItems(JSON.parse(JSON.stringify(mappedItems)));
             if (data.remarks) {
               // Extract original remarks if any
               const cleanRemarks = data.remarks.replace(/^\[Waiter:[^\]]+\]\s*/, '');
@@ -283,7 +285,7 @@ export default function OrderingScreen({
     setCartItems(prev => prev.map(item => {
       if (item.id === id) {
         const newQty = item.qty + delta;
-        return newQty > 0 ? { ...item, qty: newQty } : item;
+        return { ...item, qty: newQty };
       }
       return item;
     }).filter(i => i.qty > 0));
@@ -306,9 +308,25 @@ export default function OrderingScreen({
     setShowCustomForm(false);
   };
 
-  const handlePlaceOrder = async () => {
+  const checkIfItemsVoided = () => {
+    if (!activeOrder) return false;
+    for (const original of originalCartItems) {
+      const current = cartItems.find(item => item.id === original.id);
+      if (!current || current.qty < original.qty) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const handlePlaceOrder = async (bypassAdminRemark = false) => {
     if (cartItems.length === 0) {
       toast.warning('Empty Cart', 'Please add items before placing an order.');
+      return;
+    }
+
+    if (activeOrder && checkIfItemsVoided() && !adminRemarkText && !bypassAdminRemark) {
+      setAdminRemarkModalVisible(true);
       return;
     }
 
@@ -332,7 +350,8 @@ export default function OrderingScreen({
           subtotal,
           tax,
           total_amount,
-          remarks: `[Waiter: ${name || username}] ${remarks || ''}`
+          remarks: `[Waiter: ${name || username}] ${remarks || ''}`,
+          admin_edit_remark: adminRemarkText || undefined
         };
 
         const res = await fetch(`${API_BASE}/orders/${activeOrder.id}/sync`, {
@@ -345,10 +364,15 @@ export default function OrderingScreen({
           toast.success('Order Updated!', `Table ${selectedTable.number} ticket updated successfully.`);
           setCartItems([]);
           setRemarks('');
+          setAdminRemarkText('');
           onBack();
         } else {
-          const errData = await res.json();
-          toast.error('Update Failed', errData.error || 'Server error.');
+          let errorMsg = 'Server error.';
+          try {
+            const errData = await res.json();
+            errorMsg = errData.error || errorMsg;
+          } catch (jsonErr) {}
+          toast.error('Update Failed', errorMsg);
         }
       } else {
         // Normal POST for new order
@@ -375,8 +399,12 @@ export default function OrderingScreen({
           setRemarks('');
           onBack();
         } else {
-          const errData = await res.json();
-          toast.error('Order Failed', errData.error || 'Check server status.');
+          let errorMsg = 'Check server status.';
+          try {
+            const errData = await res.json();
+            errorMsg = errData.error || errorMsg;
+          } catch (jsonErr) {}
+          toast.error('Order Failed', errorMsg);
         }
       }
     } catch (err) {
@@ -434,7 +462,7 @@ export default function OrderingScreen({
             onPress={handleReleaseTable}
             activeOpacity={0.7}
           >
-            <Text style={styles.releaseTableText}>Vacate Table</Text>
+            <Text style={styles.releaseTableText}>Free Table</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -500,6 +528,87 @@ export default function OrderingScreen({
           />
         )}
       </View>
+
+      <Modal
+        visible={adminRemarkModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setAdminRemarkModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>ADMIN APPROVAL REQUIRED</Text>
+            <Text style={styles.modalSub}>
+              You are removing or reducing items from an already sent order. Please enter the reason for this edit:
+            </Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. Customer cancelled / selected wrong item"
+              placeholderTextColor="#64748b"
+              value={adminRemarkText}
+              onChangeText={setAdminRemarkText}
+              autoFocus={true}
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalBtnCancel}
+                onPress={() => {
+                  setAdminRemarkModalVisible(false);
+                  setAdminRemarkText('');
+                }}
+              >
+                <Text style={styles.modalBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalBtnConfirm}
+                onPress={() => {
+                  if (!adminRemarkText.trim()) {
+                    toast.warning('Required', 'Please enter a reason/remark.');
+                    return;
+                  }
+                  setAdminRemarkModalVisible(false);
+                  handlePlaceOrder(true);
+                }}
+              >
+                <Text style={styles.modalBtnText}>Confirm Edit</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={confirmModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setConfirmModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{confirmModalTitle}</Text>
+            <Text style={styles.modalSub}>{confirmModalSub}</Text>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalBtnCancel}
+                onPress={() => {
+                  setConfirmModalVisible(false);
+                }}
+              >
+                <Text style={styles.modalBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalBtnConfirm}
+                onPress={() => {
+                  setConfirmModalVisible(false);
+                  if (confirmModalAction) confirmModalAction();
+                }}
+              >
+                <Text style={styles.modalBtnText}>Confirm</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -585,5 +694,78 @@ const styles = StyleSheet.create({
   },
   subTabLabelActive: {
     color: '#ffffff',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalContent: {
+    backgroundColor: '#1e293b',
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 360,
+    borderWidth: 1.5,
+    borderColor: '#ea580c',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#ffffff',
+    marginBottom: 8,
+    textAlign: 'center',
+    letterSpacing: 1.5,
+  },
+  modalSub: {
+    fontSize: 12,
+    color: '#94a3b8',
+    marginBottom: 16,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  input: {
+    backgroundColor: '#0f172a',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#334155',
+    color: '#ffffff',
+    padding: 12,
+    fontSize: 14,
+    marginBottom: 20,
+    fontWeight: '700',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  modalBtnCancel: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#334155',
+    alignItems: 'center',
+  },
+  modalBtnConfirm: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#ea580c',
+    alignItems: 'center',
+  },
+  modalBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
 });

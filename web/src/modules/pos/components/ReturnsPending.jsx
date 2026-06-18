@@ -4,10 +4,11 @@ import { AlertCircle, Trash2, ShieldAlert, Archive, CheckCircle2, ShoppingBag, C
 const API_BASE = 'http://localhost:5005/api';
 
 const ReturnsPending = ({ onBack }) => {
-  const [activeTab, setActiveTab] = useState('pending'); // 'pending', 'cancelled', 'waste'
+  const [activeTab, setActiveTab] = useState('pending'); // 'pending', 'cancelled', 'waste', 'voided'
   const [orders, setOrders] = useState([]);
   const [wasteList, setWasteList] = useState([]);
   const [outflowList, setOutflowList] = useState([]);
+  const [voidedList, setVoidedList] = useState([]);
   const [tablesList, setTablesList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
@@ -33,6 +34,24 @@ const ReturnsPending = ({ onBack }) => {
     setTimeout(() => setToast(null), 3000);
   };
 
+  const handleClearVoidedLog = async (id) => {
+    if (!window.confirm('Delete this voided item log entry?')) return;
+    try {
+      const res = await fetch(`${API_BASE}/orders/voided-items/${id}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        showToast('Voided log entry deleted', 'success');
+        fetchData();
+      } else {
+        showToast('Failed to delete voided log', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Error deleting voided log', 'error');
+    }
+  };
+
   // Load user role
   let currentUser = { role: 'cashier', username: 'Cashier' };
   try {
@@ -56,6 +75,17 @@ const ReturnsPending = ({ onBack }) => {
         fetchedOrders = data.orders || [];
         setWasteList(data.waste || []);
         setOutflowList(data.outflows || []);
+      }
+
+      // 1.1 Fetch voided items
+      try {
+        const voidedRes = await fetch(`${API_BASE}/orders/voided-items`);
+        if (voidedRes.ok) {
+          const voidedData = await voidedRes.json();
+          setVoidedList(voidedData || []);
+        }
+      } catch (voidErr) {
+        console.error("Failed to fetch voided items:", voidErr);
       }
       
       // 2. Fetch tables list
@@ -286,6 +316,16 @@ const ReturnsPending = ({ onBack }) => {
         >
           Prepared Waste & Outflow ({wasteList.length})
         </button>
+        <button
+          onClick={() => setActiveTab('voided')}
+          className={`px-5 py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition-all active:scale-95 ${
+            activeTab === 'voided'
+              ? 'bg-gradient-to-r from-purple-600 to-indigo-700 text-white shadow-[0_0_20px_rgba(124,58,237,0.25)]'
+              : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-white'
+          }`}
+        >
+          Voided Items ({voidedList.length})
+        </button>
       </div>
 
       {/* Security alert for non-admins */}
@@ -419,7 +459,7 @@ const ReturnsPending = ({ onBack }) => {
               ))}
             </div>
           )
-        ) : (
+        ) : activeTab === 'waste' ? (
           <div className="space-y-8 animate-fadeIn">
             {/* Prepared Waste Stock */}
             <div className="bg-zinc-900/30 p-5 rounded-2xl border border-zinc-800/60 shadow-xl">
@@ -537,6 +577,61 @@ const ReturnsPending = ({ onBack }) => {
                                 onClick={() => handleDeleteOutflowLog(outflow.id)}
                                 className="p-2 text-zinc-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
                                 title="Delete Outflow Log"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-8 animate-fadeIn">
+            {/* Voided Items Log */}
+            <div className="bg-zinc-900/30 p-5 rounded-2xl border border-zinc-800/60 shadow-xl">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xs font-black text-white uppercase tracking-widest border-l-4 border-purple-500 pl-3">
+                  Voided Items Audit Trail (Removed from sent orders)
+                </h2>
+              </div>
+              {voidedList.length === 0 ? (
+                <div className="text-center py-12 bg-zinc-950/45 border border-zinc-850 border-dashed rounded-xl text-zinc-500 text-xs font-bold">
+                  No voided items recorded.
+                </div>
+              ) : (
+                <div className="bg-zinc-900 border border-zinc-850 rounded-xl overflow-hidden shadow-2xl">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-zinc-950 text-zinc-400 uppercase text-[9px] tracking-wider border-b border-zinc-850">
+                      <tr>
+                        <th className="p-4 font-black">Order ID</th>
+                        <th className="p-4 font-black">Item Name</th>
+                        <th className="p-4 text-center font-black">Qty Removed</th>
+                        <th className="p-4 font-black">Price (each)</th>
+                        <th className="p-4 font-black">Reason / Admin Remark</th>
+                        <th className="p-4 font-black">Voided At</th>
+                        {isAdmin && <th className="p-4 text-right font-black">Actions</th>}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-800/60">
+                      {voidedList.map(item => (
+                        <tr key={item.id} className="hover:bg-zinc-850/40 transition-colors">
+                          <td className="p-4 text-zinc-400 font-extrabold text-xs">#{item.order_id}</td>
+                          <td className="p-4 text-white font-extrabold text-xs">{item.item_name}</td>
+                          <td className="p-4 text-center font-black text-red-500 text-xs">{item.quantity}x</td>
+                          <td className="p-4 text-zinc-300 font-medium">Rs. {item.price}</td>
+                          <td className="p-4 text-zinc-400 italic font-medium">{item.admin_remark || 'N/A'}</td>
+                          <td className="p-4 text-zinc-500 font-medium">{new Date(item.voided_at).toLocaleString()}</td>
+                          {isAdmin && (
+                            <td className="p-4 text-right">
+                              <button
+                                onClick={() => handleClearVoidedLog(item.id)}
+                                className="p-2 text-zinc-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
+                                title="Delete Log Entry"
                               >
                                 <Trash2 size={14} />
                               </button>

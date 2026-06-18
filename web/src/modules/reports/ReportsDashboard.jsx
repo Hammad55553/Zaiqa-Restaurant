@@ -153,6 +153,7 @@ const ExpenseDoughnut = ({ salaries, vendors }) => {
 // ─── Main Component ───────────────────────────────────────────────────────────
 const ReportsDashboard = () => {
   const [tab, setTab]           = useState('dashboard'); // 'dashboard' | 'orders' | 'topItems'
+  const [globalGstRate, setGlobalGstRate] = useState(0);
   const [todaySummary, setTodaySummary] = useState(null);
   const [weekly, setWeekly]     = useState([]);
   const [orders, setOrders]     = useState([]);
@@ -169,6 +170,24 @@ const ReportsDashboard = () => {
   const [drilldownSearch, setDrilldownSearch] = useState('');
 
   const today = new Date().toISOString().split('T')[0];
+
+  useEffect(() => {
+    const loadGstSetting = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/settings`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.global_gst_rate !== undefined) {
+            setGlobalGstRate(parseFloat(data.global_gst_rate));
+          }
+        }
+      } catch (e) {
+        const gst = parseFloat(localStorage.getItem('zaiqa_mahal_global_gst_rate') || 0);
+        setGlobalGstRate(gst);
+      }
+    };
+    loadGstSetting();
+  }, []);
 
   const fetchDashboard = useCallback(async () => {
     setLoading(true);
@@ -362,10 +381,32 @@ const ReportsDashboard = () => {
     const totalExpenses = todayExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
     const netRevenue = totalRevenue - totalExpenses;
 
+    let totalServiceCharges = 0;
+    salesToday.forEach(o => {
+      if (o.items && Array.isArray(o.items)) {
+        o.items.forEach(item => {
+          const nameLower = item.item_name?.toLowerCase() || '';
+          if (nameLower.includes('service charge') || nameLower.includes('service charges') || nameLower.includes('service fee')) {
+            totalServiceCharges += (item.price || 0) * (item.quantity || 1);
+          }
+        });
+      }
+    });
+
     const orderRowsHtml = salesToday.map((r, i) => {
       const isDelivery = r.area === 'Delivery' || r.table_number?.toString().toLowerCase().includes('delivery');
       const isTakeaway = r.table_number?.toString().toLowerCase().includes('takeaway') || r.table_number?.toString().toLowerCase().includes('take away');
       const typeLabel = isDelivery ? 'Delivery' : isTakeaway ? 'Takeaway' : 'Dining';
+
+      let orderSC = 0;
+      if (r.items && Array.isArray(r.items)) {
+        r.items.forEach(item => {
+          const nameLower = item.item_name?.toLowerCase() || '';
+          if (nameLower.includes('service charge') || nameLower.includes('service charges') || nameLower.includes('service fee')) {
+            orderSC += (item.price || 0) * (item.quantity || 1);
+          }
+        });
+      }
 
       return `
         <tr>
@@ -374,6 +415,9 @@ const ReportsDashboard = () => {
           <td><strong>#Invoice ${r.id}</strong></td>
           <td>${r.customer_name || 'Guest'} (${typeLabel})</td>
           <td>${r.payment_method?.toUpperCase() || 'CASH'}</td>
+          <td class="amount">${fmtRs(r.subtotal)}</td>
+          <td class="amount">${fmtRs(r.tax)}</td>
+          <td class="amount">${fmtRs(orderSC)}</td>
           <td class="amount">${fmtRs(r.total_amount)}</td>
         </tr>
       `;
@@ -454,7 +498,7 @@ const ReportsDashboard = () => {
             .filter-info { font-size: 13px; color: #475569; margin-top: 6px; font-weight: 700; }
             
             /* Stats Grid */
-            .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 30px; }
+            .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 30px; }
             .stat-card { border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 15px; background: #f8fafc; }
             .stat-label { font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
             .stat-value { font-size: 20px; font-weight: 950; color: #0f172a; margin-top: 5px; }
@@ -511,18 +555,22 @@ const ReportsDashboard = () => {
               <div class="stat-value" style="color: #f97316;">${totalOrders} Completed</div>
             </div>
             <div class="stat-card">
-              <div class="stat-label">Tax (16% GST)</div>
+              <div class="stat-label">Subtotal (Pre-Tax)</div>
+              <div class="stat-value" style="color: #3b82f6;">${fmtRs(subtotal)}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Tax (${globalGstRate}% GST)</div>
               <div class="stat-value" style="color: #10b981;">${fmtRs(totalTax)}</div>
             </div>
             <div class="stat-card">
-              <div class="stat-label">Subtotal (Pre-Tax)</div>
-              <div class="stat-value" style="color: #3b82f6;">${fmtRs(subtotal)}</div>
+              <div class="stat-label">Service Charges</div>
+              <div class="stat-value" style="color: #0ea5e9;">${fmtRs(totalServiceCharges)}</div>
             </div>
             <div class="stat-card">
               <div class="stat-label">Daily Expenses</div>
               <div class="stat-value" style="color: #ef4444;">${fmtRs(totalExpenses)}</div>
             </div>
-            <div class="stat-card" style="background: #f0fdf4;">
+            <div class="stat-card" style="grid-column: span 2; background: #f0fdf4;">
               <div class="stat-label">Net Daily Income</div>
               <div class="stat-value" style="color: #22c55e;">${fmtRs(netRevenue)}</div>
             </div>
@@ -579,7 +627,10 @@ const ReportsDashboard = () => {
                   <th>Invoice ID</th>
                   <th>Customer (Type)</th>
                   <th>Payment Method</th>
-                  <th style="text-align: right;">Amount</th>
+                  <th style="text-align: right;">Subtotal</th>
+                  <th style="text-align: right;">Tax</th>
+                  <th style="text-align: right;">Service Charges</th>
+                  <th style="text-align: right;">Total Amount</th>
                 </tr>
               </thead>
               <tbody>
@@ -759,7 +810,7 @@ const ReportsDashboard = () => {
                 onClick={() => { setDrilldownSearch(''); setDrilldownModal(metrics.salesToday); }}
                 icon={<Receipt />} label="Aaj ka Tax"
                 value={fmtRs(todaySummary?.total_tax)}
-                sub="16% GST"
+                sub={`${globalGstRate}% GST`}
                 color="#0ea5e9" bg="#f0f9ff"
               />
               <StatCard

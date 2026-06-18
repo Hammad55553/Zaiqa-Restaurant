@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Search, ChevronLeft, FileText } from 'lucide-react';
+import { Search, ChevronLeft, FileText, ArrowLeft, Printer } from 'lucide-react';
 
 const fmtRs = (n) => `Rs. ${Math.round(n || 0).toLocaleString('en-PK')}`;
 const fmtDateDrilldown = (d) => new Date(d + (d.includes('Z') ? '' : 'Z')).toLocaleString('en-PK', {
@@ -99,6 +99,7 @@ const DrilldownModal = ({ drilldownModal, drilldownSearch, setDrilldownSearch, s
       hour: '2-digit', minute: '2-digit', hour12: true
     });
 
+    const isOrders = drilldownModal.type === 'orders';
     const rowsHtml = filteredRecords.map((r, i) => {
       const dateVal = r.created_at || r.date;
       const refVal = drilldownModal.type === 'orders' ? `#Invoice ${r.id}` : 
@@ -107,8 +108,32 @@ const DrilldownModal = ({ drilldownModal, drilldownSearch, setDrilldownSearch, s
       const detailVal = drilldownModal.type === 'orders' ? `${r.customer_name || 'Guest'} (${r.area || 'Main'} - ${r.table_number || ''})` :
                         drilldownModal.type === 'service_charges' ? `${r.customer_name || 'Guest'} - ${r.item_name}` :
                         `${r.category} - ${r.description || 'No description'}`;
-      const amountVal = drilldownModal.type === 'orders' ? r.total_amount : r.amount;
+      
+      if (isOrders) {
+        let orderSC = 0;
+        if (r.items && Array.isArray(r.items)) {
+          r.items.forEach(item => {
+            const nameLower = item.item_name?.toLowerCase() || '';
+            if (nameLower.includes('service charge') || nameLower.includes('service charges') || nameLower.includes('service fee')) {
+              orderSC += (item.price || 0) * (item.quantity || 1);
+            }
+          });
+        }
+        return `
+          <tr>
+            <td>${i + 1}</td>
+            <td>${fmtDateDrilldown(dateVal)}</td>
+            <td><strong>${refVal}</strong></td>
+            <td>${detailVal}</td>
+            <td class="amount">${fmtRs(r.subtotal)}</td>
+            <td class="amount">${fmtRs(r.tax)}</td>
+            <td class="amount">${fmtRs(orderSC)}</td>
+            <td class="amount">${fmtRs(r.total_amount)}</td>
+          </tr>
+        `;
+      }
 
+      const amountVal = r.amount || 0;
       return `
         <tr>
           <td>${i + 1}</td>
@@ -167,7 +192,14 @@ const DrilldownModal = ({ drilldownModal, drilldownSearch, setDrilldownSearch, s
                 <th>Date</th>
                 <th>Reference</th>
                 <th>Details / Category</th>
-                <th style="text-align: right;">Amount</th>
+                ${isOrders ? `
+                  <th style="text-align: right;">Subtotal</th>
+                  <th style="text-align: right;">Tax</th>
+                  <th style="text-align: right;">Service Charges</th>
+                  <th style="text-align: right;">Total Amount</th>
+                ` : `
+                  <th style="text-align: right;">Amount</th>
+                `}
               </tr>
             </thead>
             <tbody>
@@ -198,6 +230,8 @@ const DrilldownModal = ({ drilldownModal, drilldownSearch, setDrilldownSearch, s
     printWindow.document.close();
   };
 
+  const isOrders = drilldownModal.type === 'orders';
+
   return (
     <div style={{
       width: '100%',
@@ -220,122 +254,128 @@ const DrilldownModal = ({ drilldownModal, drilldownSearch, setDrilldownSearch, s
           <button
             onClick={() => setDrilldownModal(null)}
             style={{
-              background: '#8b5cf6',
+              background: '#f4f4f5',
               border: 'none',
-              borderRadius: 12,
-              padding: '10px 18px',
+              borderRadius: '50%',
+              width: 40,
+              height: 40,
               display: 'flex',
               alignItems: 'center',
-              gap: 8,
+              justifyContent: 'center',
               cursor: 'pointer',
-              color: '#ffffff',
-              fontWeight: 800,
-              fontSize: 13,
-              boxShadow: '0 4px 12px rgba(139,92,246,0.25)',
-              transition: 'all 0.2s'
+              color: '#18181b',
+              transition: 'background-color 0.2s'
             }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e4e4e7'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f4f4f5'}
           >
-            <ChevronLeft size={16} /> Back
+            <ArrowLeft size={18} />
           </button>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <img src="./Logo.jpg" alt="Logo" style={{ width: 44, height: 44, borderRadius: 10, objectFit: 'cover', border: '1.5px solid #ea580c' }} />
-            <div>
-              <h4 style={{ fontSize: 20, fontWeight: 955, color: '#09090b', margin: 0, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                {drilldownModal.label} Records
-              </h4>
-              <p style={{ fontSize: 12, color: '#71717a', margin: '2px 0 0 0', fontWeight: 600 }}>
-                Showing {filteredRecords.length} of {drilldownModal.records.length} total entries
-              </p>
-            </div>
+          <div style={{ flex: 1 }}>
+            <h2 style={{ fontSize: 20, fontWeight: 950, color: '#09090b', margin: 0 }}>
+              {drilldownModal.label} Records
+            </h2>
+            <p style={{ fontSize: 13, color: '#71717a', margin: '4px 0 0', fontWeight: 600 }}>
+              Showing {filteredRecords.length} of {drilldownModal.records.length} total entries
+            </p>
           </div>
+          
+          {/* Filters Row */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <select
+              value={period}
+              onChange={(e) => setPeriod(e.target.value)}
+              style={{
+                padding: '8px 12px',
+                borderRadius: 8,
+                border: '1.5px solid #e4e4e7',
+                fontSize: 13,
+                fontWeight: 700,
+                outline: 'none',
+                background: '#fff',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="all">All Time</option>
+              <option value="today">Today</option>
+              <option value="week">Last 7 Days</option>
+              <option value="month">Last 30 Days</option>
+              <option value="quarter">Last 90 Days</option>
+              <option value="custom">Custom Range</option>
+            </select>
 
-          <button 
-            onClick={exportToPDF}
-            style={{
-              background: '#ef4444',
-              border: 'none',
-              borderRadius: 12,
-              padding: '10px 18px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              cursor: 'pointer',
-              color: '#ffffff',
-              fontWeight: 800,
-              fontSize: 13,
-              boxShadow: '0 4px 12px rgba(239,68,68,0.25)',
-              transition: 'all 0.2s',
-              marginLeft: 'auto'
-            }}
-          >
-            <FileText size={16} /> Export PDF
-          </button>
+            {period === 'custom' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  style={{ padding: '6px 10px', borderRadius: 8, border: '1.5px solid #e4e4e7', fontSize: 13, fontWeight: 600 }}
+                />
+                <span style={{ fontSize: 12, color: '#a1a1aa', fontWeight: 700 }}>to</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  style={{ padding: '6px 10px', borderRadius: 8, border: '1.5px solid #e4e4e7', fontSize: 13, fontWeight: 600 }}
+                />
+              </div>
+            )}
+
+            <button
+              onClick={exportToPDF}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                backgroundColor: '#ea580c',
+                color: '#fff',
+                border: 'none',
+                padding: '8px 16px',
+                borderRadius: 8,
+                fontSize: 13,
+                fontWeight: 800,
+                cursor: 'pointer',
+                boxShadow: '0 4px 12px rgba(234, 88, 12, 0.2)',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#d97706';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '#ea580c';
+                e.currentTarget.style.transform = 'none';
+              }}
+            >
+              <Printer size={15} /> Export PDF / Print
+            </button>
+          </div>
         </div>
 
-        {/* Period Selector Bar */}
-        <div style={{ display: 'flex', gap: 16, alignItems: 'center', background: '#fafafa', padding: '12px 24px', borderBottom: '1px solid #f4f4f5', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 13, fontWeight: 800, color: '#71717a', textTransform: 'uppercase', letterSpacing: 0.5 }}>Filter Period:</span>
-          <select
-            value={period}
-            onChange={(e) => setPeriod(e.target.value)}
-            style={{
-              padding: '8px 14px',
-              borderRadius: 10,
-              border: '1.5px solid #cbd5e1',
-              fontSize: 13,
-              fontWeight: 700,
-              color: '#09090b',
-              background: '#fff',
-              outline: 'none',
-              cursor: 'pointer'
-            }}
-          >
-            <option value="all">All Records</option>
-            <option value="today">Today (Daily)</option>
-            <option value="week">Last 7 Days (Weekly)</option>
-            <option value="month">Last 30 Days (Monthly)</option>
-            <option value="quarter">Last 90 Days (3-Monthly)</option>
-            <option value="custom">Custom Date Range</option>
-          </select>
-
-          {period === 'custom' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, animation: 'fadeIn 0.2s ease-out' }}>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                style={{ padding: '8px 12px', borderRadius: 10, border: '1.5px solid #cbd5e1', fontSize: 13, fontWeight: 600, color: '#09090b', background: '#fff', outline: 'none' }}
-              />
-              <span style={{ fontSize: 13, color: '#71717a', fontWeight: 700 }}>to</span>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                style={{ padding: '8px 12px', borderRadius: 10, border: '1.5px solid #cbd5e1', fontSize: 13, fontWeight: 600, color: '#09090b', background: '#fff', outline: 'none' }}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Search Bar */}
-        <div style={{ padding: '16px 24px', background: '#ffffff', borderBottom: '1px solid #f4f4f5', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Search size={18} color="#a1a1aa" />
-          <input
-            type="text"
-            placeholder="Search records by reference, customer details, category, or amount..."
-            value={drilldownSearch}
-            onChange={(e) => setDrilldownSearch(e.target.value)}
-            style={{
-              flex: 1,
-              background: 'transparent',
-              border: 'none',
-              outline: 'none',
-              fontSize: 14,
-              fontWeight: 600,
-              color: '#09090b'
-            }}
-          />
+        {/* Search bar */}
+        <div style={{ padding: '16px 24px', borderBottom: '1px solid #f4f4f5', display: 'flex', alignItems: 'center', gap: 12, background: '#fafafa' }}>
+          <div style={{ position: 'relative', flex: 1 }}>
+            <Search size={16} color="#a1a1aa" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
+            <input
+              type="text"
+              placeholder={isOrders ? "Search invoice ID, customer name, area, table number, or amount..." : "Search..."}
+              value={drilldownSearch}
+              onChange={(e) => setDrilldownSearch(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 12px 8px 36px',
+                borderRadius: 8,
+                border: '1.5px solid #e4e4e7',
+                fontSize: 13,
+                outline: 'none',
+                transition: 'border-color 0.2s',
+                fontWeight: 600
+              }}
+              onFocus={(e) => e.target.style.borderColor = '#ea580c'}
+              onBlur={(e) => e.target.style.borderColor = '#e4e4e7'}
+            />
+          </div>
           {drilldownSearch && (
             <button
               onClick={() => setDrilldownSearch('')}
@@ -361,7 +401,16 @@ const DrilldownModal = ({ drilldownModal, drilldownSearch, setDrilldownSearch, s
                   <th style={{ padding: '12px 16px', fontSize: 11, fontWeight: 800, color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: 0.5 }}>Date</th>
                   <th style={{ padding: '12px 16px', fontSize: 11, fontWeight: 800, color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: 0.5 }}>Reference</th>
                   <th style={{ padding: '12px 16px', fontSize: 11, fontWeight: 800, color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: 0.5 }}>Details / Category</th>
-                  <th style={{ padding: '12px 16px', fontSize: 11, fontWeight: 800, color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'right' }}>Amount</th>
+                  {isOrders ? (
+                    <>
+                      <th style={{ padding: '12px 16px', fontSize: 11, fontWeight: 800, color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'right' }}>Subtotal</th>
+                      <th style={{ padding: '12px 16px', fontSize: 11, fontWeight: 800, color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'right' }}>Tax</th>
+                      <th style={{ padding: '12px 16px', fontSize: 11, fontWeight: 800, color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'right' }}>Service Charges</th>
+                      <th style={{ padding: '12px 16px', fontSize: 11, fontWeight: 800, color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'right' }}>Total Amount</th>
+                    </>
+                  ) : (
+                    <th style={{ padding: '12px 16px', fontSize: 11, fontWeight: 800, color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'right' }}>Amount</th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -373,8 +422,31 @@ const DrilldownModal = ({ drilldownModal, drilldownSearch, setDrilldownSearch, s
                   const detailVal = drilldownModal.type === 'orders' ? `${r.customer_name || 'Guest'} (${r.area || 'Main'} - ${r.table_number || ''})` :
                     drilldownModal.type === 'service_charges' ? `${r.customer_name || 'Guest'} - ${r.item_name}` :
                       `${r.category} - ${r.description || 'No description'}`;
-                  const amountVal = drilldownModal.type === 'orders' ? r.total_amount : r.amount;
 
+                  if (isOrders) {
+                    let orderSC = 0;
+                    if (r.items && Array.isArray(r.items)) {
+                      r.items.forEach(item => {
+                        const nameLower = item.item_name?.toLowerCase() || '';
+                        if (nameLower.includes('service charge') || nameLower.includes('service charges') || nameLower.includes('service fee')) {
+                          orderSC += (item.price || 0) * (item.quantity || 1);
+                        }
+                      });
+                    }
+                    return (
+                      <tr key={i} style={{ borderBottom: '1px solid #f4f4f5', transition: 'background-color 0.2s' }}>
+                        <td style={{ padding: '14px 16px', fontSize: 13, color: '#3f3f46', fontWeight: 600 }}>{fmtDateDrilldown(dateVal)}</td>
+                        <td style={{ padding: '14px 16px', fontSize: 13, color: '#09090b', fontWeight: 800 }}>{refVal}</td>
+                        <td style={{ padding: '14px 16px', fontSize: 13, color: '#71717a', fontWeight: 500 }}>{detailVal}</td>
+                        <td style={{ padding: '14px 16px', fontSize: 14, color: '#09090b', fontWeight: 600, textAlign: 'right' }}>{fmtRs(r.subtotal)}</td>
+                        <td style={{ padding: '14px 16px', fontSize: 14, color: '#09090b', fontWeight: 600, textAlign: 'right' }}>{fmtRs(r.tax)}</td>
+                        <td style={{ padding: '14px 16px', fontSize: 14, color: '#09090b', fontWeight: 600, textAlign: 'right' }}>{fmtRs(orderSC)}</td>
+                        <td style={{ padding: '14px 16px', fontSize: 14, color: '#09090b', fontWeight: 900, textAlign: 'right' }}>{fmtRs(r.total_amount)}</td>
+                      </tr>
+                    );
+                  }
+
+                  const amountVal = r.amount || 0;
                   return (
                     <tr key={i} style={{ borderBottom: '1px solid #f4f4f5', transition: 'background-color 0.2s' }}>
                       <td style={{ padding: '14px 16px', fontSize: 13, color: '#3f3f46', fontWeight: 600 }}>{fmtDateDrilldown(dateVal)}</td>

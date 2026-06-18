@@ -193,7 +193,9 @@ export default function KitchenOrderCard({
             <View style={{ flex: 1 }}>
               <Text style={styles.itemName}>{item.item_name}</Text>
               {item.notes ? (
-                <Text style={styles.itemNotes}>📝 {item.notes}</Text>
+                <View style={styles.itemNotesBox}>
+                  <Text style={styles.itemNotes}>⚠️ NOTE: {item.notes}</Text>
+                </View>
               ) : null}
             </View>
           </View>
@@ -349,27 +351,37 @@ const styles = StyleSheet.create({
     borderColor: '#f1f5f9',
   },
   qtyCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: '#0f172a',
     alignItems: 'center',
     justifyContent: 'center',
   },
   qtyText: {
     color: '#f97316',
-    fontSize: 13,
+    fontSize: 16,
     fontWeight: '900',
   },
   itemName: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1e293b',
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  itemNotesBox: {
+    backgroundColor: '#fffbeb',
+    borderColor: '#fde047',
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginTop: 4,
+    alignSelf: 'flex-start',
   },
   itemNotes: {
-    fontSize: 11,
-    color: '#f59e0b',
-    marginTop: 2,
+    fontSize: 12,
+    color: '#d97706',
+    fontWeight: '700',
   },
   remarksRow: {
     flexDirection: 'row',

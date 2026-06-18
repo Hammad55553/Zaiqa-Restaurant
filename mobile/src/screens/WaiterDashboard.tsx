@@ -274,10 +274,9 @@ export default function WaiterDashboard({ username, name, permissions, onLogout 
     <View style={styles.container}>
       {/* Background Watermark */}
       <Image
-        source={{ uri: `${API_BASE.replace('/api', '')}/assets/Logo.jpg` }}
+        source={require('../../assets/Logo.jpg')}
         style={styles.backgroundWatermark}
         resizeMode="contain"
-        defaultSource={require('../../assets/Logo.jpg')}
       />
 
       <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
@@ -294,7 +293,7 @@ export default function WaiterDashboard({ username, name, permissions, onLogout 
       {!selectedTable && (
         <View style={styles.header}>
           <View style={styles.logoBadge}>
-            <Image source={{ uri: `${API_BASE.replace('/api', '')}/assets/Logo.jpg` }} defaultSource={require('../../assets/Logo.jpg')} style={styles.logoBadgeImage} resizeMode="cover" />
+            <Image source={require('../../assets/Logo.jpg')} style={styles.logoBadgeImage} resizeMode="cover" />
           </View>
           <View style={{ flex: 1, marginLeft: 12 }}>
             <Text style={styles.headerTitle}>ZAIQA MAHAL</Text>

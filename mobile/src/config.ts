@@ -30,7 +30,7 @@ const getUrlsForIP = (ip: string) => {
 const urls = getUrlsForIP(serverIP);
 export let API_BASE = urls.api;
 export let WS_URL = urls.ws;
-export const GST_RATE = 16;
+export let GST_RATE = 0;
 
 export const setServerIP = async (ip: string) => {
   serverIP = ip;
@@ -38,6 +38,25 @@ export const setServerIP = async (ip: string) => {
   API_BASE = newUrls.api;
   WS_URL = newUrls.ws;
   await AsyncStorage.setItem('SERVER_IP', ip);
+  await loadServerSettings();
+};
+
+export const loadServerSettings = async () => {
+  try {
+    const res = await fetch(`${API_BASE}/settings`);
+    if (res.ok) {
+      const settings = await res.json();
+      if (settings.global_gst_rate !== undefined) {
+        GST_RATE = parseFloat(settings.global_gst_rate);
+        await AsyncStorage.setItem('GST_RATE', String(GST_RATE));
+      }
+    }
+  } catch (e) {
+    const cachedGst = await AsyncStorage.getItem('GST_RATE');
+    if (cachedGst) {
+      GST_RATE = parseFloat(cachedGst);
+    }
+  }
 };
 
 export const loadServerIP = async () => {
@@ -48,5 +67,11 @@ export const loadServerIP = async () => {
     API_BASE = newUrls.api;
     WS_URL = newUrls.ws;
   }
+  const cachedGst = await AsyncStorage.getItem('GST_RATE');
+  if (cachedGst) {
+    GST_RATE = parseFloat(cachedGst);
+  }
+  // Try to refresh from server in background
+  loadServerSettings();
   return serverIP;
 };
