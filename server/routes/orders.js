@@ -133,6 +133,18 @@ router.patch('/:id/status', (req, res) => {
     let query = `UPDATE orders SET status = ?`;
     let params = [targetStatus];
 
+    if (targetStatus === 'completed') {
+      const now = new Date();
+      const dateStr = now.getFullYear() + 
+                      String(now.getMonth() + 1).padStart(2, '0') + 
+                      String(now.getDate()).padStart(2, '0');
+      const randomStr = Math.floor(1000 + Math.random() * 9000);
+      const generatedInvoice = `INV-${dateStr}-${randomStr}`;
+      
+      query += `, invoice_number = COALESCE(invoice_number, ?)`;
+      params.push(generatedInvoice);
+    }
+
     if (clear_updates) {
       query += `, has_new_updates = 0`;
     }
