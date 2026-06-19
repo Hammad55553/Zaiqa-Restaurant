@@ -152,6 +152,10 @@ router.patch('/:id/status', (req, res) => {
       query += `, delivered_by = ?`;
       params.push(req.body.delivered_by);
     }
+    if (req.body.payment_status) {
+      query += `, payment_status = ?`;
+      params.push(req.body.payment_status);
+    }
     query += ` WHERE id = ?`;
     params.push(id);
 
@@ -200,7 +204,15 @@ router.patch('/:id/status', (req, res) => {
       // Sync order update to Supabase
       queueOrderChange(id, 'update');
 
-      res.json({ success: true, id, status: targetStatus });
+      db.get(`SELECT invoice_number, payment_status FROM orders WHERE id = ?`, [id], (errInv, orderRowFinal) => {
+        res.json({ 
+          success: true, 
+          id, 
+          status: targetStatus,
+          invoice_number: orderRowFinal ? orderRowFinal.invoice_number : null,
+          payment_status: orderRowFinal ? orderRowFinal.payment_status : null
+        });
+      });
     });
   });
 });

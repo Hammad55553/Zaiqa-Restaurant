@@ -127,12 +127,28 @@ router.patch('/:id/status', (req, res) => {
     let query = `UPDATE orders SET status = ?`;
     let params = [status];
 
+    if (status === 'completed') {
+      const now = new Date();
+      const dateStr = now.getFullYear() + 
+                      String(now.getMonth() + 1).padStart(2, '0') + 
+                      String(now.getDate()).padStart(2, '0');
+      const randomStr = Math.floor(1000 + Math.random() * 9000);
+      const generatedInvoice = `INV-${dateStr}-${randomStr}`;
+      
+      query += `, invoice_number = COALESCE(invoice_number, ?)`;
+      params.push(generatedInvoice);
+    }
+
     if (clear_updates) {
       query += `, has_new_updates = 0`;
     }
     if (req.body.delivered_by) {
       query += `, delivered_by = ?`;
       params.push(req.body.delivered_by);
+    }
+    if (req.body.payment_status) {
+      query += `, payment_status = ?`;
+      params.push(req.body.payment_status);
     }
     query += ` WHERE id = ?`;
     params.push(id);
@@ -182,7 +198,15 @@ router.patch('/:id/status', (req, res) => {
       // Sync order update to Supabase
       queueOrderChange(id, 'update');
 
-      res.json({ success: true, id, status });
+      db.get(`SELECT invoice_number, payment_status FROM orders WHERE id = ?`, [id], (errInv, orderRowFinal) => {
+        res.json({ 
+          success: true, 
+          id, 
+          status,
+          invoice_number: orderRowFinal ? orderRowFinal.invoice_number : null,
+          payment_status: orderRowFinal ? orderRowFinal.payment_status : null
+        });
+      });
     });
   });
 });

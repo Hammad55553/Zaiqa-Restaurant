@@ -64,6 +64,8 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
   const [orderCustomerAddress, setOrderCustomerAddress] = useState('');
   const [orderCustomerEmail, setOrderCustomerEmail] = useState('');
   const [orderRemarks, setOrderRemarks] = useState('');
+  const [activeOrderPaymentStatus, setActiveOrderPaymentStatus] = useState(null);
+  const [customPaymentStatus, setCustomPaymentStatus] = useState('');
   const [completedInvoices, setCompletedInvoices] = useState([]);
   const [isNameModalOpen, setIsNameModalOpen] = useState(false);
   const [allDBCustomers, setAllDBCustomers] = useState([]);
@@ -679,6 +681,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
           setActiveOrderId(order.id);
           setActiveOrderStatus(order.status || 'pending');
           setActiveOrderInvoiceNumber(order.invoice_number || null);
+          setActiveOrderPaymentStatus(order.payment_status || null);
           setOrderCustomerName(order.customer_name || '');
           setOrderRemarks(order.remarks || '');
           
@@ -733,12 +736,14 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
         const finalItems = await checkAndAppendPreparedWaste([]);
         setCartItems(finalItems);
         setActiveOrderInvoiceNumber(null);
+        setActiveOrderPaymentStatus(null);
       }
     } catch (err) {
       console.error("Failed to fetch active order:", err);
       const finalItems = await checkAndAppendPreparedWaste([]);
       setCartItems(finalItems);
       setActiveOrderInvoiceNumber(null);
+      setActiveOrderPaymentStatus(null);
     }
   };
 
@@ -782,6 +787,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
       serviceCharges: applyServiceCharges ? Number(serviceCharges || 0) : 0,
       orderId: activeOrderId,
       invoiceNumber: activeOrderInvoiceNumber || (activeOrderId ? `INV-${activeOrderId}` : null),
+      paymentStatus: activeOrderPaymentStatus || 'PENDING',
       date: new Date().toISOString(),
     };
 
@@ -802,7 +808,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
     setIsCheckoutModalOpen(true);
   };
 
-  const executeCheckout = async (customerPhone = '') => {
+  const executeCheckout = async (customerPhone = '', paymentStatus = 'PAID') => {
     try {
       // Calculate totals for invoice record
       const isServiceCharge = (i) => i.name === 'Service Charges' || i.item_name === 'Service Charges';
@@ -817,6 +823,20 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
 
       const invoiceId = activeOrderId || String(Date.now()).slice(-6);
 
+      const response = await fetch(`${API_BASE}/orders/${activeOrderId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'completed', checkout: true, payment_status: paymentStatus })
+      });
+
+      let serverInvoiceNum = activeOrderInvoiceNumber || `INV-${invoiceId}`;
+      if (response.ok) {
+        const resData = await response.json();
+        if (resData.invoice_number) {
+          serverInvoiceNum = resData.invoice_number;
+        }
+      }
+
       const newInvoice = {
         orderId: invoiceId,
         customerPhone: customerPhone.trim() || 'N/A',
@@ -826,6 +846,8 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
         tax: taxAmt,
         serviceCharges: applyServiceCharges ? Number(serviceCharges || 0) : 0,
         total: tot,
+        paymentStatus: paymentStatus,
+        invoiceNumber: serverInvoiceNum,
         date: new Date().toISOString()
       };
 
@@ -835,11 +857,26 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
       await setOfflineItem('zaiqa_mahal_completed_invoices', updatedInvoices);
       setCompletedInvoices(updatedInvoices);
 
-      const response = await fetch(`${API_BASE}/orders/${activeOrderId}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'completed', checkout: true })
-      });
+      // Auto-trigger printing of invoice upon checkout
+      const printDataObj = {
+        table: selectedTable,
+        items: cartItems,
+        subtotal: sub,
+        tax: taxAmt,
+        total: tot,
+        serviceCharges: applyServiceCharges ? Number(serviceCharges || 0) : 0,
+        orderId: activeOrderId,
+        invoiceNumber: serverInvoiceNum,
+        paymentStatus: paymentStatus,
+        date: new Date().toISOString(),
+      };
+      setPrintData(printDataObj);
+      setTimeout(() => {
+        window.print();
+        setTimeout(() => {
+          setPrintData(null);
+        }, 1200);
+      }, 300);
 
       if (response.ok) {
         // Clear local table state
@@ -850,6 +887,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
         setSelectedTable(null);
         setCartItems([]);
         setActiveOrderId(null);
+        setActiveOrderPaymentStatus(null);
         setView('floor');
         handleTableClick(selectedTable); // Refresh
         setIsCheckoutModalOpen(false);
@@ -861,6 +899,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
         setSelectedTable(null);
         setCartItems([]);
         setActiveOrderId(null);
+        setActiveOrderPaymentStatus(null);
         setView('floor');
         setIsCheckoutModalOpen(false);
         showToast('Checkout completed successfully (Local Registry).', 'success');
@@ -874,6 +913,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
       setSelectedTable(null);
       setCartItems([]);
       setActiveOrderId(null);
+      setActiveOrderPaymentStatus(null);
       setView('floor');
       setIsCheckoutModalOpen(false);
       showToast('Checkout completed successfully (Local Registry).', 'success');
@@ -2060,7 +2100,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
               )}
 
               {/* Special Instructions / Remarks */}
-              <div>
+              <div className="mb-3">
                 <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest block mb-1">Remarks / Special Instructions</label>
                 <div className="flex items-start bg-gray-50 border border-gray-200 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/10 rounded-xl px-3 py-2.5 transition-all">
                   <Edit2 size={14} className="text-gray-400 mr-2 mt-0.5 shrink-0" />
@@ -2077,6 +2117,60 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
                     placeholder="E.g. No onions, extra ketchup..."
                     className="w-full bg-transparent border-none outline-none text-xs font-bold text-gray-800 placeholder-gray-400 resize-none"
                   />
+                </div>
+              </div>
+
+              {/* Bill / Payment Status Selector */}
+              <div>
+                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest block mb-1">Bill / Payment Status (Stamp)</label>
+                <div className="flex gap-2">
+                  <select
+                    value={['PAID', 'PENDING', 'CASH ON DELIVERY', 'ONLINE PAID', 'IN QUEUE'].includes(activeOrderPaymentStatus) ? activeOrderPaymentStatus : (activeOrderPaymentStatus ? 'CUSTOM' : 'PENDING')}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === 'CUSTOM') {
+                        setActiveOrderPaymentStatus(customPaymentStatus || 'CUSTOM');
+                      } else {
+                        setActiveOrderPaymentStatus(val);
+                        if (activeOrderId) {
+                          fetch(`${API_BASE}/orders/${activeOrderId}/status`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ payment_status: val })
+                          }).catch(err => console.error("Failed to sync payment status", err));
+                        }
+                      }
+                    }}
+                    className="flex-1 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl font-bold text-[11px] text-gray-700 outline-none focus:border-orange-500 transition-all"
+                  >
+                    <option value="PAID">💵 PAID</option>
+                    <option value="PENDING">⏳ PENDING</option>
+                    <option value="CASH ON DELIVERY">🚚 CASH ON DELIVERY</option>
+                    <option value="ONLINE PAID">📱 ONLINE PAID</option>
+                    <option value="IN QUEUE">🔄 IN QUEUE</option>
+                    <option value="CUSTOM">✍️ CUSTOM STAMP</option>
+                  </select>
+                  
+                  {(!['PAID', 'PENDING', 'CASH ON DELIVERY', 'ONLINE PAID', 'IN QUEUE'].includes(activeOrderPaymentStatus) || activeOrderPaymentStatus === 'CUSTOM') && (
+                    <input
+                      type="text"
+                      placeholder="Custom stamp text..."
+                      value={customPaymentStatus}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setCustomPaymentStatus(val);
+                        setActiveOrderPaymentStatus(val);
+                        if (activeOrderId) {
+                          fetch(`${API_BASE}/orders/${activeOrderId}/status`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ payment_status: val })
+                          }).catch(err => console.error("Failed to sync payment status", err));
+                        }
+                      }}
+                      className="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl font-bold text-xs text-gray-700 outline-none focus:border-orange-500 transition-all"
+                    />
+                  )}
                 </div>
               </div>
             </div>
@@ -2230,7 +2324,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
                   {/* Immediate Checkout */}
                   {((!isDelivery && activeOrderId) || isDelivery) && (
                     <button
-                      onClick={() => isDelivery ? handleDeliveryCheckout(selectedDelivery.phone) : executeCheckout(orderCustomerPhone)}
+                      onClick={() => isDelivery ? handleDeliveryCheckout(selectedDelivery.phone) : handleCheckout()}
                       className="flex-1 py-3.5 bg-emerald-500 hover:bg-emerald-600 text-white font-black rounded-xl transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider shadow-lg shadow-emerald-500/20"
                     >
                       <CheckCircle size={15} /> Checkout Table

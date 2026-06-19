@@ -197,6 +197,8 @@ const initDb = () => {
       db.run(`ALTER TABLE orders ADD COLUMN deleted_at DATETIME DEFAULT NULL`, (err) => {});
       db.run(`ALTER TABLE orders ADD COLUMN created_by TEXT`, (err) => {});
       db.run(`ALTER TABLE orders ADD COLUMN delivered_by TEXT`, (err) => {});
+      db.run(`ALTER TABLE orders ADD COLUMN invoice_number TEXT`, (err) => {});
+      db.run(`ALTER TABLE orders ADD COLUMN payment_status TEXT`, (err) => {});
     });
 
     // Order Items (KOT)
@@ -209,8 +211,10 @@ const initDb = () => {
       quantity INTEGER NOT NULL,
       notes TEXT,
       status TEXT DEFAULT 'preparing',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE
     )`);
+    db.run(`ALTER TABLE order_items ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP`, (err) => {});
     // Stock Inventory Tables
     db.run(`CREATE TABLE IF NOT EXISTS stock_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

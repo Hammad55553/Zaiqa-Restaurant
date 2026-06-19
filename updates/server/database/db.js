@@ -156,6 +156,11 @@ const initDb = () => {
       // Add columns if they don't exist (for existing DBs)
       db.run(`ALTER TABLE orders ADD COLUMN admin_edit_remark TEXT`, (err) => {});
       db.run(`ALTER TABLE orders ADD COLUMN has_new_updates BOOLEAN DEFAULT 0`, (err) => {});
+      db.run(`ALTER TABLE orders ADD COLUMN deleted_at DATETIME DEFAULT NULL`, (err) => {});
+      db.run(`ALTER TABLE orders ADD COLUMN created_by TEXT`, (err) => {});
+      db.run(`ALTER TABLE orders ADD COLUMN delivered_by TEXT`, (err) => {});
+      db.run(`ALTER TABLE orders ADD COLUMN invoice_number TEXT`, (err) => {});
+      db.run(`ALTER TABLE orders ADD COLUMN payment_status TEXT`, (err) => {});
     });
 
     // Order Items (KOT)

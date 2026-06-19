@@ -19,8 +19,16 @@ const ReceiptSlip = ({ printData }) => {
     transactionId,
     remarks,
     riderName,
-    serviceCharges
+    serviceCharges,
+    invoiceNumber,
+    invoice_number,
+    paymentStatus,
+    payment_status
   } = printData;
+
+  const currentPaymentStatus = paymentStatus || payment_status || 'PENDING';
+
+  const invNum = invoiceNumber || invoice_number || (orderId ? `INV-${orderId}` : null);
 
   const displayItems = (items || []).filter(item => item.name !== 'Service Charges' && item.item_name !== 'Service Charges');
 
@@ -45,6 +53,7 @@ const ReceiptSlip = ({ printData }) => {
     lineHeight: '1.4',
     padding: '4mm 1.5mm',
     boxSizing: 'border-box',
+    position: 'relative',
   };
 
   const center = { textAlign: 'center' };
@@ -54,6 +63,38 @@ const ReceiptSlip = ({ printData }) => {
 
   return (
     <div style={wrap}>
+
+      {/* Ink Stamp / Mohr */}
+      {currentPaymentStatus && (
+        <div style={{
+          position: 'absolute',
+          top: '32mm',
+          right: '2mm',
+          border: `3px double ${
+            currentPaymentStatus.toUpperCase() === 'PAID' ? '#16a34a' :
+            currentPaymentStatus.toUpperCase() === 'ONLINE PAID' ? '#2563eb' :
+            currentPaymentStatus.toUpperCase() === 'PENDING' ? '#dc2626' : '#d97706'
+          }`,
+          color: `${
+            currentPaymentStatus.toUpperCase() === 'PAID' ? '#16a34a' :
+            currentPaymentStatus.toUpperCase() === 'ONLINE PAID' ? '#2563eb' :
+            currentPaymentStatus.toUpperCase() === 'PENDING' ? '#dc2626' : '#d97706'
+          }`,
+          padding: '1mm 2mm',
+          fontSize: '11px',
+          fontWeight: '950',
+          textTransform: 'uppercase',
+          letterSpacing: '1px',
+          transform: 'rotate(-15deg)',
+          borderRadius: '4px',
+          opacity: 0.85,
+          fontFamily: 'Impact, sans-serif',
+          zIndex: 10,
+          pointerEvents: 'none',
+        }}>
+          {currentPaymentStatus}
+        </div>
+      )}
 
       {/* LOGO */}
       <div style={{ ...center, marginBottom: '3mm' }}>
@@ -88,6 +129,12 @@ const ReceiptSlip = ({ printData }) => {
           <span style={{ fontWeight: '500', textTransform: 'uppercase', fontSize: '11px' }}>Order No:</span>
           <span style={{ fontWeight: '950', fontSize: '14px' }}>#{orderId || 'PENDING'}</span>
         </div>
+        {invNum && (
+          <div style={row}>
+            <span style={{ fontWeight: '500', textTransform: 'uppercase', fontSize: '11px' }}>Invoice No:</span>
+            <span style={{ fontWeight: '950', fontSize: '13px' }}>{invNum}</span>
+          </div>
+        )}
         {table && (typeof table === 'string' ? table !== 'Delivery' : table.area !== 'Delivery') && (
           <div style={row}>
             <span style={{ fontWeight: '500', textTransform: 'uppercase', fontSize: '11px' }}>Table:</span>
@@ -118,10 +165,6 @@ const ReceiptSlip = ({ printData }) => {
             } catch (e) {}
             return 'Staff';
           })()}</span>
-        </div>
-        <div style={row}>
-          <span style={{ fontWeight: '500', textTransform: 'uppercase', fontSize: '11px' }}>Terminal:</span>
-          <span style={{ fontWeight: '800' }}>Main POS</span>
         </div>
       </div>
 
