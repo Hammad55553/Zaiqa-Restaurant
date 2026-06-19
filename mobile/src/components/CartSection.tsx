@@ -253,8 +253,19 @@ export default function CartSection({
               </View>
             )}
 
-            {/* PENDING order — direct cancel for all */}
-            {activeOrder.status === 'pending' && onCancelOrder && !cancelRequestStatus && (
+            {/* PENDING order — waiter must request cancel, cashier/admin direct cancel */}
+            {activeOrder.status === 'pending' && role === 'waiter' && onRequestCancel && !cancelRequestStatus && (
+              <TouchableOpacity
+                style={{ height: 48, borderRadius: 12, backgroundColor: '#f59e0b', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
+                onPress={onRequestCancel}
+                disabled={placingOrder}
+                activeOpacity={0.8}
+              >
+                <Ban size={12} color="#ffffff" style={{ marginRight: 6 }} />
+                <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 12, letterSpacing: 0.5 }}>REQUEST CANCELLATION</Text>
+              </TouchableOpacity>
+            )}
+            {activeOrder.status === 'pending' && (role === 'cashier' || role === 'admin') && onCancelOrder && !cancelRequestStatus && (
               <TouchableOpacity
                 style={{ height: 48, borderRadius: 12, backgroundColor: '#ef4444', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
                 onPress={onCancelOrder}
@@ -266,8 +277,8 @@ export default function CartSection({
               </TouchableOpacity>
             )}
 
-            {/* PREPARING order — waiter can only request cancel */}
-            {activeOrder.status === 'preparing' && role === 'waiter' && onRequestCancel && !cancelRequestStatus && (
+            {/* PREPARING order — waiter/cashier can only request cancel, admin can cancel directly */}
+            {activeOrder.status === 'preparing' && role !== 'admin' && onRequestCancel && !cancelRequestStatus && (
               <TouchableOpacity
                 style={{ height: 48, borderRadius: 12, backgroundColor: '#f59e0b', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
                 onPress={onRequestCancel}
@@ -278,9 +289,7 @@ export default function CartSection({
                 <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 12, letterSpacing: 0.5 }}>REQUEST CANCELLATION</Text>
               </TouchableOpacity>
             )}
-
-            {/* PREPARING order — cashier/admin can cancel directly */}
-            {activeOrder.status === 'preparing' && (role === 'cashier' || role === 'admin') && onCancelOrder && (
+            {activeOrder.status === 'preparing' && role === 'admin' && onCancelOrder && (
               <TouchableOpacity
                 style={{ height: 48, borderRadius: 12, backgroundColor: '#ef4444', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
                 onPress={onCancelOrder}

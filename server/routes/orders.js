@@ -664,12 +664,13 @@ router.patch('/cancel-requests/:reqId/approve', (req, res) => {
     db.get(`SELECT * FROM orders WHERE id = ?`, [cancelReq.order_id], (err2, order) => {
       if (err2 || !order) return res.status(404).json({ error: 'Order not found' });
 
+      const isPreparing = order.status === 'preparing';
       const isReady = order.status === 'ready';
       const isCompleted = order.status === 'completed';
 
-      // Only admin can cancel ready or completed orders
-      if ((isReady || isCompleted) && resolved_role !== 'admin') {
-        return res.status(403).json({ error: 'Only admin can approve cancellation of ready or completed orders' });
+      // Only admin can cancel preparing, ready or completed orders
+      if ((isPreparing || isReady || isCompleted) && resolved_role !== 'admin') {
+        return res.status(403).json({ error: 'Only admin can approve cancellation of preparing, ready or completed orders' });
       }
 
       // 24-hour restriction for completed orders

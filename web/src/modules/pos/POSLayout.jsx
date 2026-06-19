@@ -2214,8 +2214,8 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
                         <Ban size={14} /> Cancel Order #{activeOrderId}
                       </button>
                     )}
-                    {activeOrderStatus === 'preparing' && (currentUser?.role === 'cashier' || currentUser?.role === 'admin') && (
-                      // PREPARING — cashier/admin can cancel directly
+                    {activeOrderStatus === 'preparing' && currentUser?.role === 'admin' && (
+                      // PREPARING — only admin can cancel directly
                       <button
                         onClick={() => {
                           if (!window.confirm(`Cancel Order #${activeOrderId}? Kitchen is preparing — stock will be refunded.`)) return;
@@ -2234,6 +2234,12 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
                       >
                         <Ban size={14} /> Cancel Preparing Order #{activeOrderId}
                       </button>
+                    )}
+                    {activeOrderStatus === 'preparing' && currentUser?.role === 'cashier' && (
+                      <div className="w-full py-3 bg-zinc-50 border border-zinc-200 text-zinc-500 rounded-xl flex items-center justify-center gap-2 text-xs font-bold">
+                        <AlertTriangle size={13} className="text-amber-500" />
+                        Order preparing — Contact Admin to cancel
+                      </div>
                     )}
                     {activeOrderStatus === 'ready' && currentUser?.role === 'admin' && (
                       // READY — only admin can cancel
