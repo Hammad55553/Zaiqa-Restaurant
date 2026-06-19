@@ -2734,50 +2734,29 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
               <form onSubmit={async (e) => {
                 e.preventDefault();
                 if (!orderCustomerName.trim()) return showToast("Customer Name is required.", "error");
-                if (!orderCustomerPhone.trim()) return showToast("Phone Number is required.", "error");
-
-                // 1. Save to customers table in SQLite
-                const customerData = {
-                  id: `CUST-${Date.now()}`,
-                  name: orderCustomerName.trim(),
-                  phone: orderCustomerPhone.trim(),
-                  email: orderCustomerEmail.trim() || '',
-                  address: orderCustomerAddress.trim() || '',
-                  type: 'Client',
-                  balance: 0
-                };
 
                 try {
-                  // Check if customer already exists in DB
-                  const isExisting = allDBCustomers.some(c => c.phone === orderCustomerPhone.trim());
-                  if (!isExisting) {
-                    const dbRes = await fetch(`${API_BASE}/customers`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify(customerData)
-                    });
-                    if (!dbRes.ok) {
-                      console.error("Failed to register customer in central SQLite registry");
-                    }
-                  }
-
-                  // 1.5. Save/register customer to local Home Delivery Directory as well
-                  const deliveryCustomers = await getOfflineItem('zaiqa_mahal_delivery_customers', []);
-                  const existIdx = deliveryCustomers.findIndex(c => c.phone === orderCustomerPhone.trim());
-                  if (existIdx >= 0) {
-                    deliveryCustomers[existIdx].name = orderCustomerName.trim();
-                    if (orderCustomerAddress.trim()) {
-                      deliveryCustomers[existIdx].address = orderCustomerAddress.trim();
-                    }
-                  } else {
-                    deliveryCustomers.unshift({
-                      phone: orderCustomerPhone.trim(),
+                  // Only save to central directory if phone number is provided
+                  if (orderCustomerPhone.trim()) {
+                    const customerData = {
+                      id: `CUST-${Date.now()}`,
                       name: orderCustomerName.trim(),
-                      address: orderCustomerAddress.trim() || 'Main Hasilpur',
-                      ordersCount: 0
-                    });
+                      phone: orderCustomerPhone.trim(),
+                      email: orderCustomerEmail.trim() || '',
+                      address: orderCustomerAddress.trim() || '',
+                      type: 'Client',
+                      balance: 0
+                    };
+
+                    const isExisting = allDBCustomers.some(c => c.phone === orderCustomerPhone.trim());
+                    if (!isExisting) {
+                      await fetch(`${API_BASE}/customers`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(customerData)
+                      });
+                    }
                   }
-                  await setOfflineItem('zaiqa_mahal_delivery_customers', deliveryCustomers);
 
                   // 2. If active order exists, PATCH its customer name in SQLite immediately
                   if (activeOrderId) {
@@ -2789,7 +2768,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
                     if (orderRes.ok) {
                       showToast("Customer details synced & saved to order!", "success");
                     } else {
-                      showToast("Customer registered in directory successfully!", "success");
+                      showToast("Customer details registered successfully!", "success");
                     }
                   } else {
                     showToast("Customer registered! Name will be saved when you place the order.", "success");
@@ -2804,12 +2783,11 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
                 
                 {/* Phone Input with Auto-Lookup suggestion dropdown */}
                 <div className="relative phone-lookup-container">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1.5">Phone Number *</label>
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1.5">Phone Number (Optional)</label>
                   <div className="flex items-center bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 transition-all focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20">
                     <Phone size={14} className="text-gray-400 mr-2.5 shrink-0" />
                     <input 
                       type="text" 
-                      required
                       value={orderCustomerPhone}
                       onChange={(e) => {
                         const val = e.target.value;
