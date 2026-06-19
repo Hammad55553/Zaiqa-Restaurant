@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Dimensions, Alert, Modal, TextInput } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Clipboard, ArrowLeft } from 'lucide-react-native';
+import { Clipboard, ArrowLeft, AlertTriangle } from 'lucide-react-native';
 import MenuSection from '../components/MenuSection';
 import CartSection from '../components/CartSection';
 import { API_BASE, GST_RATE } from '../config';
@@ -99,6 +99,11 @@ export default function OrderingScreen({
   const [cancelReason, setCancelReason] = useState('');
   const cancelReasonRef = useRef('');
 
+  // Custom warning modal states
+  const [warningModalVisible, setWarningModalVisible] = useState(false);
+  const [warningModalTitle, setWarningModalTitle] = useState('');
+  const [warningModalMessage, setWarningModalMessage] = useState('');
+
   // User role (for cancel permission gating)
   const [userRole, setUserRole] = useState<string>('waiter');
   // Cancel request status for the active order
@@ -108,7 +113,7 @@ export default function OrderingScreen({
   useEffect(() => {
     AsyncStorage.getItem('pos_current_user').then(raw => {
       if (raw) {
-        try { setUserRole(JSON.parse(raw).role || 'waiter'); } catch {}
+        try { setUserRole(JSON.parse(raw).role || 'waiter'); } catch { }
       }
     });
   }, []);
@@ -295,7 +300,7 @@ export default function OrderingScreen({
             }
           }
         }
-      } catch {}
+      } catch { }
     }, 10000);
     return () => clearInterval(interval);
   }, [activeOrder?.id, cancelRequestStatus]);
@@ -315,7 +320,7 @@ export default function OrderingScreen({
               const myReq = crs.find((r: any) => r.order_id === data.id);
               setCancelRequestStatus(myReq ? myReq.status : null);
             }
-          } catch {}
+          } catch { }
           if (data.items && data.items.length > 0) {
             const mappedItems = data.items.map((item: any) => ({
               id: item.item_id,
@@ -363,7 +368,7 @@ export default function OrderingScreen({
         const items = await itemsRes.json();
         const cats = await catsRes.json();
         const processedCats = ['All', ...cats.map((c: any) => c.name)];
-        
+
         setMenuItems(items);
         setCategories(processedCats);
 
@@ -419,10 +424,9 @@ export default function OrderingScreen({
     const targetItem = cartItems.find(i => i.id === id);
     if (targetItem && targetItem.sent && userRole === 'waiter' && delta < 0) {
       if (targetItem.qty <= (targetItem.originalQty || 0)) {
-        Alert.alert(
-          'Action Restricted',
-          'Already placed items cannot be reduced or removed by waiters. Please ask Cashier or Admin to modify.'
-        );
+        setWarningModalTitle('Action Restricted');
+        setWarningModalMessage('Already placed items cannot be reduced or removed by waiters. Please ask Cashier or Admin to modify.');
+        setWarningModalVisible(true);
         return;
       }
     }
@@ -516,7 +520,7 @@ export default function OrderingScreen({
           try {
             const errData = await res.json();
             errorMsg = errData.error || errorMsg;
-          } catch (jsonErr) {}
+          } catch (jsonErr) { }
           toast.error('Update Failed', errorMsg);
         }
       } else {
@@ -548,7 +552,7 @@ export default function OrderingScreen({
           try {
             const errData = await res.json();
             errorMsg = errData.error || errorMsg;
-          } catch (jsonErr) {}
+          } catch (jsonErr) { }
           toast.error('Order Failed', errorMsg);
         }
       }
@@ -562,7 +566,7 @@ export default function OrderingScreen({
         subtotal,
         tax,
         total_amount,
-        remarks: activeOrder 
+        remarks: activeOrder
           ? `[EDIT/SYNC ORDER #${activeOrder.id}] [Waiter: ${name || username}] ${remarks || ''}`
           : `[Waiter: ${name || username}] ${remarks || ''}`,
         timestamp: new Date().toLocaleTimeString(),
@@ -602,8 +606,8 @@ export default function OrderingScreen({
           </Text>
         </View>
         {selectedTable.status !== 'available' && (
-          <TouchableOpacity 
-            style={styles.releaseTableBtn} 
+          <TouchableOpacity
+            style={styles.releaseTableBtn}
             onPress={handleReleaseTable}
             activeOpacity={0.7}
           >
@@ -615,14 +619,14 @@ export default function OrderingScreen({
       {/* Segmented Sub Tab selector - only visible on mobile phones */}
       {!isTablet && (
         <View style={styles.subTabBar}>
-          <TouchableOpacity 
-            style={[styles.subTabBtn, activeSubTab === 'menu' && styles.subTabBtnActive]} 
+          <TouchableOpacity
+            style={[styles.subTabBtn, activeSubTab === 'menu' && styles.subTabBtnActive]}
             onPress={() => setActiveSubTab('menu')}
           >
             <Text style={[styles.subTabLabel, activeSubTab === 'menu' && styles.subTabLabelActive]}>MENU CATALOG</Text>
           </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.subTabBtn, activeSubTab === 'cart' && styles.subTabBtnActive]} 
+          <TouchableOpacity
+            style={[styles.subTabBtn, activeSubTab === 'cart' && styles.subTabBtnActive]}
             onPress={() => setActiveSubTab('cart')}
           >
             <Text style={[styles.subTabLabel, activeSubTab === 'cart' && styles.subTabLabelActive]}>
@@ -775,7 +779,9 @@ export default function OrderingScreen({
                 style={styles.modalBtnConfirm}
                 onPress={() => {
                   if (confirmModalTitle === 'Request Cancellation?' && !cancelReasonRef.current.trim()) {
-                    Alert.alert('Required', 'Please write a reason/remarks to submit the cancellation request.');
+                    setWarningModalTitle('Required');
+                    setWarningModalMessage('Please write a reason/remarks to submit the cancellation request.');
+                    setWarningModalVisible(true);
                     return;
                   }
                   setConfirmModalVisible(false);
@@ -785,6 +791,38 @@ export default function OrderingScreen({
                 <Text style={styles.modalBtnText}>Confirm</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={warningModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setWarningModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { borderColor: '#f59e0b', borderWidth: 2 }]}>
+            <View style={{ alignItems: 'center', marginBottom: 16 }}>
+              <View style={{
+                backgroundColor: '#2e1f05',
+                padding: 12,
+                borderRadius: 50,
+                borderWidth: 1,
+                borderColor: '#f59e0b',
+                marginBottom: 8
+              }}>
+                <AlertTriangle size={32} color="#f59e0b" />
+              </View>
+              <Text style={[styles.modalTitle, { color: '#f59e0b' }]}>{warningModalTitle}</Text>
+            </View>
+            <Text style={[styles.modalSub, { color: '#e2e8f0', fontSize: 13, lineHeight: 20 }]}>{warningModalMessage}</Text>
+            <TouchableOpacity
+              style={[styles.modalBtnConfirm, { backgroundColor: '#ea580c', width: '100%', marginTop: 8 }]}
+              onPress={() => setWarningModalVisible(false)}
+            >
+              <Text style={styles.modalBtnText}>Understood</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
