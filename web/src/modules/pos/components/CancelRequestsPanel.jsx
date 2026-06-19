@@ -202,8 +202,8 @@ const CancelRequestsPanel = ({ onClose, currentUser }) => {
                           <span className={`text-xs font-bold ${osl.color}`}>{osl.label}</span>
                           {needsAdmin && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-black">Admin Only</span>}
                         </div>
-                        <div className="flex items-center gap-3 mt-1">
-                          <span className="text-xs text-zinc-500 flex items-center gap-1"><User size={10}/> {req.requested_by} ({req.requested_role})</span>
+                         <div className="flex items-center gap-3 mt-1">
+                          <span className="text-xs text-zinc-500 flex items-center gap-1"><User size={10}/> {req.requester_name || req.requested_by} ({req.requested_role})</span>
                           <span className="text-xs text-zinc-400 flex items-center gap-1"><Clock size={10}/> {timeAgo}</span>
                         </div>
                         {req.table_number && (
@@ -212,9 +212,9 @@ const CancelRequestsPanel = ({ onClose, currentUser }) => {
                         {req.reason && (
                           <p className="text-xs italic text-zinc-500 mt-1">"{req.reason}"</p>
                         )}
-                        {req.status !== 'pending' && req.resolved_by && (
+                        {req.status !== 'pending' && (req.resolved_by || req.resolver_name) && (
                           <p className="text-xs text-zinc-400 mt-1">
-                            {req.status === 'approved' ? '✅' : '❌'} by {req.resolved_by}
+                            {req.status === 'approved' ? '✅' : '❌'} by {req.resolver_name || req.resolved_by}
                             {req.reject_reason ? ` — "${req.reject_reason}"` : ''}
                           </p>
                         )}

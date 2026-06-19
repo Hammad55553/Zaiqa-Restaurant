@@ -620,14 +620,18 @@ router.post('/:id/cancel-request', (req, res) => {
 router.get('/cancel-requests', (req, res) => {
   const { status } = req.query; // 'pending', 'approved', 'rejected', or omit for all
   const sql = status
-    ? `SELECT cr.*, o.table_number, o.area, o.status as order_status, o.total_amount
+    ? `SELECT cr.*, o.table_number, o.area, o.status as order_status, o.total_amount, u.name as requester_name, ru.name as resolver_name
        FROM cancel_requests cr
        JOIN orders o ON cr.order_id = o.id
+       LEFT JOIN users u ON cr.requested_by = u.username
+       LEFT JOIN users ru ON cr.resolved_by = ru.username
        WHERE cr.status = ?
        ORDER BY cr.created_at DESC`
-    : `SELECT cr.*, o.table_number, o.area, o.status as order_status, o.total_amount
+    : `SELECT cr.*, o.table_number, o.area, o.status as order_status, o.total_amount, u.name as requester_name, ru.name as resolver_name
        FROM cancel_requests cr
        JOIN orders o ON cr.order_id = o.id
+       LEFT JOIN users u ON cr.requested_by = u.username
+       LEFT JOIN users ru ON cr.resolved_by = ru.username
        ORDER BY cr.created_at DESC`;
   const params = status ? [status] : [];
   db.all(sql, params, (err, rows) => {
