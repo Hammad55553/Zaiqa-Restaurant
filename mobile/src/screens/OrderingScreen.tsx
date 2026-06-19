@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Dimensions, Alert, Modal, TextInput } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -95,6 +95,8 @@ export default function OrderingScreen({
   const [confirmModalTitle, setConfirmModalTitle] = useState('');
   const [confirmModalSub, setConfirmModalSub] = useState('');
   const [confirmModalAction, setConfirmModalAction] = useState<any>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const cancelReasonRef = useRef('');
 
   // User role (for cancel permission gating)
   const [userRole, setUserRole] = useState<string>('waiter');
@@ -225,9 +227,11 @@ export default function OrderingScreen({
   const handleRequestCancel = () => {
     if (!activeOrder) return;
     const targetRole = activeOrder.status === 'ready' ? 'Admin' : 'Cashier';
+    setCancelReason('');
+    cancelReasonRef.current = '';
     setConfirmModalTitle('Request Cancellation?');
     setConfirmModalSub(
-      `Send a cancellation request for Order #${activeOrder.id} to the ${targetRole}? The kitchen will continue until the ${targetRole} approves.`
+      `Enter reason / remarks to request cancellation for Order #${activeOrder.id} to ${targetRole}:`
     );
     setConfirmModalAction(() => async () => {
       try {
@@ -238,7 +242,7 @@ export default function OrderingScreen({
           body: JSON.stringify({
             requested_by: username,
             requested_role: userRole,
-            reason: `Customer requested cancel (via ${username})`
+            reason: cancelReasonRef.current.trim()
           })
         });
         const data = await res.json();
@@ -719,6 +723,32 @@ export default function OrderingScreen({
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{confirmModalTitle}</Text>
             <Text style={styles.modalSub}>{confirmModalSub}</Text>
+            {confirmModalTitle === 'Request Cancellation?' && (
+              <TextInput
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  borderRadius: 10,
+                  padding: 12,
+                  width: '100%',
+                  marginTop: 12,
+                  marginBottom: 6,
+                  color: '#000000',
+                  fontWeight: '600',
+                  backgroundColor: '#f8fafc',
+                  textAlignVertical: 'top'
+                }}
+                multiline={true}
+                numberOfLines={3}
+                placeholder="Write reason here (mandatory)..."
+                placeholderTextColor="#94a3b8"
+                value={cancelReason}
+                onChangeText={(text) => {
+                  setCancelReason(text);
+                  cancelReasonRef.current = text;
+                }}
+              />
+            )}
             <View style={styles.modalButtons}>
               <TouchableOpacity
                 style={styles.modalBtnCancel}
@@ -731,6 +761,10 @@ export default function OrderingScreen({
               <TouchableOpacity
                 style={styles.modalBtnConfirm}
                 onPress={() => {
+                  if (confirmModalTitle === 'Request Cancellation?' && !cancelReasonRef.current.trim()) {
+                    Alert.alert('Required', 'Please write a reason/remarks to submit the cancellation request.');
+                    return;
+                  }
                   setConfirmModalVisible(false);
                   if (confirmModalAction) confirmModalAction();
                 }}

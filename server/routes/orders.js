@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../database/db');
-const { queueOrderChange, queueTableChange } = require('../services/syncHelper');
+const { queueOrderChange, queueTableChange, queueCancelRequestChange } = require('../services/syncHelper');
 
 // @route   POST /api/orders
 // @desc    Create a new order (from POS)
@@ -599,15 +599,19 @@ router.post('/:id/cancel-request', (req, res) => {
     if (['cancelled', 'completed'].includes(order.status)) {
       return res.status(400).json({ error: `Cannot request cancel for a ${order.status} order` });
     }
+    if (!reason || reason.trim() === '') {
+      return res.status(400).json({ error: 'Remarks (Reason) is required to request cancellation' });
+    }
     // Check no duplicate pending request
     db.get(`SELECT id FROM cancel_requests WHERE order_id = ? AND status = 'pending'`, [id], (err2, existing) => {
       if (existing) return res.status(409).json({ error: 'A cancel request is already pending for this order' });
       db.run(
         `INSERT INTO cancel_requests (order_id, requested_by, requested_role, reason) VALUES (?, ?, ?, ?)`,
-        [id, requested_by, requested_role, reason || 'Customer requested cancellation'],
+        [id, requested_by, requested_role, reason],
         function(err3) {
           if (err3) return res.status(500).json({ error: 'Failed to create cancel request' });
           queueOrderChange(id, 'update');
+          queueCancelRequestChange(this.lastID, 'insert');
           res.json({ success: true, requestId: this.lastID, message: 'Cancel request submitted successfully' });
         }
       );
@@ -656,9 +660,12 @@ router.get('/cancel-requests', (req, res) => {
 // @desc    Cashier or Admin approves a cancel request — triggers actual cancellation
 router.patch('/cancel-requests/:reqId/approve', (req, res) => {
   const { reqId } = req.params;
-  const { resolved_by, resolved_role, refund_raw, log_waste } = req.body;
+  const { resolved_by, resolved_role, refund_raw, log_waste, resolve_remark } = req.body;
   if (!resolved_by || !resolved_role) {
     return res.status(400).json({ error: 'resolved_by and resolved_role are required' });
+  }
+  if (!resolve_remark || resolve_remark.trim() === '') {
+    return res.status(400).json({ error: 'Remarks (Reason) is required to approve cancellation' });
   }
   db.get(`SELECT * FROM cancel_requests WHERE id = ?`, [reqId], (err, cancelReq) => {
     if (err || !cancelReq) return res.status(404).json({ error: 'Cancel request not found' });
@@ -688,8 +695,8 @@ router.patch('/cancel-requests/:reqId/approve', (req, res) => {
 
       // Mark request approved
       db.run(
-        `UPDATE cancel_requests SET status = 'approved', resolved_by = ?, resolved_at = CURRENT_TIMESTAMP WHERE id = ?`,
-        [resolved_by, reqId],
+        `UPDATE cancel_requests SET status = 'approved', resolved_by = ?, resolved_role = ?, resolve_remark = ?, resolved_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        [resolved_by, resolved_role, resolve_remark, reqId],
         (err3) => {
           if (err3) return res.status(500).json({ error: 'Failed to approve request' });
 
@@ -740,6 +747,7 @@ router.patch('/cancel-requests/:reqId/approve', (req, res) => {
               }
 
               queueOrderChange(cancelReq.order_id, 'update');
+              queueCancelRequestChange(reqId, 'update');
               res.json({ success: true, message: 'Cancel request approved and order cancelled' });
             });
           });
@@ -755,15 +763,19 @@ router.patch('/cancel-requests/:reqId/reject', (req, res) => {
   const { reqId } = req.params;
   const { resolved_by, reject_reason } = req.body;
   if (!resolved_by) return res.status(400).json({ error: 'resolved_by is required' });
+  if (!reject_reason || reject_reason.trim() === '') {
+    return res.status(400).json({ error: 'Remarks (Rejection Reason) is required to reject' });
+  }
   db.get(`SELECT * FROM cancel_requests WHERE id = ?`, [reqId], (err, cancelReq) => {
     if (err || !cancelReq) return res.status(404).json({ error: 'Cancel request not found' });
     if (cancelReq.status !== 'pending') return res.status(400).json({ error: `Request already ${cancelReq.status}` });
     db.run(
       `UPDATE cancel_requests SET status = 'rejected', resolved_by = ?, reject_reason = ?, resolved_at = CURRENT_TIMESTAMP WHERE id = ?`,
-      [resolved_by, reject_reason || 'Rejected by staff', reqId],
+      [resolved_by, reject_reason, reqId],
       (err2) => {
         if (err2) return res.status(500).json({ error: 'Failed to reject request' });
         queueOrderChange(cancelReq.order_id, 'update');
+        queueCancelRequestChange(reqId, 'update');
         res.json({ success: true, message: 'Cancel request rejected' });
       }
     );

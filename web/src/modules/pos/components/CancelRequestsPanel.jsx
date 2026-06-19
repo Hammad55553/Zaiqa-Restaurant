@@ -3,17 +3,17 @@ import { X, AlertTriangle, CheckCircle2, XCircle, Clock, User, ShoppingBag, Refr
 import { API_BASE } from '../../../config';
 
 const STATUS_COLOR = {
-  pending:  { bg: 'bg-amber-50',   text: 'text-amber-700',  border: 'border-amber-200',  dot: 'bg-amber-400' },
-  approved: { bg: 'bg-emerald-50', text: 'text-emerald-700',border: 'border-emerald-200',dot: 'bg-emerald-500' },
-  rejected: { bg: 'bg-red-50',     text: 'text-red-700',    border: 'border-red-200',    dot: 'bg-red-500' },
+  pending: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', dot: 'bg-amber-400' },
+  approved: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500' },
+  rejected: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', dot: 'bg-red-500' },
 };
 
 const ORDER_STATUS_LABEL = {
-  pending:    { label: 'Pending',    color: 'text-slate-500' },
-  preparing:  { label: 'Preparing', color: 'text-amber-600' },
-  ready:      { label: 'Ready',     color: 'text-emerald-600' },
-  cancelled:  { label: 'Cancelled', color: 'text-red-500' },
-  completed:  { label: 'Completed', color: 'text-blue-600' },
+  pending: { label: 'Pending', color: 'text-slate-500' },
+  preparing: { label: 'Preparing', color: 'text-amber-600' },
+  ready: { label: 'Ready', color: 'text-emerald-600' },
+  cancelled: { label: 'Cancelled', color: 'text-red-500' },
+  completed: { label: 'Completed', color: 'text-blue-600' },
 };
 
 const CancelRequestsPanel = ({ onClose, currentUser }) => {
@@ -57,6 +57,14 @@ const CancelRequestsPanel = ({ onClose, currentUser }) => {
       showToast('Only admin can approve cancellation of ready/completed orders', 'error');
       return;
     }
+    const resolve_remark = window.prompt("Enter remarks / reason for approving cancellation (Mandatory):");
+    if (resolve_remark === null) return; // User cancelled
+    if (!resolve_remark.trim()) {
+      showToast('Remarks are required to approve cancellation!', 'error');
+      return;
+    }
+
+
     const wasStarted = ['preparing', 'ready', 'completed'].includes(req.order_status);
     setProcessing(req.id);
     try {
@@ -68,6 +76,7 @@ const CancelRequestsPanel = ({ onClose, currentUser }) => {
           resolved_role: role,
           refund_raw: wasStarted,
           log_waste: wasStarted,
+          resolve_remark: resolve_remark.trim()
         }),
       });
       const data = await res.json();
@@ -120,11 +129,10 @@ const CancelRequestsPanel = ({ onClose, currentUser }) => {
   const tabBtn = (id, label, count) => (
     <button
       onClick={() => setActiveTab(id)}
-      className={`px-4 py-2 text-xs font-black uppercase tracking-wider rounded-lg transition-all flex items-center gap-2 ${
-        activeTab === id
+      className={`px-4 py-2 text-xs font-black uppercase tracking-wider rounded-lg transition-all flex items-center gap-2 ${activeTab === id
           ? 'bg-zinc-900 text-white shadow-lg'
           : 'text-zinc-500 hover:bg-zinc-100'
-      }`}
+        }`}
     >
       {label}
       {count > 0 && (
@@ -202,9 +210,9 @@ const CancelRequestsPanel = ({ onClose, currentUser }) => {
                           <span className={`text-xs font-bold ${osl.color}`}>{osl.label}</span>
                           {needsAdmin && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-black">Admin Only</span>}
                         </div>
-                         <div className="flex items-center gap-3 mt-1">
-                          <span className="text-xs text-zinc-500 flex items-center gap-1"><User size={10}/> {req.requester_name || req.requested_by} ({req.requested_role})</span>
-                          <span className="text-xs text-zinc-400 flex items-center gap-1"><Clock size={10}/> {timeAgo}</span>
+                        <div className="flex items-center gap-3 mt-1">
+                          <span className="text-xs text-zinc-500 flex items-center gap-1"><User size={10} /> {req.requester_name || req.requested_by} ({req.requested_role})</span>
+                          <span className="text-xs text-zinc-400 flex items-center gap-1"><Clock size={10} /> {timeAgo}</span>
                         </div>
                         {req.table_number && (
                           <p className="text-xs text-zinc-600 mt-0.5">Table {req.table_number} · {req.area}</p>
@@ -215,7 +223,8 @@ const CancelRequestsPanel = ({ onClose, currentUser }) => {
                         {req.status !== 'pending' && (req.resolved_by || req.resolver_name) && (
                           <p className="text-xs text-zinc-400 mt-1">
                             {req.status === 'approved' ? '✅' : '❌'} by {req.resolver_name || req.resolved_by}
-                            {req.reject_reason ? ` — "${req.reject_reason}"` : ''}
+                            {req.status === 'approved' && req.resolve_remark ? ` — "${req.resolve_remark}"` : ''}
+                            {req.status === 'rejected' && req.reject_reason ? ` — "${req.reject_reason}"` : ''}
                           </p>
                         )}
                       </div>
@@ -254,7 +263,7 @@ const CancelRequestsPanel = ({ onClose, currentUser }) => {
                       className="mt-2 flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-600 transition-all"
                     >
                       <ShoppingBag size={10} /> {req.items.length} item{req.items.length > 1 ? 's' : ''}
-                      {isExpanded ? <ChevronUp size={10}/> : <ChevronDown size={10}/>}
+                      {isExpanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
                     </button>
                   )}
                 </div>
@@ -310,7 +319,7 @@ const CancelRequestsPanel = ({ onClose, currentUser }) => {
       {/* Toast */}
       {toast && (
         <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[10001] px-5 py-3 rounded-xl shadow-2xl text-sm font-bold text-white flex items-center gap-2 transition-all ${toast.type === 'error' ? 'bg-red-500' : 'bg-emerald-500'}`}>
-          {toast.type === 'error' ? <XCircle size={16}/> : <CheckCircle2 size={16}/>}
+          {toast.type === 'error' ? <XCircle size={16} /> : <CheckCircle2 size={16} />}
           {toast.msg}
         </div>
       )}

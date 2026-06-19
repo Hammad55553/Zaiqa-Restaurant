@@ -377,11 +377,17 @@ const initDb = () => {
         reason TEXT,
         status TEXT DEFAULT 'pending',
         resolved_by TEXT,
+        resolved_role TEXT,
+        resolve_remark TEXT,
         reject_reason TEXT,
         resolved_at DATETIME,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE
       )`);
+      // Add columns dynamically for existing databases
+      db.run("ALTER TABLE cancel_requests ADD COLUMN resolved_role TEXT", () => {});
+      db.run("ALTER TABLE cancel_requests ADD COLUMN resolve_remark TEXT", () => {});
+
       db.run(`CREATE INDEX IF NOT EXISTS idx_cancel_req_order ON cancel_requests(order_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_cancel_req_status ON cancel_requests(status)`);
 
