@@ -126,7 +126,7 @@ const CancelRequestsPanel = ({ onClose, currentUser }) => {
   };
 
   const canApprove = (req) => {
-    if (req.order_status === 'preparing' || req.order_status === 'ready' || req.order_status === 'completed') return role === 'admin';
+    if (req.order_status === 'ready' || req.order_status === 'completed') return role === 'admin';
     return role === 'cashier' || role === 'admin';
   };
 

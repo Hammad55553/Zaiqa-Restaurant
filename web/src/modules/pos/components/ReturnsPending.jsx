@@ -75,7 +75,7 @@ const ReturnsPending = ({ onBack }) => {
   const isAdmin = currentUser.role === 'admin';
   const canApprove = (req) => {
     const role = currentUser.role || 'cashier';
-    if (req.order_status === 'preparing' || req.order_status === 'ready' || req.order_status === 'completed') return role === 'admin';
+    if (req.order_status === 'ready' || req.order_status === 'completed') return role === 'admin';
     return role === 'cashier' || role === 'admin';
   };
 
@@ -476,13 +476,12 @@ const ReturnsPending = ({ onBack }) => {
                       <button
                         onClick={() => {
                           const orderStatus = order.status;
-                          const isPreparing = orderStatus === 'preparing';
                           const isReady = orderStatus === 'ready';
                           const isCompleted = orderStatus === 'completed';
-                          const canCancel = !(isPreparing || isReady || isCompleted) || isAdmin;
+                          const canCancel = !(isReady || isCompleted) || isAdmin;
 
                           if (!canCancel) {
-                            showToast('Access denied. Only Admin can cancel preparing, ready, or completed orders.', 'error');
+                            showToast('Access denied. Only Admin can cancel ready or completed orders.', 'error');
                             return;
                           }
                           setCancelModalOrder(order);
@@ -491,7 +490,7 @@ const ReturnsPending = ({ onBack }) => {
                           setLogWaste(isPreparing || isReady || isCompleted);
                         }}
                         className={`flex-1 py-2.5 rounded-xl font-black text-[11px] uppercase tracking-wider text-center cursor-pointer transition-all active:scale-95 ${
-                          (isAdmin || !(order.status === 'preparing' || order.status === 'ready' || order.status === 'completed')) 
+                          (isAdmin || !(order.status === 'ready' || order.status === 'completed')) 
                             ? 'bg-gradient-to-r from-red-600 to-rose-700 text-white shadow-lg hover:brightness-110' 
                             : 'bg-zinc-800 text-zinc-500 cursor-not-allowed border border-zinc-750'
                         }`}

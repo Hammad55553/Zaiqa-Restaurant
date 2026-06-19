@@ -685,9 +685,9 @@ router.patch('/cancel-requests/:reqId/approve', (req, res) => {
       const isReady = order.status === 'ready';
       const isCompleted = order.status === 'completed';
 
-      // Only admin can cancel preparing, ready or completed orders
-      if ((isPreparing || isReady || isCompleted) && resolved_role !== 'admin') {
-        return res.status(403).json({ error: 'Only admin can approve cancellation of preparing, ready or completed orders' });
+      // Only admin can cancel ready or completed orders
+      if ((isReady || isCompleted) && resolved_role !== 'admin') {
+        return res.status(403).json({ error: 'Only admin can approve cancellation of ready or completed orders' });
       }
 
       // 24-hour restriction for completed orders
