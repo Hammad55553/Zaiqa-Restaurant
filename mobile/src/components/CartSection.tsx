@@ -1,9 +1,10 @@
 import React from 'react';
 import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { Trash2, Minus, Plus, Send, FileText, Receipt, ShoppingBag, Ban } from 'lucide-react-native';
+import { Trash2, Minus, Plus, Send, FileText, Receipt, ShoppingBag, Ban, Square, CheckSquare } from 'lucide-react-native';
 
 interface CartItem {
   id: any;
+  dbId?: number;
   name: string;
   price: number;
   qty: number;
@@ -11,6 +12,8 @@ interface CartItem {
   category_name?: string;
   sent?: boolean;
   originalQty?: number;
+  status?: string;
+  created_at?: string;
 }
 
 interface CartSectionProps {
@@ -28,6 +31,8 @@ interface CartSectionProps {
   onRequestCancel?: () => void;      // request cancel (preparing/ready)
   cancelRequestStatus?: string | null; // 'pending' | 'approved' | 'rejected' | null
   role?: string;                     // 'waiter' | 'cashier' | 'admin'
+  onServeItem?: (dbId: number) => void;
+  onServeAllReady?: () => void;
 }
 
 export default function CartSection({
@@ -44,10 +49,28 @@ export default function CartSection({
   onCancelOrder,
   onRequestCancel,
   cancelRequestStatus,
-  role = 'waiter'
+  role = 'waiter',
+  onServeItem,
+  onServeAllReady
 }: CartSectionProps) {
   const sentItems = cartItems.filter(item => item.sent);
   const newItems = cartItems.filter(item => !item.sent);
+
+  const groupedSentItems = React.useMemo(() => {
+    const groups: Record<string, CartItem[]> = {};
+    sentItems.forEach(item => {
+      const ts = item.created_at || activeOrder?.created_at || 'original';
+      if (!groups[ts]) {
+        groups[ts] = [];
+      }
+      groups[ts].push(item);
+    });
+    return Object.keys(groups).sort().map((ts, idx) => ({
+      round: idx + 1,
+      timestamp: ts,
+      items: groups[ts]
+    }));
+  }, [sentItems, activeOrder?.created_at]);
 
   return (
     <View style={styles.cartDrawer}>
@@ -85,46 +108,107 @@ export default function CartSection({
           </View>
         ) : (
           <View style={{ gap: 14 }}>
-            {sentItems.length > 0 && (
+            {groupedSentItems.length > 0 && (
               <View style={styles.sentContainer}>
-                <Text style={styles.sentHeaderTitle}>SENT ITEMS (COOKING IN KITCHEN)</Text>
-                <View style={{ gap: 8 }}>
-                  {sentItems.map(item => (
-                    <View key={item.id} style={[styles.cartItemRow, { backgroundColor: '#f8fafc', borderColor: '#e2e8f0' }]}>
-                      <View style={{ flex: 1, paddingRight: 8 }}>
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <Text style={[styles.cartItemName, { color: '#334155' }]} numberOfLines={1}>{item.name}</Text>
-                          {role !== 'waiter' && (
-                            <TouchableOpacity 
-                              onPress={() => setCartItems((prev: any) => prev.filter((i: any) => i.id !== item.id))}
-                              activeOpacity={0.7}
-                            >
-                              <Trash2 size={13} color="#ef4444" />
-                            </TouchableOpacity>
-                          )}
-                        </View>
-                        <Text style={styles.cartItemPrice}>Rs. {item.price} x {item.qty}</Text>
-                        <TextInput 
-                          placeholder="Add comments (e.g. extra gravy)..."
-                          placeholderTextColor="#94a3b8"
-                          value={item.notes || ''}
-                          onChangeText={(text) => {
-                            setCartItems((prev: any) => prev.map((i: any) => i.id === item.id ? { ...i, notes: text } : i));
-                          }}
-                          style={styles.itemNotesInput}
-                        />
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <Text style={styles.sentHeaderTitle}>SENT ITEMS (COOKING IN KITCHEN)</Text>
+                  {sentItems.some(i => i.status === 'ready') && onServeAllReady && (
+                    <TouchableOpacity 
+                      onPress={onServeAllReady}
+                      style={{
+                        backgroundColor: '#16a34a',
+                        paddingHorizontal: 8,
+                        paddingVertical: 4,
+                        borderRadius: 6,
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={{ color: '#ffffff', fontSize: 9, fontWeight: '900' }}>SERVE ALL READY</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <View style={{ gap: 10 }}>
+                  {groupedSentItems.map((group) => (
+                    <View key={group.timestamp} style={{ backgroundColor: '#ffffff', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 6 }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, borderBottomWidth: 1, borderBottomColor: '#f1f5f9', paddingBottom: 4 }}>
+                        <Text style={{ fontSize: 9, fontWeight: '900', color: '#ea580c' }}>ROUND {group.round}</Text>
+                        <Text style={{ fontSize: 8, fontWeight: '700', color: '#94a3b8' }}>
+                          {group.timestamp !== 'original' ? new Date(group.timestamp).toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit', hour12: true }) : ''}
+                        </Text>
                       </View>
-                      <View style={styles.rightControlRow}>
-                        <Text style={[styles.itemSubtotal, { color: '#475569' }]}>Rs. {item.price * item.qty}</Text>
-                        <View style={styles.qtyContainer}>
-                          <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQty(item.id, -1)}>
-                            <Minus size={11} color="#64748b" />
-                          </TouchableOpacity>
-                          <Text style={styles.qtyText}>{item.qty}</Text>
-                          <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQty(item.id, 1)}>
-                            <Plus size={11} color="#64748b" />
-                          </TouchableOpacity>
-                        </View>
+                      <View style={{ gap: 8 }}>
+                        {group.items.map(item => {
+                          const isReady = item.status === 'ready';
+                          const isServed = item.status === 'served';
+                          return (
+                            <View key={item.dbId || item.id} style={[styles.cartItemRow, { backgroundColor: '#f8fafc', borderColor: '#e2e8f0', padding: 8, marginVertical: 0 }]}>
+                              <View style={{ flex: 1, paddingRight: 8 }}>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                                    {isServed ? (
+                                      <CheckSquare size={18} color="#94a3b8" />
+                                    ) : isReady && onServeItem ? (
+                                      <TouchableOpacity onPress={() => onServeItem(item.dbId!)}>
+                                        <Square size={18} color="#16a34a" />
+                                      </TouchableOpacity>
+                                    ) : (
+                                      <View style={{ width: 18 }} />
+                                    )}
+                                    <Text style={[
+                                      styles.cartItemName, 
+                                      { color: isServed ? '#94a3b8' : '#334155', textDecorationLine: isServed ? 'line-through' : 'none' },
+                                      { flex: 1 }
+                                    ]} numberOfLines={1}>
+                                      {item.name}
+                                    </Text>
+                                  </View>
+                                  {role !== 'waiter' && (
+                                    <TouchableOpacity 
+                                      onPress={() => setCartItems((prev: any) => prev.filter((i: any) => i.id !== item.id))}
+                                      activeOpacity={0.7}
+                                    >
+                                      <Trash2 size={13} color="#ef4444" />
+                                    </TouchableOpacity>
+                                  )}
+                                </View>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                                  <Text style={styles.cartItemPrice}>Rs. {item.price} x {item.qty}</Text>
+                                  <View style={{
+                                    backgroundColor: isServed ? '#f1f5f9' : isReady ? '#dcfce7' : '#eff6ff',
+                                    paddingHorizontal: 6,
+                                    paddingVertical: 1.5,
+                                    borderRadius: 4,
+                                  }}>
+                                    <Text style={{
+                                      fontSize: 8,
+                                      fontWeight: '900',
+                                      color: isServed ? '#64748b' : isReady ? '#16a34a' : '#2563eb'
+                                    }}>
+                                      {isServed ? 'SERVED' : isReady ? 'READY TO SERVE' : 'COOKING'}
+                                    </Text>
+                                  </View>
+                                </View>
+                                {item.notes ? (
+                                  <View style={[styles.itemNotesInput, { height: 'auto', paddingVertical: 4, justifyContent: 'center' }]}>
+                                    <Text style={{ fontSize: 9, color: '#475569', fontWeight: '700' }}>⚠️ NOTE: {item.notes}</Text>
+                                  </View>
+                                ) : null}
+                              </View>
+                              <View style={styles.rightControlRow}>
+                                <Text style={[styles.itemSubtotal, { color: isServed ? '#94a3b8' : '#475569' }]}>Rs. {item.price * item.qty}</Text>
+                                <View style={styles.qtyContainer}>
+                                  <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQty(item.id, -1)}>
+                                    <Minus size={11} color="#64748b" />
+                                  </TouchableOpacity>
+                                  <Text style={styles.qtyText}>{item.qty}</Text>
+                                  <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQty(item.id, 1)}>
+                                    <Plus size={11} color="#64748b" />
+                                  </TouchableOpacity>
+                                </View>
+                              </View>
+                            </View>
+                          );
+                        })}
                       </View>
                     </View>
                   ))}

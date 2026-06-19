@@ -324,13 +324,16 @@ export default function OrderingScreen({
           if (data.items && data.items.length > 0) {
             const mappedItems = data.items.map((item: any) => ({
               id: item.item_id,
+              dbId: item.id,
               name: item.item_name,
               price: item.price,
               qty: item.quantity,
               notes: item.notes || '',
               category_name: '',
               sent: true,
-              originalQty: item.quantity
+              originalQty: item.quantity,
+              status: item.status,
+              created_at: item.created_at
             }));
             setCartItems(mappedItems);
             setOriginalCartItems(JSON.parse(JSON.stringify(mappedItems)));
@@ -345,6 +348,37 @@ export default function OrderingScreen({
       }
     } catch (e) {
       console.warn('Failed to fetch active order:', e);
+    }
+  };
+
+  const handleServeItem = async (dbId: number) => {
+    try {
+      const res = await fetch(`${API_BASE}/orders/items/${dbId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'served' })
+      });
+      if (res.ok) {
+        toast.success('Served', 'Item marked as served.');
+        fetchActiveOrder();
+      }
+    } catch (err) {
+      toast.error('Failed', 'Could not serve item.');
+    }
+  };
+
+  const handleServeAllReady = async () => {
+    if (!activeOrder) return;
+    try {
+      const res = await fetch(`${API_BASE}/orders/${activeOrder.id}/serve-all`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        toast.success('Served All', 'All ready items marked as served.');
+        fetchActiveOrder();
+      }
+    } catch (err) {
+      toast.error('Failed', 'Could not serve items.');
     }
   };
 
@@ -678,6 +712,8 @@ export default function OrderingScreen({
             onRequestCancel={activeOrder ? handleRequestCancel : undefined}
             cancelRequestStatus={cancelRequestStatus}
             role={userRole}
+            onServeItem={handleServeItem}
+            onServeAllReady={handleServeAllReady}
           />
         )}
       </View>
