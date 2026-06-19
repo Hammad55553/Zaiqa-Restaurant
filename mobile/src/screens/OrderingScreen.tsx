@@ -818,7 +818,15 @@ export default function OrderingScreen({
             </View>
             <Text style={[styles.modalSub, { color: '#e2e8f0', fontSize: 13, lineHeight: 20 }]}>{warningModalMessage}</Text>
             <TouchableOpacity
-              style={[styles.modalBtnConfirm, { backgroundColor: '#ea580c', width: '100%', marginTop: 8 }]}
+              style={{
+                backgroundColor: '#ea580c',
+                paddingVertical: 12,
+                borderRadius: 10,
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '100%',
+                marginTop: 8
+              }}
               onPress={() => setWarningModalVisible(false)}
             >
               <Text style={styles.modalBtnText}>Understood</Text>
