@@ -105,7 +105,7 @@ const ReceiptSlip = ({ printData }) => {
       <div style={{ marginBottom: '1mm', position: 'relative' }}>
         
         {/* Ink Stamp / Gol Mohr */}
-        {currentPaymentStatus && (
+        {currentPaymentStatus && currentPaymentStatus.toUpperCase() !== 'NONE' && currentPaymentStatus.toUpperCase() !== 'WITHOUT STAMP' && (
           <div style={{
             position: 'absolute',
             top: '50%',

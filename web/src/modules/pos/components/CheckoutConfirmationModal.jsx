@@ -54,6 +54,7 @@ const CheckoutConfirmationModal = ({
                 { label: '🚚 COD', value: 'CASH ON DELIVERY' },
                 { label: '📱 Online Paid', value: 'ONLINE PAID' },
                 { label: '🔄 In Queue', value: 'IN QUEUE' },
+                { label: '🚫 No Stamp', value: 'NONE' },
                 { label: '✍️ Custom', value: 'CUSTOM' }
               ].map(opt => {
                 const isSelected = paymentStatus === opt.value;

@@ -2125,7 +2125,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
                 <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest block mb-1">Bill / Payment Status (Stamp)</label>
                 <div className="flex gap-2">
                   <select
-                    value={['PAID', 'PENDING', 'CASH ON DELIVERY', 'ONLINE PAID', 'IN QUEUE'].includes(activeOrderPaymentStatus) ? activeOrderPaymentStatus : (activeOrderPaymentStatus ? 'CUSTOM' : 'PENDING')}
+                    value={['PAID', 'PENDING', 'CASH ON DELIVERY', 'ONLINE PAID', 'IN QUEUE', 'NONE'].includes(activeOrderPaymentStatus) ? activeOrderPaymentStatus : (activeOrderPaymentStatus ? 'CUSTOM' : 'PENDING')}
                     onChange={(e) => {
                       const val = e.target.value;
                       if (val === 'CUSTOM') {
@@ -2148,10 +2148,11 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
                     <option value="CASH ON DELIVERY">🚚 CASH ON DELIVERY</option>
                     <option value="ONLINE PAID">📱 ONLINE PAID</option>
                     <option value="IN QUEUE">🔄 IN QUEUE</option>
+                    <option value="NONE">🚫 NO STAMP</option>
                     <option value="CUSTOM">✍️ CUSTOM STAMP</option>
                   </select>
                   
-                  {(!['PAID', 'PENDING', 'CASH ON DELIVERY', 'ONLINE PAID', 'IN QUEUE'].includes(activeOrderPaymentStatus) || activeOrderPaymentStatus === 'CUSTOM') && (
+                  {(!['PAID', 'PENDING', 'CASH ON DELIVERY', 'ONLINE PAID', 'IN QUEUE', 'NONE'].includes(activeOrderPaymentStatus) || activeOrderPaymentStatus === 'CUSTOM') && (
                     <input
                       type="text"
                       placeholder="Custom stamp text..."
