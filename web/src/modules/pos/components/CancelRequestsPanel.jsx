@@ -110,7 +110,7 @@ const CancelRequestsPanel = ({ onClose, currentUser }) => {
   };
 
   const canApprove = (req) => {
-    if (req.order_status === 'ready' || req.order_status === 'completed') return role === 'admin';
+    if (req.order_status === 'preparing' || req.order_status === 'ready' || req.order_status === 'completed') return role === 'admin';
     return role === 'cashier' || role === 'admin';
   };
 
@@ -186,7 +186,7 @@ const CancelRequestsPanel = ({ onClose, currentUser }) => {
               if (diff < 60) return `${diff}m ago`;
               return `${Math.floor(diff / 60)}h ago`;
             })();
-            const needsAdmin = req.order_status === 'ready' || req.order_status === 'completed';
+            const needsAdmin = req.order_status === 'preparing' || req.order_status === 'ready' || req.order_status === 'completed';
 
             return (
               <div key={req.id} className={`rounded-xl border ${sc.border} ${sc.bg} overflow-hidden`}>
