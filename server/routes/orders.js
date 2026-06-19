@@ -350,19 +350,20 @@ router.put('/:id/sync', (req, res) => {
 
         // 1. Process Updates & Deletions
         const isPreparingOrLater = order && ['preparing', 'ready', 'completed'].includes(order.status);
+        const batchTimestamp = new Date().toISOString();
 
-        // 1. Process Updates & Deletions
         Object.keys(existingMap).forEach(itemIdStr => {
+          const existing = existingMap[itemIdStr];
+          const incoming = incomingMap[itemIdStr];
           const itemId = parseInt(itemIdStr, 10);
-          const existing = existingMap[itemId];
-          const incoming = incomingMap[itemId];
+          const isCustom = isNaN(itemId);
           
           if (!incoming) {
             // Item was DELETED completely
             db.run(`INSERT INTO voided_items (order_id, item_name, price, quantity, admin_remark) VALUES (?, ?, ?, ?, ?)`,
               [id, existing.name, existing.price, existing.qty, admin_edit_remark || 'Removed from Order']);
 
-            if (isPreparingOrLater) {
+            if (isPreparingOrLater && !isCustom) {
               db.all(`SELECT stock_item_id, quantity_required FROM item_ingredients WHERE menu_item_id = ?`, [itemId], (err, ingredients) => {
                 if (!err && ingredients) {
                   ingredients.forEach(ing => {
@@ -385,9 +386,30 @@ router.put('/:id/sync', (req, res) => {
                 // Quantity was decreased
                 db.run(`INSERT INTO voided_items (order_id, item_name, price, quantity, admin_remark) VALUES (?, ?, ?, ?, ?)`,
                   [id, incoming.name, incoming.price, Math.abs(diff), admin_edit_remark || 'Quantity Reduced']);
+
+                // Reduce starting from newest rows
+                db.all(`SELECT id, quantity FROM order_items WHERE order_id = ? AND item_id = ? ORDER BY id DESC`, [id, itemIdStr], (errRows, rows) => {
+                  if (!errRows && rows) {
+                    let toRemove = Math.abs(diff);
+                    for (const row of rows) {
+                      if (toRemove <= 0) break;
+                      if (row.quantity <= toRemove) {
+                        toRemove -= row.quantity;
+                        db.run(`DELETE FROM order_items WHERE id = ?`, [row.id]);
+                      } else {
+                        db.run(`UPDATE order_items SET quantity = quantity - ? WHERE id = ?`, [toRemove, row.id]);
+                        toRemove = 0;
+                      }
+                    }
+                  }
+                });
+              } else {
+                // Quantity was increased! Insert a new row for the delta.
+                db.run(`INSERT INTO order_items (order_id, item_id, item_name, price, quantity, notes, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                  [id, itemIdStr, incoming.name, incoming.price, diff, incoming.notes, 'preparing', batchTimestamp]);
               }
 
-              if (isPreparingOrLater) {
+              if (isPreparingOrLater && !isCustom) {
                 db.all(`SELECT stock_item_id, quantity_required FROM item_ingredients WHERE menu_item_id = ?`, [itemId], (err, ingredients) => {
                   if (!err && ingredients) {
                     ingredients.forEach(ing => {
@@ -403,28 +425,23 @@ router.put('/:id/sync', (req, res) => {
                   }
                 });
               }
-            }
-
-            // Consolidate into a single row in order_items
-            const primaryId = existing.ids[0];
-            db.run(`UPDATE order_items SET quantity = ?, price = ?, notes = ? WHERE id = ?`, [incoming.qty, incoming.price, incoming.notes, primaryId]);
-            
-            // Delete any duplicate rows for this item
-            for (let i = 1; i < existing.ids.length; i++) {
-              db.run(`DELETE FROM order_items WHERE id = ?`, [existing.ids[i]]);
+            } else {
+              // No qty change, update notes on the primary/first item row
+              db.run(`UPDATE order_items SET notes = ? WHERE id = ?`, [incoming.notes, existing.ids[0]]);
             }
           }
         });
 
         // 2. Process Additions (Brand New Items)
         Object.keys(incomingMap).forEach(itemIdStr => {
+          const incoming = incomingMap[itemIdStr];
           const itemId = parseInt(itemIdStr, 10);
-          const incoming = incomingMap[itemId];
+          const isCustom = isNaN(itemId);
           
-          if (!existingMap[itemId]) {
+          if (!existingMap[itemIdStr]) {
             // NEW ITEM
             if (!incoming.isFromPreparedWaste) {
-              if (isPreparingOrLater) {
+              if (isPreparingOrLater && !isCustom) {
                 db.all(`SELECT stock_item_id, quantity_required FROM item_ingredients WHERE menu_item_id = ?`, [itemId], (err, ingredients) => {
                   if (!err && ingredients) {
                     ingredients.forEach(ing => {
@@ -448,8 +465,8 @@ router.put('/:id/sync', (req, res) => {
                 }
               });
             }
-            db.run(`INSERT INTO order_items (order_id, item_id, item_name, price, quantity, notes, status) VALUES (?, ?, ?, ?, ?, ?, ?)`, 
-              [id, itemId, incoming.name, incoming.price, incoming.qty, incoming.notes, 'preparing']);
+            db.run(`INSERT INTO order_items (order_id, item_id, item_name, price, quantity, notes, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, 
+              [id, itemIdStr, incoming.name, incoming.price, incoming.qty, incoming.notes, 'preparing', batchTimestamp]);
           }
         });
 
@@ -1013,6 +1030,58 @@ router.delete('/voided-items/:id', (req, res) => {
   db.run(`DELETE FROM voided_items WHERE id = ?`, [id], function(err) {
     if (err) return res.status(500).json({ error: 'Failed to delete voided item log' });
     res.json({ success: true, id });
+  });
+});
+
+// @route   PATCH /api/orders/items/:itemId/status
+// @desc    Update status of a specific order item (e.g. mark ready or served)
+router.patch('/items/:itemId/status', (req, res) => {
+  const { itemId } = req.params;
+  const { status } = req.body; // 'preparing', 'ready', 'served'
+
+  if (!['preparing', 'ready', 'served'].includes(status)) {
+    return res.status(400).json({ error: 'Invalid status' });
+  }
+
+  // Get order_id first
+  db.get(`SELECT order_id FROM order_items WHERE id = ?`, [itemId], (err, row) => {
+    if (err || !row) return res.status(404).json({ error: 'Order item not found' });
+    const orderId = row.order_id;
+
+    db.run(`UPDATE order_items SET status = ? WHERE id = ?`, [status, itemId], function(err2) {
+      if (err2) return res.status(500).json({ error: 'Failed to update item status' });
+
+      // Check overall order status: if all items are now served, we could leave it or let cashier finish.
+      // But if all items are at least 'ready' (or 'served'), we can automatically update the order status to 'ready'!
+      db.all(`SELECT status FROM order_items WHERE order_id = ?`, [orderId], (err3, items) => {
+        if (!err3 && items) {
+          const allReadyOrServed = items.every(item => ['ready', 'served'].includes(item.status));
+          if (allReadyOrServed) {
+            db.run(`UPDATE orders SET status = 'ready', has_new_updates = 1 WHERE id = ?`, [orderId]);
+          } else {
+            // If at least one is cooking/preparing, make sure order is marked 'preparing'
+            const hasCooking = items.some(item => item.status === 'preparing');
+            if (hasCooking) {
+              db.run(`UPDATE orders SET status = 'preparing', has_new_updates = 1 WHERE id = ?`, [orderId]);
+            }
+          }
+        }
+        queueOrderChange(orderId, 'update');
+        res.json({ success: true, itemId, status });
+      });
+    });
+  });
+});
+
+// @route   POST /api/orders/:id/serve-all
+// @desc    Mark all ready items in the order as served
+router.post('/:id/serve-all', (req, res) => {
+  const { id } = req.params;
+
+  db.run(`UPDATE order_items SET status = 'served' WHERE order_id = ? AND status = 'ready'`, [id], function(err) {
+    if (err) return res.status(500).json({ error: 'Failed to serve all ready items' });
+    queueOrderChange(id, 'update');
+    res.json({ success: true, orderId: id, changes: this.changes });
   });
 });
 
