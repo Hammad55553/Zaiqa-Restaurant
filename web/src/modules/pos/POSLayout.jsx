@@ -808,10 +808,8 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
     setIsCheckoutModalOpen(true);
   };
 
-  const executeCheckout = async (customerPhone = '', paymentStatus = 'PAID') => {
-    let shouldClearTable = true;
+  const executeCheckout = async (customerPhone = '', paymentStatus = 'PAID', shouldClearTable = true) => {
     try {
-      shouldClearTable = window.confirm("Do you want to clear this table and make it available?");
 
       // Calculate totals for invoice record
       const isServiceCharge = (i) => i.name === 'Service Charges' || i.item_name === 'Service Charges';

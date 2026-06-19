@@ -10,6 +10,7 @@ const CheckoutConfirmationModal = ({
   const [phone, setPhone] = useState('');
   const [paymentStatus, setPaymentStatus] = useState('PAID');
   const [customStatus, setCustomStatus] = useState('');
+  const [releaseTable, setReleaseTable] = useState(true);
 
   if (!isCheckoutModalOpen) return null;
 
@@ -43,11 +44,11 @@ const CheckoutConfirmationModal = ({
           </div>
 
           {/* Payment Status Selection */}
-          <div className="mb-6 text-left">
+          <div className="mb-4 text-left">
             <label className="block text-[10px] font-extrabold uppercase tracking-widest text-zinc-400 mb-1.5 pl-1">
               Select Bill Status / Stamp
             </label>
-            <div className="grid grid-cols-2 gap-2 mb-3">
+            <div className="grid grid-cols-2 gap-2 mb-2">
               {[
                 { label: '💵 Paid', value: 'PAID' },
                 { label: '⏳ Pending', value: 'PENDING' },
@@ -86,6 +87,27 @@ const CheckoutConfirmationModal = ({
             )}
           </div>
 
+          {/* Release Table Animated Toggle Switch */}
+          <div className="mb-6 flex items-center justify-between bg-zinc-50 p-4 rounded-2xl border border-zinc-150">
+            <div className="text-left">
+              <label className="block text-xs font-extrabold text-zinc-800 uppercase tracking-wide">
+                Free Up Table
+              </label>
+              <span className="text-[9px] text-zinc-400 font-bold block leading-tight mt-0.5">
+                Make table available (green) after checkout
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setReleaseTable(!releaseTable)}
+              className={`w-12 h-6 flex items-center rounded-full p-1 transition-all duration-300 ${
+                releaseTable ? 'bg-emerald-500 justify-end' : 'bg-zinc-300 justify-start'
+              }`}
+            >
+              <span className="bg-white w-4 h-4 rounded-full shadow-md transition-all duration-300"></span>
+            </button>
+          </div>
+
           <div className="flex gap-3">
             <button 
               onClick={() => {
@@ -93,6 +115,7 @@ const CheckoutConfirmationModal = ({
                 setPhone('');
                 setPaymentStatus('PAID');
                 setCustomStatus('');
+                setReleaseTable(true);
               }}
               className="flex-1 py-3 bg-zinc-100 text-zinc-600 font-bold rounded-xl hover:bg-zinc-200 transition-colors"
             >
@@ -101,13 +124,14 @@ const CheckoutConfirmationModal = ({
             <button 
               onClick={() => {
                 const finalStatus = paymentStatus === 'CUSTOM' ? (customStatus.trim() || 'PAID') : paymentStatus;
-                executeCheckout(phone, finalStatus);
+                executeCheckout(phone, finalStatus, releaseTable);
                 setIsCheckoutModalOpen(false);
                 setPhone('');
                 setPaymentStatus('PAID');
                 setCustomStatus('');
+                setReleaseTable(true);
               }}
-              className="flex-1 py-3 bg-emerald-500 text-white font-bold rounded-xl hover:bg-emerald-600 shadow-lg shadow-emerald-500/30 transition-colors animate-pulse"
+              className="flex-1 py-3 bg-emerald-500 text-white font-bold rounded-xl hover:bg-emerald-600 shadow-lg shadow-emerald-500/30 transition-colors"
             >
               Confirm & Pay
             </button>
