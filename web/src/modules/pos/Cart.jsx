@@ -28,6 +28,28 @@ const Cart = ({
     setUnlockReason('');
   };
 
+  const groupedItems = React.useMemo(() => {
+    const groups = {};
+    items.forEach(item => {
+      if (item.name === 'Service Charges' || item.item_name === 'Service Charges') return;
+      const ts = item.created_at || 'new';
+      if (!groups[ts]) {
+        groups[ts] = [];
+      }
+      groups[ts].push(item);
+    });
+    // Group 'new' items last
+    return Object.keys(groups).sort((a, b) => {
+      if (a === 'new') return 1;
+      if (b === 'new') return -1;
+      return a.localeCompare(b);
+    }).map((ts, idx) => ({
+      round: ts === 'new' ? 'New Additions' : `Round ${idx + 1}`,
+      timestamp: ts,
+      items: groups[ts]
+    }));
+  }, [items]);
+
   return (
     <div className="flex flex-col h-full bg-white relative z-10 rounded-2xl">
       
@@ -55,52 +77,71 @@ const Cart = ({
             <p className="text-xs font-bold">Cart is empty</p>
           </div>
         ) : (
-          <div className="space-y-2.5">
-            {items.map(item => (
-              <div key={item.cartId || item.id} className={`group p-2.5 rounded-xl shadow-sm border relative transition-colors ${item.sent ? 'bg-gray-50 border-gray-100 opacity-70' : 'bg-white border-gray-200 hover:border-orange-300'}`}>
-                
-                <div className="flex justify-between items-start mb-2">
-                  <div className="pr-6">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-gray-800 text-[12px] leading-tight">{item.name}</h3>
-                      {item.sent && <span className="text-[8px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Sent</span>}
+          <div className="space-y-4">
+            {groupedItems.map(group => (
+              <div key={group.timestamp} className="bg-white/60 border border-gray-100 rounded-xl p-2.5 space-y-2.5 shadow-sm">
+                <div className="flex justify-between items-center pb-1.5 border-b border-gray-150">
+                  <span className="text-[10px] font-black text-orange-600 uppercase tracking-widest bg-orange-50 px-2 py-0.5 rounded-md">
+                    {group.round}
+                  </span>
+                  <span className="text-[9px] font-bold text-gray-400">
+                    {group.timestamp !== 'new' && group.timestamp !== 'original' ? new Date(group.timestamp).toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit', hour12: true }) : ''}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {group.items.map(item => (
+                    <div key={item.cartId || item.id} className={`group p-2.5 rounded-xl shadow-xs border relative bg-white transition-colors ${item.sent ? 'border-gray-100 opacity-80' : 'border-gray-200 hover:border-orange-300'}`}>
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="pr-6">
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-bold text-gray-800 text-[12px] leading-tight">{item.name}</h3>
+                            {item.sent && (
+                              <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
+                                item.status === 'served' ? 'bg-gray-100 text-gray-500' : item.status === 'ready' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
+                              }`}>
+                                {item.status === 'served' ? 'Served' : item.status === 'ready' ? 'Ready' : 'Cooking'}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-orange-600 font-extrabold text-xs mt-0.5">Rs. {item.price}</p>
+                          {item.notes && <p className="text-[9px] font-bold text-orange-500 mt-1">⚠️ Note: {item.notes}</p>}
+                        </div>
+                        {(!item.sent || !isLocked) && (
+                          <button 
+                            onClick={() => onRemove(item.cartId || item.id)}
+                            className="absolute top-2 right-2 text-gray-300 hover:text-red-500 transition-colors p-1"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between mt-1 pt-2 border-t border-gray-100">
+                        <div className={`flex items-center bg-gray-50 rounded-lg border border-gray-200 p-0.5 shadow-inner ${(item.sent && isLocked) ? 'opacity-50 pointer-events-none' : ''}`}>
+                          <button 
+                            onClick={() => onUpdateQty(item.cartId || item.id, -1)}
+                            disabled={item.sent && isLocked}
+                            className="w-6 h-6 flex items-center justify-center bg-white rounded shadow-sm text-gray-600 hover:text-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <Minus size={12} />
+                          </button>
+                          <span className="w-8 text-center font-black text-gray-800 text-xs">{item.qty}</span>
+                          <button 
+                            onClick={() => onUpdateQty(item.cartId || item.id, 1)}
+                            disabled={item.sent && isLocked}
+                            className="w-6 h-6 flex items-center justify-center bg-orange-500 rounded shadow-sm text-white hover:bg-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <Plus size={12} />
+                          </button>
+                        </div>
+                        
+                        <div className="font-display font-black text-gray-900 text-sm">
+                          Rs. {item.price * item.qty}
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-orange-600 font-extrabold text-xs mt-0.5">Rs. {item.price}</p>
-                  </div>
-                  {(!item.sent || !isLocked) && (
-                    <button 
-                      onClick={() => onRemove(item.cartId || item.id)}
-                      className="absolute top-2 right-2 text-gray-300 hover:text-red-500 transition-colors p-1"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
+                  ))}
                 </div>
-
-                <div className="flex items-center justify-between mt-1 pt-2 border-t border-gray-100">
-                  <div className={`flex items-center bg-gray-50 rounded-lg border border-gray-200 p-0.5 shadow-inner ${(item.sent && isLocked) ? 'opacity-50 pointer-events-none' : ''}`}>
-                    <button 
-                      onClick={() => onUpdateQty(item.cartId || item.id, -1)}
-                      disabled={item.sent && isLocked}
-                      className="w-6 h-6 flex items-center justify-center bg-white rounded shadow-sm text-gray-600 hover:text-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <Minus size={12} />
-                    </button>
-                    <span className="w-8 text-center font-black text-gray-800 text-xs">{item.qty}</span>
-                    <button 
-                      onClick={() => onUpdateQty(item.cartId || item.id, 1)}
-                      disabled={item.sent && isLocked}
-                      className="w-6 h-6 flex items-center justify-center bg-orange-500 rounded shadow-sm text-white hover:bg-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <Plus size={12} />
-                    </button>
-                  </div>
-                  
-                  <div className="font-display font-black text-gray-900 text-sm">
-                    Rs. {item.price * item.qty}
-                  </div>
-                </div>
-
               </div>
             ))}
           </div>

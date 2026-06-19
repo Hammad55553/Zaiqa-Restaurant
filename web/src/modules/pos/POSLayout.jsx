@@ -713,6 +713,8 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
             id: i.item_id || i.id,
             name: i.item_name,
             qty: i.quantity,
+            status: i.status,
+            created_at: i.created_at,
             sent: true // Mark as already sent to kitchen
           }));
           
