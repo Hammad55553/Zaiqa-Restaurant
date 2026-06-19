@@ -11,6 +11,7 @@ export interface OrderItem {
   quantity: number;
   notes?: string;
   status: string;
+  created_at?: string;
 }
 
 export interface KitchenOrder {

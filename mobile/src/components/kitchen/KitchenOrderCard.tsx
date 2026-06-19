@@ -13,7 +13,10 @@ import {
   ChevronRight,
   AlertCircle,
   RefreshCw,
+  Square,
+  CheckSquare,
 } from 'lucide-react-native';
+import { API_BASE } from '../../config';
 import { KitchenOrder, OrderStatus, OrderItem } from '../../screens/kitchen/types';
 
 // ─── Status Config ────────────────────────────────────────────────────────────
@@ -104,6 +107,40 @@ export default function KitchenOrderCard({
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
+  // Group items by batch/round
+  const groupedItems = React.useMemo(() => {
+    const groups: Record<string, OrderItem[]> = {};
+    (order.items || []).forEach(item => {
+      if (item.item_name === 'Service Charges') return;
+      const ts = item.created_at || order.created_at || 'original';
+      if (!groups[ts]) {
+        groups[ts] = [];
+      }
+      groups[ts].push(item);
+    });
+    return Object.keys(groups).sort().map((ts, idx) => ({
+      round: idx + 1,
+      timestamp: ts,
+      items: groups[ts]
+    }));
+  }, [order.items, order.created_at]);
+
+  const toggleItemStatus = async (item: OrderItem) => {
+    const isReady = item.status === 'ready' || item.status === 'served';
+    const newStatus = isReady ? 'preparing' : 'ready';
+    try {
+      const res = await fetch(`${API_BASE}/orders/items/${item.id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+      if (!res.ok) throw new Error();
+      onStatusChange(order.id, order.status);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
     Animated.parallel([
       Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 70, friction: 12 }),
@@ -179,25 +216,49 @@ export default function KitchenOrderCard({
 
       {/* ── Items ── */}
       <View style={styles.itemsSection}>
-        {order.items.map((item: OrderItem, idx: number) => (
-          <View
-            key={item.id}
-            style={[
-              styles.itemRow,
-              idx < order.items.length - 1 && styles.itemRowBorder,
-            ]}
-          >
-            <View style={styles.qtyCircle}>
-              <Text style={styles.qtyText}>{item.quantity}</Text>
+        {groupedItems.map((group) => (
+          <View key={group.timestamp} style={styles.roundBox}>
+            <View style={styles.roundHeader}>
+              <Text style={styles.roundTitle}>ROUND {group.round}</Text>
+              <Text style={styles.roundTime}>
+                {group.timestamp !== 'original' ? new Date(group.timestamp).toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit', hour12: true }) : ''}
+              </Text>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.itemName}>{item.item_name}</Text>
-              {item.notes ? (
-                <View style={styles.itemNotesBox}>
-                  <Text style={styles.itemNotes}>⚠️ NOTE: {item.notes}</Text>
+            {group.items.map((item: OrderItem, idx: number) => {
+              const isReady = item.status === 'ready' || item.status === 'served';
+              return (
+                <View
+                  key={item.id}
+                  style={[
+                    styles.itemRow,
+                    idx < group.items.length - 1 && styles.itemRowBorder,
+                  ]}
+                >
+                  {order.status !== 'completed' && (
+                    <TouchableOpacity onPress={() => toggleItemStatus(item)} style={styles.checkboxContainer}>
+                      {isReady ? (
+                        <CheckSquare size={20} color="#16a34a" />
+                      ) : (
+                        <Square size={20} color="#94a3b8" />
+                      )}
+                    </TouchableOpacity>
+                  )}
+                  <View style={styles.qtyCircle}>
+                    <Text style={styles.qtyText}>{item.quantity}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.itemName, isReady && styles.itemNameReady]}>
+                      {item.item_name}
+                    </Text>
+                    {item.notes ? (
+                      <View style={styles.itemNotesBox}>
+                        <Text style={styles.itemNotes}>⚠️ NOTE: {item.notes}</Text>
+                      </View>
+                    ) : null}
+                  </View>
                 </View>
-              ) : null}
-            </View>
+              );
+            })}
           </View>
         ))}
       </View>
@@ -412,5 +473,40 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     letterSpacing: 0.3,
+  },
+  roundBox: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 10,
+    marginBottom: 10,
+  },
+  roundHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#cbd5e1',
+    paddingBottom: 6,
+    marginBottom: 6,
+  },
+  roundTitle: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#ea580c',
+    letterSpacing: 1,
+  },
+  roundTime: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#94a3b8',
+  },
+  checkboxContainer: {
+    paddingRight: 4,
+  },
+  itemNameReady: {
+    color: '#94a3b8',
+    textDecorationLine: 'line-through',
   },
 });

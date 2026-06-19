@@ -99,6 +99,23 @@ const OrderTicket = ({ order, onStatusChange, onDelete, isHistory = false }) => 
     } catch { return '--'; }
   })();
 
+  const groupedItems = useMemo(() => {
+    const groups = {};
+    (order.items || []).forEach(item => {
+      if (item.item_name === 'Service Charges' || item.name === 'Service Charges') return;
+      const ts = item.created_at || order.created_at || 'original';
+      if (!groups[ts]) {
+        groups[ts] = [];
+      }
+      groups[ts].push(item);
+    });
+    return Object.keys(groups).sort().map((ts, idx) => ({
+      round: idx + 1,
+      timestamp: ts,
+      items: groups[ts]
+    }));
+  }, [order.items, order.created_at]);
+
   return (
     <div className={`bg-white rounded-3xl border flex flex-col overflow-hidden shadow-sm transition-all duration-300 ${
       order.has_new_updates ? 'border-red-400 shadow-[0_0_30px_rgba(239,68,68,0.15)] animate-pulse' 
@@ -144,21 +161,65 @@ const OrderTicket = ({ order, onStatusChange, onDelete, isHistory = false }) => 
         </div>
       )}
 
-      {/* Items List */}
-      <div className="flex-1 p-4 space-y-2.5 bg-gray-50/20 overflow-y-auto max-h-[220px] custom-scrollbar">
-        {(order.items || []).filter(item => item.item_name !== 'Service Charges' && item.name !== 'Service Charges').map((item, idx) => (
-          <div key={idx} className="flex justify-between items-start gap-3 border-b border-gray-100 pb-2.5 last:border-0 last:pb-0">
-            <div className="flex-1">
-              <p className="font-extrabold text-sm text-gray-800 leading-snug">{item.item_name || item.name}</p>
-              {item.notes && (
-                <p className="text-[10px] font-bold text-orange-500 flex items-start gap-1 mt-1">
-                  <AlertCircle size={10} className="shrink-0 mt-0.5" />
-                  {item.notes}
-                </p>
-              )}
+      {/* Items List grouped by Rounds */}
+      <div className="flex-1 p-4 space-y-4 bg-gray-50/20 overflow-y-auto max-h-[300px] custom-scrollbar">
+        {groupedItems.map((group) => (
+          <div key={group.timestamp} className="bg-white rounded-2xl border border-gray-100 p-3 shadow-xs">
+            <div className="flex justify-between items-center mb-2.5 pb-1.5 border-b border-gray-50">
+              <span className="text-[10px] font-black text-orange-600 uppercase tracking-widest bg-orange-50 px-2 py-0.5 rounded-full">
+                Round {group.round}
+              </span>
+              <span className="text-[9px] font-bold text-gray-400">
+                {group.timestamp !== 'original' && group.timestamp !== 'original' ? new Date(group.timestamp).toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit', hour12: true }) : '--'}
+              </span>
             </div>
-            <div className="shrink-0 bg-gray-100 px-2.5 py-0.5 rounded text-sm font-black text-gray-700 border border-gray-200">
-              x{item.quantity || item.qty || 1}
+            <div className="space-y-2.5">
+              {group.items.map((item, idx) => {
+                const isReady = item.status === 'ready' || item.status === 'served';
+                return (
+                  <div key={idx} className="flex items-center justify-between gap-3 border-b border-gray-50 pb-2 last:border-0 last:pb-0">
+                    <div className="flex items-start gap-2.5 flex-1">
+                      {!isHistory && (
+                        <input
+                          type="checkbox"
+                          checked={isReady}
+                          onChange={async (e) => {
+                            const newStatus = e.target.checked ? 'ready' : 'preparing';
+                            try {
+                              const res = await fetch(`${API_BASE}/orders/items/${item.id}/status`, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ status: newStatus })
+                              });
+                              if (!res.ok) throw new Error();
+                              onStatusChange(order.id, order.status, false);
+                            } catch (err) {
+                              alert('Could not update item status.');
+                            }
+                          }}
+                          className="mt-1 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-emerald-600"
+                        />
+                      )}
+                      <div className="flex-1">
+                        <p className={`font-extrabold text-sm leading-snug ${isReady ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+                          {item.item_name || item.name}
+                        </p>
+                        {item.notes && (
+                          <p className="text-[10px] font-bold text-orange-500 flex items-start gap-1 mt-1">
+                            <AlertCircle size={10} className="shrink-0 mt-0.5" />
+                            {item.notes}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className={`shrink-0 px-2.5 py-0.5 rounded text-sm font-black border ${
+                      isReady ? 'bg-gray-50 text-gray-400 border-gray-100' : 'bg-gray-100 text-gray-700 border-gray-200'
+                    }`}>
+                      x{item.quantity || item.qty || 1}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         ))}
@@ -204,7 +265,7 @@ const OrderTicket = ({ order, onStatusChange, onDelete, isHistory = false }) => 
             onClick={() => onStatusChange(order.id, 'ready', true)}
             className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold py-3 rounded-xl transition-all shadow-lg shadow-emerald-500/10 text-xs flex justify-center items-center gap-1.5 uppercase tracking-widest"
           >
-            <CheckCircle size={14} /> Mark as Ready
+            <CheckCircle size={14} /> Mark all Ready
           </button>
         )}
         {!isHistory && order.status === 'ready' && (
