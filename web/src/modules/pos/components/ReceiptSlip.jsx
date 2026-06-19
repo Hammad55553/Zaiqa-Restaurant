@@ -28,7 +28,16 @@ const ReceiptSlip = ({ printData }) => {
 
   const currentPaymentStatus = paymentStatus || payment_status || 'PENDING';
 
-  const invNum = invoiceNumber || invoice_number || (orderId ? `INV-${orderId}` : null);
+  const invNum = (() => {
+    if (invoiceNumber && !invoiceNumber.match(/^INV-\d+$/)) return invoiceNumber;
+    if (invoice_number && !invoice_number.match(/^INV-\d+$/)) return invoice_number;
+    const d = date ? new Date(date) : new Date();
+    const dateStr = d.getFullYear() + 
+                    String(d.getMonth() + 1).padStart(2, '0') + 
+                    String(d.getDate()).padStart(2, '0');
+    const stableSuffix = String(orderId || '0').padStart(4, '0');
+    return `INV-${dateStr}-${stableSuffix}`;
+  })();
 
   const displayItems = (items || []).filter(item => item.name !== 'Service Charges' && item.item_name !== 'Service Charges');
 
@@ -161,7 +170,7 @@ const ReceiptSlip = ({ printData }) => {
         )}
         <div style={row}>
           <span style={{ fontWeight: '500', textTransform: 'uppercase', fontSize: '11px' }}>Cashier:</span>
-          <span style={{ fontWeight: '800' }}>{(() => {
+          <span style={{ fontWeight: '800', textTransform: 'capitalize' }}>{(() => {
             if (printData?.cashier) {
               try {
                 if (typeof printData.cashier === 'string' && printData.cashier.startsWith('{')) {
