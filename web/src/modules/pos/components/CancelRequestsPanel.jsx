@@ -23,6 +23,8 @@ const CancelRequestsPanel = ({ onClose, currentUser }) => {
   const [expandedId, setExpandedId] = useState(null);
   const [rejectModalReq, setRejectModalReq] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
+  const [approveModalReq, setApproveModalReq] = useState(null);
+  const [approveRemark, setApproveRemark] = useState('');
   const [toast, setToast] = useState(null);
   const [processing, setProcessing] = useState(null);
 
@@ -51,24 +53,27 @@ const CancelRequestsPanel = ({ onClose, currentUser }) => {
     return () => clearInterval(interval);
   }, [fetchRequests]);
 
-  const handleApprove = async (req) => {
+  const handleApprove = (req) => {
     // Permission check on client side too
     if ((req.order_status === 'ready' || req.order_status === 'completed') && role !== 'admin') {
       showToast('Only admin can approve cancellation of ready/completed orders', 'error');
       return;
     }
-    const resolve_remark = window.prompt("Enter remarks / reason for approving cancellation (Mandatory):");
-    if (resolve_remark === null) return; // User cancelled
-    if (!resolve_remark.trim()) {
+    setApproveRemark('');
+    setApproveModalReq(req);
+  };
+
+  const submitApproval = async () => {
+    if (!approveModalReq) return;
+    if (!approveRemark.trim()) {
       showToast('Remarks are required to approve cancellation!', 'error');
       return;
     }
 
-
-    const wasStarted = ['preparing', 'ready', 'completed'].includes(req.order_status);
-    setProcessing(req.id);
+    const wasStarted = ['preparing', 'ready', 'completed'].includes(approveModalReq.order_status);
+    setProcessing(approveModalReq.id);
     try {
-      const res = await fetch(`${API_BASE}/orders/cancel-requests/${req.id}/approve`, {
+      const res = await fetch(`${API_BASE}/orders/cancel-requests/${approveModalReq.id}/approve`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -76,12 +81,14 @@ const CancelRequestsPanel = ({ onClose, currentUser }) => {
           resolved_role: role,
           refund_raw: wasStarted,
           log_waste: wasStarted,
-          resolve_remark: resolve_remark.trim()
+          resolve_remark: approveRemark.trim()
         }),
       });
       const data = await res.json();
       if (res.ok) {
-        showToast(`Order #${req.order_id} cancelled. ${wasStarted ? 'Stock refunded.' : ''}`, 'success');
+        showToast(`Order #${approveModalReq.order_id} cancelled. ${wasStarted ? 'Stock refunded.' : ''}`, 'success');
+        setApproveModalReq(null);
+        setApproveRemark('');
         fetchRequests();
       } else {
         showToast(data.error || 'Failed to approve', 'error');
@@ -319,6 +326,38 @@ const CancelRequestsPanel = ({ onClose, currentUser }) => {
               </button>
               <button onClick={handleReject} disabled={processing === rejectModalReq.id} className="flex-1 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl text-xs font-black transition-all disabled:opacity-60">
                 Confirm Reject
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Approve Remarks Modal */}
+      {approveModalReq && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)' }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 border border-zinc-200">
+            <h3 className="text-sm font-black text-zinc-900 mb-1 uppercase tracking-wider text-emerald-600">Approve Cancellation</h3>
+            <p className="text-xs text-zinc-500 mb-4">Order #{approveModalReq.order_id} — Please enter the reason for approval.</p>
+            <textarea
+              className="w-full border border-zinc-200 rounded-xl p-3 text-sm text-zinc-700 resize-none focus:outline-none focus:ring-2 focus:ring-emerald-300"
+              rows={3}
+              placeholder="Remarks / Reason for approval (Mandatory)..."
+              value={approveRemark}
+              onChange={e => setApproveRemark(e.target.value)}
+            />
+            <div className="flex gap-3 mt-4">
+              <button 
+                onClick={() => setApproveModalReq(null)} 
+                className="flex-1 py-2.5 border border-zinc-200 rounded-xl text-xs font-black text-zinc-600 hover:bg-zinc-50 transition-all active:scale-95"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={submitApproval} 
+                disabled={!approveRemark.trim() || processing === approveModalReq.id} 
+                className="flex-1 py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:bg-zinc-200 disabled:text-zinc-400 text-white rounded-xl text-xs font-black transition-all active:scale-95"
+              >
+                Confirm Approve
               </button>
             </div>
           </div>

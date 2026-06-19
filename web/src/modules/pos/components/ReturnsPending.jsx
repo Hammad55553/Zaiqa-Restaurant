@@ -30,6 +30,12 @@ const ReturnsPending = ({ onBack }) => {
   const [outflowDestination, setOutflowDestination] = useState('Staff Consumed');
   const [outflowNotes, setOutflowNotes] = useState('');
 
+  // Custom Approve/Reject Modal States for Cancel Requests
+  const [approveModalReq, setApproveModalReq] = useState(null);
+  const [approveRemark, setApproveRemark] = useState('');
+  const [rejectModalReq, setRejectModalReq] = useState(null);
+  const [rejectRemark, setRejectRemark] = useState('');
+
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3000);
@@ -155,6 +161,60 @@ const ReturnsPending = ({ onBack }) => {
     } catch (err) {
       console.error(err);
       showToast('Error cancelling order', 'error');
+    }
+  };
+
+  const submitApproval = async () => {
+    if (!approveModalReq) return;
+    if (!approveRemark.trim()) {
+      showToast('Remarks are required to approve cancellation!', 'error');
+      return;
+    }
+    const wasStarted = ['preparing', 'ready', 'completed'].includes(approveModalReq.order_status);
+    try {
+      const res = await fetch(`${API_BASE}/orders/cancel-requests/${approveModalReq.id}/approve`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          resolved_by: currentUser?.username || 'Staff', 
+          resolved_role: currentUser?.role || 'cashier', 
+          refund_raw: wasStarted, 
+          log_waste: wasStarted,
+          resolve_remark: approveRemark.trim()
+        })
+      });
+      const d = await res.json();
+      if (res.ok) { 
+        showToast('Approved & order cancelled', 'success'); 
+        setApproveModalReq(null);
+        setApproveRemark('');
+        fetchData(); 
+      }
+      else showToast(d.error || 'Failed to approve', 'error');
+    } catch {
+      showToast('Network error', 'error');
+    }
+  };
+
+  const submitRejection = async () => {
+    if (!rejectModalReq) return;
+    try {
+      const res = await fetch(`${API_BASE}/orders/cancel-requests/${rejectModalReq.id}/reject`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          resolved_by: currentUser?.username || 'Staff', 
+          reject_reason: rejectRemark.trim() || 'Rejected by staff' 
+        })
+      });
+      const d = await res.json();
+      if (res.ok) { 
+        showToast('Request rejected', 'success'); 
+        setRejectModalReq(null);
+        setRejectRemark('');
+        fetchData(); 
+      }
+      else showToast(d.error || 'Failed to reject', 'error');
+    } catch {
+      showToast('Network error', 'error');
     }
   };
 
@@ -729,45 +789,18 @@ const ReturnsPending = ({ onBack }) => {
                   {req.status === 'pending' && (isAdmin || canApprove(req)) && (
                     <div className="flex flex-col gap-2 shrink-0">
                       <button
-                        onClick={async () => {
-                          const resolve_remark = window.prompt("Enter remarks / reason for approving cancellation (Mandatory):");
-                          if (resolve_remark === null) return;
-                          if (!resolve_remark.trim()) {
-                            showToast('Remarks are required to approve cancellation!', 'error');
-                            return;
-                          }
-                          const wasStarted = ['preparing', 'ready', 'completed'].includes(req.order_status);
-                          const res = await fetch(`${API_BASE}/orders/cancel-requests/${req.id}/approve`, {
-                            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ 
-                              resolved_by: currentUser?.username || 'Staff', 
-                              resolved_role: currentUser?.role || 'cashier', 
-                              refund_raw: wasStarted, 
-                              log_waste: wasStarted,
-                              resolve_remark: resolve_remark.trim()
-                            })
-                          });
-                          const d = await res.json();
-                          if (res.ok) { showToast('Approved & order cancelled', 'success'); fetchData(); }
-                          else showToast(d.error || 'Failed to approve', 'error');
+                        onClick={() => {
+                          setApproveRemark('');
+                          setApproveModalReq(req);
                         }}
                         className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-lg flex items-center gap-1"
                       >
                         <CheckCircle2 size={11}/> Approve
                       </button>
                       <button
-                        onClick={async () => {
-                          const reason = window.prompt('Reject reason (optional):') || 'Rejected by staff';
-                          const res = await fetch(`${API_BASE}/orders/cancel-requests/${req.id}/reject`, {
-                            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ 
-                              resolved_by: currentUser?.username || 'Staff', 
-                              reject_reason: reason 
-                            })
-                          });
-                          const d = await res.json();
-                          if (res.ok) { showToast('Request rejected', 'success'); fetchData(); }
-                          else showToast(d.error || 'Failed to reject', 'error');
+                        onClick={() => {
+                          setRejectRemark('');
+                          setRejectModalReq(req);
                         }}
                         className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-black rounded-lg flex items-center gap-1"
                       >
@@ -783,27 +816,9 @@ const ReturnsPending = ({ onBack }) => {
                   {req.status === 'rejected' && isAdmin && (
                     <div className="flex flex-col gap-2 shrink-0">
                       <button
-                        onClick={async () => {
-                          const resolve_remark = window.prompt("Enter remarks / reason for overriding and approving cancellation (Mandatory):");
-                          if (resolve_remark === null) return;
-                          if (!resolve_remark.trim()) {
-                            showToast('Remarks are required to approve cancellation!', 'error');
-                            return;
-                          }
-                          const wasStarted = ['preparing', 'ready', 'completed'].includes(req.order_status);
-                          const res = await fetch(`${API_BASE}/orders/cancel-requests/${req.id}/approve`, {
-                            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ 
-                              resolved_by: currentUser?.username || 'Staff', 
-                              resolved_role: currentUser?.role || 'admin', 
-                              refund_raw: wasStarted, 
-                              log_waste: wasStarted,
-                              resolve_remark: resolve_remark.trim()
-                            })
-                          });
-                          const d = await res.json();
-                          if (res.ok) { showToast('Approved override & order cancelled', 'success'); fetchData(); }
-                          else showToast(d.error || 'Failed to approve override', 'error');
+                        onClick={() => {
+                          setApproveRemark('');
+                          setApproveModalReq(req);
                         }}
                         className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-lg flex items-center gap-1"
                       >
@@ -1090,6 +1105,73 @@ const ReturnsPending = ({ onBack }) => {
                 className="flex-1 py-2.5 bg-gradient-to-r from-red-600 to-rose-700 text-white rounded-xl font-black text-xs uppercase tracking-widest cursor-pointer transition-all active:scale-95 shadow-lg shadow-red-500/10"
               >
                 Confirm Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Approve Remarks Modal */}
+      {approveModalReq && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/80 z-[100] p-4 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl max-w-sm w-full p-6 text-zinc-200 flex flex-col shadow-2xl">
+            <h3 className="text-sm font-black text-white uppercase tracking-wider mb-1 text-emerald-500">
+              Approve Cancellation
+            </h3>
+            <p className="text-[10px] text-zinc-500 mb-4 font-medium">Order #{approveModalReq.order_id} — Please enter the reason for approval.</p>
+            <textarea
+              className="w-full bg-zinc-950 border border-zinc-850 rounded-xl p-3 text-xs text-white resize-none outline-none focus:ring-1 focus:ring-emerald-500 font-semibold"
+              rows={3}
+              placeholder="Remarks / Reason for approval (Mandatory)..."
+              value={approveRemark}
+              onChange={e => setApproveRemark(e.target.value)}
+            />
+            <div className="flex gap-3 mt-5">
+              <button 
+                onClick={() => setApproveModalReq(null)} 
+                className="flex-1 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl font-black text-[10px] uppercase tracking-widest cursor-pointer transition-all active:scale-95 border border-zinc-750"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={submitApproval} 
+                disabled={!approveRemark.trim()} 
+                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-850 disabled:text-zinc-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest cursor-pointer transition-all active:scale-95 shadow-lg shadow-emerald-500/10"
+              >
+                Confirm Approve
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reject Remarks Modal */}
+      {rejectModalReq && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/80 z-[100] p-4 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl max-w-sm w-full p-6 text-zinc-200 flex flex-col shadow-2xl">
+            <h3 className="text-sm font-black text-white uppercase tracking-wider mb-1 text-red-500">
+              Reject Cancellation
+            </h3>
+            <p className="text-[10px] text-zinc-500 mb-4 font-medium">Order #{rejectModalReq.order_id} — Please enter the rejection reason.</p>
+            <textarea
+              className="w-full bg-zinc-950 border border-zinc-850 rounded-xl p-3 text-xs text-white resize-none outline-none focus:ring-1 focus:ring-red-500 font-semibold"
+              rows={3}
+              placeholder="Reason for rejection (optional)..."
+              value={rejectRemark}
+              onChange={e => setRejectRemark(e.target.value)}
+            />
+            <div className="flex gap-3 mt-5">
+              <button 
+                onClick={() => setRejectModalReq(null)} 
+                className="flex-1 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl font-black text-[10px] uppercase tracking-widest cursor-pointer transition-all active:scale-95 border border-zinc-750"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={submitRejection} 
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-[10px] uppercase tracking-widest cursor-pointer transition-all active:scale-95 shadow-lg shadow-red-500/10"
+              >
+                Confirm Reject
               </button>
             </div>
           </div>
