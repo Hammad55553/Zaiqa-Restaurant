@@ -61,40 +61,13 @@ const ReceiptSlip = ({ printData }) => {
   const solid = { borderTop: '2px solid #000', margin: '1mm 0' };
   const row = { display: 'flex', justifyContent: 'space-between', marginBottom: '1.2mm', fontSize: '13px', color: '#000' };
 
+  const stampColor = 
+    currentPaymentStatus.toUpperCase() === 'PAID' ? '#16a34a' :
+    currentPaymentStatus.toUpperCase() === 'ONLINE PAID' ? '#2563eb' :
+    currentPaymentStatus.toUpperCase() === 'PENDING' ? '#dc2626' : '#d97706';
+
   return (
     <div style={wrap}>
-
-      {/* Ink Stamp / Mohr */}
-      {currentPaymentStatus && (
-        <div style={{
-          position: 'absolute',
-          top: '32mm',
-          right: '2mm',
-          border: `3px double ${
-            currentPaymentStatus.toUpperCase() === 'PAID' ? '#16a34a' :
-            currentPaymentStatus.toUpperCase() === 'ONLINE PAID' ? '#2563eb' :
-            currentPaymentStatus.toUpperCase() === 'PENDING' ? '#dc2626' : '#d97706'
-          }`,
-          color: `${
-            currentPaymentStatus.toUpperCase() === 'PAID' ? '#16a34a' :
-            currentPaymentStatus.toUpperCase() === 'ONLINE PAID' ? '#2563eb' :
-            currentPaymentStatus.toUpperCase() === 'PENDING' ? '#dc2626' : '#d97706'
-          }`,
-          padding: '1mm 2mm',
-          fontSize: '11px',
-          fontWeight: '950',
-          textTransform: 'uppercase',
-          letterSpacing: '1px',
-          transform: 'rotate(-15deg)',
-          borderRadius: '4px',
-          opacity: 0.85,
-          fontFamily: 'Impact, sans-serif',
-          zIndex: 10,
-          pointerEvents: 'none',
-        }}>
-          {currentPaymentStatus}
-        </div>
-      )}
 
       {/* LOGO */}
       <div style={{ ...center, marginBottom: '3mm' }}>
@@ -120,7 +93,52 @@ const ReceiptSlip = ({ printData }) => {
       <div style={dash} />
 
       {/* ORDER INFO */}
-      <div style={{ marginBottom: '1mm' }}>
+      <div style={{ marginBottom: '1mm', position: 'relative' }}>
+        
+        {/* Ink Stamp / Gol Mohr */}
+        {currentPaymentStatus && (
+          <div style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%) rotate(-10deg)',
+            border: `3px double ${stampColor}`,
+            borderRadius: '50%',
+            width: '24mm',
+            height: '24mm',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: stampColor,
+            opacity: 0.85,
+            fontFamily: '"Arial Black", Arial, sans-serif',
+            zIndex: 10,
+            pointerEvents: 'none',
+            backgroundColor: 'rgba(255, 255, 255, 0.85)',
+          }}>
+            {/* Inner dashed ring for authenticity */}
+            <div style={{
+              border: `1.2px dashed ${stampColor}`,
+              borderRadius: '50%',
+              width: '21mm',
+              height: '21mm',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              lineHeight: '1.1',
+              boxSizing: 'border-box'
+            }}>
+              <span style={{ fontSize: '7.5px', fontWeight: '950', letterSpacing: '0.5px' }}>ZAIQA MAHAL</span>
+              <span style={{ fontSize: '12px', fontWeight: '950', margin: '0.5mm 0', letterSpacing: '0.5px', textDecoration: 'underline' }}>
+                {currentPaymentStatus}
+              </span>
+              <span style={{ fontSize: '6.5px', fontWeight: '900' }}>★ OFFICIAL ★</span>
+            </div>
+          </div>
+        )}
+
         <div style={row}>
           <span style={{ fontWeight: '500', textTransform: 'uppercase', fontSize: '11px' }}>Date:</span>
           <span style={{ fontWeight: '800' }}>{formatDate(date)}</span>
