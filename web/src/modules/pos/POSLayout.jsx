@@ -885,8 +885,21 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
         if (shouldClearTable) {
           updatedTable = { ...selectedTable, status: 'available' };
           delete updatedTable.startTime;
+          // Persist available status to DB so poll doesn't revert
+          fetch(`${API_BASE}/tables/${selectedTable.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'available' }),
+          }).catch(() => {});
         } else {
           updatedTable = { ...selectedTable, status: 'dining' };
+          delete updatedTable.startTime;
+          // Table stays occupied but clear startTime so border stops blinking
+          fetch(`${API_BASE}/tables/${selectedTable.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'dining' }),
+          }).catch(() => {});
         }
 
         setTables(prev => prev.map(t => t.id === selectedTable.id ? updatedTable : t));
@@ -895,7 +908,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
         setActiveOrderId(null);
         setActiveOrderPaymentStatus(null);
         setView('floor');
-        handleTableClick(selectedTable); // Refresh
+        // Do NOT call handleTableClick here — it re-fetches old order and restores startTime
         setIsCheckoutModalOpen(false);
       } else {
         // Offline checkout fallback
@@ -905,6 +918,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
           delete updatedTable.startTime;
         } else {
           updatedTable = { ...selectedTable, status: 'dining' };
+          delete updatedTable.startTime;
         }
         setTables(prev => prev.map(t => t.id === selectedTable.id ? updatedTable : t));
         setSelectedTable(null);
@@ -913,7 +927,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
         setActiveOrderPaymentStatus(null);
         setView('floor');
         setIsCheckoutModalOpen(false);
-        showToast('Checkout completed successfully (Local Registry).', 'success');
+        showToast('Checkout completed (offline mode).', 'success');
       }
     } catch (err) {
       console.error("Checkout error:", err);
@@ -924,6 +938,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
         delete updatedTable.startTime;
       } else {
         updatedTable = { ...selectedTable, status: 'dining' };
+        delete updatedTable.startTime;
       }
       setTables(prev => prev.map(t => t.id === selectedTable.id ? updatedTable : t));
       setSelectedTable(null);
@@ -936,7 +951,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
     }
   };
 
-  const saveTableEdits = () => {
+  const saveTableEdits = async () => {
     if (!selectedTable) return;
 
     let finalStatus = selectedTable.status;
@@ -959,14 +974,29 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
       updatedTable.startTime = d.toISOString();
     } else if ((finalStatus === 'dining' || finalStatus === 'reserved') && !selectedTable.startTime) {
       updatedTable.startTime = new Date().toISOString();
+    } else if (finalStatus === 'available') {
+      delete updatedTable.startTime;
     }
 
+    // Update local state immediately
     setTables(tables.map(t => t.id === selectedTable.id ? updatedTable : t));
     setSelectedTable(updatedTable);
 
     setEditingTime(false);
     setEditingSeats(false);
     setEditingStatus(false);
+
+    // Persist status & seats to server so polling doesn't revert the change
+    try {
+      await fetch(`${API_BASE}/tables/${selectedTable.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: finalStatus, seats: seatsValue }),
+      });
+      showToast(`Table ${selectedTable.number} updated to ${finalStatus}`, 'success');
+    } catch (err) {
+      console.warn('Could not save table edits to server (offline?):', err);
+    }
   };
 
   const handleSendToKitchen = async () => {
