@@ -40,8 +40,8 @@ const ReceiptSlip = ({ printData }) => {
     width: '72mm',
     background: '#ffffff',
     color: '#000000',
-    fontFamily: "system-ui, -apple-system, sans-serif",
-    fontSize: '12.5px',
+    fontFamily: "Arial, Helvetica, sans-serif",
+    fontSize: '13px',
     lineHeight: '1.4',
     padding: '4mm 2mm',
     boxSizing: 'border-box',
@@ -50,7 +50,7 @@ const ReceiptSlip = ({ printData }) => {
   const center = { textAlign: 'center' };
   const dash = { borderTop: '1.5px dashed #000', margin: '2.5mm 0' };
   const solid = { borderTop: '2px solid #000', margin: '1mm 0' };
-  const row = { display: 'flex', justifyContent: 'space-between', marginBottom: '1.2mm', fontSize: '12.5px', color: '#000' };
+  const row = { display: 'flex', justifyContent: 'space-between', marginBottom: '1.2mm', fontSize: '13px', color: '#000' };
 
   return (
     <div style={wrap}>
@@ -66,10 +66,10 @@ const ReceiptSlip = ({ printData }) => {
 
       {/* RESTAURANT NAME */}
       <div style={{ ...center, marginBottom: '2.5mm' }}>
-        <div style={{ fontSize: '22px', fontWeight: '950', letterSpacing: '2px', textTransform: 'uppercase', fontFamily: 'sans-serif', lineHeight: '1.2', color: '#000' }}>
+        <div style={{ fontSize: '24px', fontWeight: '950', letterSpacing: '1px', textTransform: 'uppercase', fontFamily: 'Arial, sans-serif', lineHeight: '1.2', color: '#000' }}>
           ZAIQA MAHAL
         </div>
-        <div style={{ fontSize: '11px', color: '#000', marginTop: '1.5mm', lineHeight: '1.5', fontWeight: 'bold' }}>
+        <div style={{ fontSize: '13px', color: '#000', marginTop: '2mm', lineHeight: '1.5', fontWeight: '900', fontFamily: 'Arial, sans-serif' }}>
           Chishtian Road, Near Ali Park<br />
           Hasilpur, 63000<br />
           Ph: 0300-3910101
