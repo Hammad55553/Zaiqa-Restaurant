@@ -43,7 +43,7 @@ const ReceiptSlip = ({ printData }) => {
     fontFamily: "Arial, Helvetica, sans-serif",
     fontSize: '13px',
     lineHeight: '1.4',
-    padding: '4mm 2mm',
+    padding: '4mm 1.5mm',
     boxSizing: 'border-box',
   };
 
@@ -255,7 +255,7 @@ const ReceiptSlip = ({ printData }) => {
 
       {/* FOOTER */}
       <div style={{ ...center, marginTop: '4mm' }}>
-        <div style={{ fontSize: '9.5px', color: '#000', marginBottom: '3mm', lineHeight: '1.5', textAlign: 'left', paddingLeft: '1mm', fontWeight: '700' }}>
+        <div style={{ fontSize: '9.5px', color: '#000', marginBottom: '3mm', lineHeight: '1.5', textAlign: 'left', paddingLeft: '0', fontWeight: '700' }}>
           Please check your order and cash change before leaving.<br />
           No challenge in court once checked out.<br />
           Order once served or prepared cannot be changed.<br />
