@@ -330,7 +330,7 @@ const ReturnsPending = ({ onBack }) => {
   const cancelledOrders = orders.filter(o => o.status === 'cancelled');
 
   return (
-    <div className="flex-1 bg-zinc-950 p-6 flex flex-col h-full overflow-hidden text-zinc-100 font-sans">
+    <div className="absolute inset-0 bg-zinc-950 p-6 flex flex-col overflow-hidden text-zinc-100 font-sans">
       {/* Header */}
       <div className="flex justify-between items-center mb-6 bg-zinc-900/50 p-4 rounded-2xl border border-zinc-800/80 shadow-2xl backdrop-blur-md">
         <div>
@@ -681,7 +681,7 @@ const ReturnsPending = ({ onBack }) => {
               )}
             </div>
           </div>
-        ) : (
+        ) : activeTab === 'voided' ? (
           <div className="space-y-8 animate-fadeIn">
             {/* Voided Items Log */}
             <div className="bg-zinc-900/30 p-5 rounded-2xl border border-zinc-800/60 shadow-xl">
@@ -736,102 +736,146 @@ const ReturnsPending = ({ onBack }) => {
               )}
             </div>
           </div>
-        )}
-      </div>
+        ) : null}
 
-      {/* CANCEL REQUESTS TAB */}
-      {activeTab === 'cancel-requests' && (
-        <div className="space-y-3">
-          {cancelRequests.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-zinc-500">
-              <AlertTriangle size={40} className="mb-3 text-zinc-700" />
-              <p className="text-sm font-medium">No cancel requests found</p>
-            </div>
-          ) : cancelRequests.map(req => {
-            const statusColors = {
-              pending:  { bg: 'bg-amber-500/10',  text: 'text-amber-400',   border: 'border-amber-500/20' },
-              approved: { bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/20' },
-              rejected: { bg: 'bg-red-500/10',     text: 'text-red-400',     border: 'border-red-500/20' },
-            };
-            const sc = statusColors[req.status] || statusColors.pending;
-            return (
-              <div key={req.id} className={`rounded-2xl border ${sc.border} ${sc.bg} p-4`}>
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-black text-white">Order #{req.order_id}</span>
-                      <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border ${sc.border} ${sc.text}`}>{req.status}</span>
+        {/* CANCEL REQUESTS TAB (Moved inside scrollable container) */}
+        {activeTab === 'cancel-requests' && (
+          <div className="grid grid-cols-1 gap-4 animate-fadeIn">
+            {cancelRequests.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-zinc-500 bg-zinc-900/10 rounded-2xl border border-dashed border-zinc-800">
+                <AlertTriangle size={40} className="mb-3 text-zinc-650" />
+                <p className="text-sm font-bold">No cancel requests found</p>
+              </div>
+            ) : cancelRequests.map(req => {
+              const statusColors = {
+                pending:  { bg: 'bg-amber-950/40',  text: 'text-amber-400',   border: 'border-amber-500/20', dot: 'bg-amber-500' },
+                approved: { bg: 'bg-emerald-950/40', text: 'text-emerald-400', border: 'border-emerald-500/20', dot: 'bg-emerald-500' },
+                rejected: { bg: 'bg-red-950/40',     text: 'text-red-400',     border: 'border-red-500/20', dot: 'bg-red-500' },
+              };
+              const sc = statusColors[req.status] || statusColors.pending;
+              const needsAdmin = ['preparing', 'ready', 'completed'].includes(req.order_status);
+
+              return (
+                <div key={req.id} className={`bg-zinc-900/60 border ${sc.border} rounded-2xl p-5 hover:border-zinc-700 hover:shadow-2xl transition-all duration-300 flex flex-col lg:flex-row justify-between gap-6`}>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2 flex-wrap">
+                      <span className="text-xs font-black text-white uppercase tracking-wider">Order #{req.order_id}</span>
+                      <span className="text-zinc-700">•</span>
+                      <div className="flex items-center gap-1.5">
+                        <div className={`w-2 h-2 rounded-full ${sc.dot}`} />
+                        <span className={`text-[10px] font-black uppercase ${sc.text}`}>{req.status}</span>
+                      </div>
                       {req.order_status && (
-                        <span className="text-[10px] font-bold text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded-full uppercase">{req.order_status}</span>
+                        <>
+                          <span className="text-zinc-700">•</span>
+                          <span className="text-[10px] font-bold text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded-lg uppercase">{req.order_status}</span>
+                        </>
+                      )}
+                      {needsAdmin && (
+                        <span className="text-[9px] bg-red-500/10 border border-red-500/20 text-red-400 px-2 py-0.5 rounded-lg font-black uppercase tracking-wider">Admin Only</span>
                       )}
                     </div>
-                    <div className="flex items-center gap-3 text-xs text-zinc-500">
-                      <span className="flex items-center gap-1"><User size={10}/> {req.requested_by} ({req.requested_role})</span>
-                      <span className="flex items-center gap-1"><Clock size={10}/> {new Date(req.created_at).toLocaleString()}</span>
+
+                    <div className="flex items-center gap-4 text-[11px] text-zinc-500 mb-2">
+                      <span className="flex items-center gap-1"><User size={12}/> {req.requested_by} ({req.requested_role})</span>
+                      <span className="flex items-center gap-1"><Clock size={12}/> {new Date(req.created_at).toLocaleString()}</span>
                     </div>
-                    {req.table_number && <p className="text-xs text-zinc-400 mt-1">Table {req.table_number} · {req.area}</p>}
-                    {req.reason && <p className="text-xs italic text-zinc-500 mt-1">"{req.reason}"</p>}
-                    {req.resolved_by && (
-                      <p className="text-xs mt-1 text-zinc-400">
-                        {req.status === 'approved' ? '✅' : '❌'} By {req.resolved_by}
-                        {req.resolved_at ? ` at ${new Date(req.resolved_at).toLocaleString()}` : ''}
-                        {req.reject_reason ? ` — "${req.reject_reason}"` : ''}
+
+                    {req.table_number && (
+                      <p className="text-xs text-zinc-350 font-black bg-zinc-950/40 px-3 py-1.5 rounded-xl inline-block border border-zinc-850/50">
+                        Table {req.table_number} · <span className="text-orange-500">{req.area}</span>
                       </p>
                     )}
-                    {req.items && req.items.length > 0 && (
-                      <div className="mt-2 space-y-0.5">
-                        {req.items.map(item => (
-                          <p key={item.id} className="text-[11px] text-zinc-500">{item.item_name} × {item.quantity}</p>
-                        ))}
+
+                    {req.reason && (
+                      <div className="mt-3 bg-zinc-950/40 border-l-2 border-orange-500 rounded-r-xl px-4 py-2.5 text-xs text-zinc-300 italic">
+                        "{req.reason}"
+                      </div>
+                    )}
+
+                    {req.resolved_by && (
+                      <div className={`mt-3 p-3 rounded-xl border text-[11px] flex flex-col gap-1.5 ${
+                        req.status === 'approved' ? 'bg-emerald-950/20 border-emerald-500/10 text-emerald-400' : 'bg-red-950/20 border-red-500/10 text-red-400'
+                      }`}>
+                        <div className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[10px]">
+                          <span>{req.status === 'approved' ? '✅ APPROVED' : '❌ REJECTED'} BY:</span>
+                          <span className="text-white bg-zinc-800 px-1.5 py-0.5 rounded">{req.resolved_by}</span>
+                        </div>
+                        {req.resolved_at && <span>Resolved at: {new Date(req.resolved_at).toLocaleString()}</span>}
+                        {req.status === 'approved' && req.resolve_remark && <span>Remarks: "{req.resolve_remark}"</span>}
+                        {req.status === 'rejected' && req.reject_reason && <span>Reason: "{req.reject_reason}"</span>}
                       </div>
                     )}
                   </div>
-                  {req.status === 'pending' && (isAdmin || canApprove(req)) && (
-                    <div className="flex flex-col gap-2 shrink-0">
-                      <button
-                        onClick={() => {
-                          setApproveRemark('');
-                          setApproveModalReq(req);
-                        }}
-                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-lg flex items-center gap-1"
-                      >
-                        <CheckCircle2 size={11}/> Approve
-                      </button>
-                      <button
-                        onClick={() => {
-                          setRejectRemark('');
-                          setRejectModalReq(req);
-                        }}
-                        className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-black rounded-lg flex items-center gap-1"
-                      >
-                        <XCircle size={11}/> Reject
-                      </button>
-                    </div>
-                  )}
-                  {req.status === 'pending' && !isAdmin && !canApprove(req) && (
-                    <span className="text-xs text-amber-500 font-bold bg-amber-950/20 border border-amber-500/20 px-2.5 py-1.5 rounded-lg">
-                      Needs Admin Approval
-                    </span>
-                  )}
-                  {req.status === 'rejected' && isAdmin && (
-                    <div className="flex flex-col gap-2 shrink-0">
-                      <button
-                        onClick={() => {
-                          setApproveRemark('');
-                          setApproveModalReq(req);
-                        }}
-                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-lg flex items-center gap-1"
-                      >
-                        <CheckCircle2 size={11}/> Override Approve
-                      </button>
-                    </div>
-                  )}
+
+                  <div className="w-full lg:w-72 flex flex-col justify-between gap-4 border-t lg:border-t-0 lg:border-l border-zinc-850/60 pt-4 lg:pt-0 lg:pl-6">
+                    {req.items && req.items.length > 0 && (
+                      <div>
+                        <h4 className="text-[10px] font-black uppercase text-zinc-500 tracking-wider mb-2">Order Items</h4>
+                        <div className="space-y-1.5 max-h-32 overflow-y-auto custom-scrollbar pr-1">
+                          {req.items.map(item => (
+                            <div key={item.id} className="flex justify-between items-center text-xs">
+                              <span className="text-zinc-300 font-medium">{item.item_name} × {item.quantity}</span>
+                              <span className="text-zinc-500 font-bold">Rs. {item.price * item.quantity}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="flex justify-between items-center mt-3 pt-2 border-t border-zinc-850">
+                          <span className="text-[10px] font-black text-zinc-500 uppercase tracking-wider">Total Bill</span>
+                          <span className="text-xs font-black text-orange-500">Rs. {Number(req.total_amount || 0).toLocaleString()}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {req.status === 'pending' && (isAdmin || canApprove(req)) && (
+                      <div className="flex gap-2 mt-auto">
+                        <button
+                          onClick={() => {
+                            setApproveRemark('');
+                            setApproveModalReq(req);
+                          }}
+                          className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-[10px] font-black uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-500/10 cursor-pointer"
+                        >
+                          <CheckCircle2 size={12}/> Approve
+                        </button>
+                        <button
+                          onClick={() => {
+                            setRejectRemark('');
+                            setRejectModalReq(req);
+                          }}
+                          className="flex-1 py-2 bg-red-600 hover:bg-red-700 active:scale-95 text-white text-[10px] font-black uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-red-500/10 cursor-pointer"
+                        >
+                          <XCircle size={12}/> Reject
+                        </button>
+                      </div>
+                    )}
+
+                    {req.status === 'pending' && !isAdmin && !canApprove(req) && (
+                      <div className="mt-auto bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[10px] font-black uppercase tracking-wider p-2.5 rounded-xl text-center">
+                        🔒 Needs Admin Approval
+                      </div>
+                    )}
+
+                    {req.status === 'rejected' && isAdmin && (
+                      <div className="mt-auto">
+                        <button
+                          onClick={() => {
+                            setApproveRemark('');
+                            setApproveModalReq(req);
+                          }}
+                          className="w-full py-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:brightness-110 active:scale-95 text-white text-[10px] font-black uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-500/15 cursor-pointer border-0"
+                        >
+                          <CheckCircle2 size={12}/> Override Approve
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Sell Modal Dialog */}
       {sellModalItem && (
