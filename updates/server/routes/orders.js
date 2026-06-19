@@ -121,13 +121,14 @@ router.patch('/:id/status', (req, res) => {
       return res.status(404).json({ error: 'Order not found' });
     }
 
+    const targetStatus = status || orderRow.status;
     const wasPending = orderRow.status === 'pending';
-    const becameActive = ['preparing', 'ready', 'completed'].includes(status);
+    const becameActive = ['preparing', 'ready', 'completed'].includes(targetStatus);
 
     let query = `UPDATE orders SET status = ?`;
-    let params = [status];
+    let params = [targetStatus];
 
-    if (status === 'completed') {
+    if (targetStatus === 'completed') {
       const now = new Date();
       const dateStr = now.getFullYear() + 
                       String(now.getMonth() + 1).padStart(2, '0') + 
@@ -160,7 +161,7 @@ router.patch('/:id/status', (req, res) => {
 
       // If order is completed, set table to available (optional release_table parameter)
       const releaseTable = req.body.release_table !== false;
-      if (orderRow.table_number && orderRow.area !== 'Delivery' && status === 'completed' && releaseTable) {
+      if (orderRow.table_number && orderRow.area !== 'Delivery' && targetStatus === 'completed' && releaseTable) {
         db.run(`UPDATE tables SET status = 'available' WHERE table_number = ?`, [orderRow.table_number], (errT) => {
           if (errT) console.error("Error updating table status on complete:", errT);
           db.get(`SELECT id FROM tables WHERE table_number = ?`, [orderRow.table_number], (errG, row) => {

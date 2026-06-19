@@ -121,7 +121,7 @@ router.patch('/:id/status', (req, res) => {
       return res.status(404).json({ error: 'Order not found' });
     }
 
-    let targetStatus = status;
+    let targetStatus = status || orderRow.status;
     // Dine-in table orders can only be marked 'completed' from the POS checkout (which sends checkout: true)
     if (orderRow.table_number && orderRow.area !== 'Delivery' && status === 'completed' && !req.body.checkout) {
       targetStatus = 'ready';
