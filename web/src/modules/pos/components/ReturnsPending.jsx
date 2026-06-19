@@ -780,6 +780,37 @@ const ReturnsPending = ({ onBack }) => {
                       Needs Admin Approval
                     </span>
                   )}
+                  {req.status === 'rejected' && isAdmin && (
+                    <div className="flex flex-col gap-2 shrink-0">
+                      <button
+                        onClick={async () => {
+                          const resolve_remark = window.prompt("Enter remarks / reason for overriding and approving cancellation (Mandatory):");
+                          if (resolve_remark === null) return;
+                          if (!resolve_remark.trim()) {
+                            showToast('Remarks are required to approve cancellation!', 'error');
+                            return;
+                          }
+                          const wasStarted = ['preparing', 'ready', 'completed'].includes(req.order_status);
+                          const res = await fetch(`${API_BASE}/orders/cancel-requests/${req.id}/approve`, {
+                            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ 
+                              resolved_by: currentUser?.username || 'Staff', 
+                              resolved_role: currentUser?.role || 'admin', 
+                              refund_raw: wasStarted, 
+                              log_waste: wasStarted,
+                              resolve_remark: resolve_remark.trim()
+                            })
+                          });
+                          const d = await res.json();
+                          if (res.ok) { showToast('Approved override & order cancelled', 'success'); fetchData(); }
+                          else showToast(d.error || 'Failed to approve override', 'error');
+                        }}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-lg flex items-center gap-1"
+                      >
+                        <CheckCircle2 size={11}/> Override Approve
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             );

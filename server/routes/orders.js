@@ -669,7 +669,13 @@ router.patch('/cancel-requests/:reqId/approve', (req, res) => {
   }
   db.get(`SELECT * FROM cancel_requests WHERE id = ?`, [reqId], (err, cancelReq) => {
     if (err || !cancelReq) return res.status(404).json({ error: 'Cancel request not found' });
-    if (cancelReq.status !== 'pending') return res.status(400).json({ error: `Request already ${cancelReq.status}` });
+    if (cancelReq.status !== 'pending') {
+      if (cancelReq.status === 'rejected' && resolved_role === 'admin') {
+        // Admin can override rejected requests
+      } else {
+        return res.status(400).json({ error: `Request already ${cancelReq.status}` });
+      }
+    }
 
     // Role permission check
     db.get(`SELECT * FROM orders WHERE id = ?`, [cancelReq.order_id], (err2, order) => {

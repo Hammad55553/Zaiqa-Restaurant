@@ -250,6 +250,15 @@ const CancelRequestsPanel = ({ onClose, currentUser }) => {
                           <XCircle size={12} /> Reject
                         </button>
                       )}
+                      {req.status === 'rejected' && role === 'admin' && (
+                        <button
+                          onClick={() => handleApprove(req)}
+                          disabled={processing === req.id}
+                          className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-black rounded-lg transition-all flex items-center gap-1 shadow-sm disabled:opacity-60"
+                        >
+                          <CheckCircle2 size={12} /> Override Approve
+                        </button>
+                      )}
                       {req.status === 'pending' && !canApprove(req) && role !== 'admin' && (
                         <span className="text-xs text-amber-600 font-bold bg-amber-100 px-2 py-1 rounded-lg">Needs Admin</span>
                       )}
