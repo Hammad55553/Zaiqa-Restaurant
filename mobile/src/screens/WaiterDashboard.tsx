@@ -9,11 +9,13 @@ import {
   Modal,
   Animated,
   Pressable,
+  TextInput,
+  Alert,
 } from 'react-native';
-import { LogOut, Layers, Clock, ArrowLeft, MoreVertical, WifiOff } from 'lucide-react-native';
+import { LogOut, Layers, Clock, ArrowLeft, MoreVertical, WifiOff, Settings } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_BASE } from '../config';
+import { API_BASE, serverIP, setServerIP } from '../config';
 import { useToast } from '../components/Toast';
 import { useServerStatus } from '../hooks/useServerStatus';
 import NetworkStatusBar from '../components/NetworkStatusBar';
@@ -75,8 +77,11 @@ interface DotsMenuProps {
 
 function DotsMenu({ onLogout }: DotsMenuProps) {
   const [open, setOpen] = useState(false);
+  const [ipModalVisible, setIpModalVisible] = useState(false);
+  const [ipInput, setIpInput] = useState(serverIP);
   const scaleAnim = useRef(new Animated.Value(0.85)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
+  const toast = useToast();
 
   const showMenu = () => {
     setOpen(true);
@@ -98,6 +103,23 @@ function DotsMenu({ onLogout }: DotsMenuProps) {
     });
   };
 
+  const handleSaveIP = async () => {
+    if (!ipInput.trim()) {
+      Alert.alert('Required', 'Server IP cannot be empty.');
+      return;
+    }
+    try {
+      await setServerIP(ipInput.trim());
+      setIpModalVisible(false);
+      Alert.alert(
+        'Server Config Saved',
+        `Server IP successfully updated to: ${ipInput.trim()}\n\nThe app will now connect to the new server IP.`
+      );
+    } catch (e) {
+      Alert.alert('Save Failed', 'Could not update server IP.');
+    }
+  };
+
   return (
     <>
       <TouchableOpacity style={styles.dotsBtn} onPress={showMenu} activeOpacity={0.7}>
@@ -113,7 +135,19 @@ function DotsMenu({ onLogout }: DotsMenuProps) {
                 { transform: [{ scale: scaleAnim }], opacity: opacityAnim },
               ]}
             >
-
+              <TouchableOpacity
+                style={[styles.menuItem, { borderBottomWidth: 1, borderBottomColor: '#334155' }]}
+                onPress={() => {
+                  hideMenu();
+                  setIpInput(serverIP);
+                  setIpModalVisible(true);
+                }}
+              >
+                <View style={[styles.menuIcon, { backgroundColor: '#1e3a8a' }]}>
+                  <Settings size={16} color="#3b82f6" />
+                </View>
+                <Text style={styles.menuLabel}>Server Settings</Text>
+              </TouchableOpacity>
 
               <TouchableOpacity style={styles.menuItem} onPress={() => hideMenu(onLogout)}>
                 <View style={[styles.menuIcon, { backgroundColor: '#2a0a0a' }]}>
@@ -124,6 +158,73 @@ function DotsMenu({ onLogout }: DotsMenuProps) {
             </Animated.View>
           </Pressable>
         </Pressable>
+      </Modal>
+
+      {/* Change IP Modal */}
+      <Modal
+        visible={ipModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setIpModalVisible(false)}
+      >
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(15,23,42,0.6)' }}>
+          <View style={{ backgroundColor: '#1e293b', padding: 24, borderRadius: 20, width: '85%', borderWidth: 1, borderColor: '#334155' }}>
+            <Text style={{ fontSize: 16, fontWeight: '900', color: '#ffffff', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Server Configuration
+            </Text>
+            <Text style={{ fontSize: 12, color: '#94a3b8', marginBottom: 16 }}>
+              Update the server IP address to connect to another terminal.
+            </Text>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: '#f97316', marginBottom: 6, textTransform: 'uppercase' }}>
+              Server IP Address
+            </Text>
+            <TextInput
+              style={{
+                backgroundColor: '#0f172a',
+                borderWidth: 1,
+                borderColor: '#334155',
+                borderRadius: 10,
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                fontSize: 14,
+                color: '#ffffff',
+                fontWeight: '600',
+                marginBottom: 20,
+              }}
+              value={ipInput}
+              onChangeText={setIpInput}
+              placeholder="e.g. 192.168.100.57"
+              placeholderTextColor="#475569"
+            />
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <TouchableOpacity
+                style={{
+                  flex: 1,
+                  paddingVertical: 12,
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: '#334155',
+                  alignItems: 'center',
+                }}
+                onPress={() => setIpModalVisible(false)}
+              >
+                <Text style={{ color: '#94a3b8', fontWeight: '800', fontSize: 13 }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{
+                  flex: 1,
+                  paddingVertical: 12,
+                  borderRadius: 10,
+                  backgroundColor: '#f97316',
+                  alignItems: 'center',
+                }}
+                onPress={handleSaveIP}
+              >
+                <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 13 }}>Save Config</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
     </>
   );
