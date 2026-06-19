@@ -63,6 +63,11 @@ const ReturnsPending = ({ onBack }) => {
   } catch (e) {}
 
   const isAdmin = currentUser.role === 'admin';
+  const canApprove = (req) => {
+    const role = currentUser.role || 'cashier';
+    if (req.order_status === 'preparing' || req.order_status === 'ready' || req.order_status === 'completed') return role === 'admin';
+    return role === 'cashier' || role === 'admin';
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -406,17 +411,23 @@ const ReturnsPending = ({ onBack }) => {
                     <div className="flex gap-2">
                       <button
                         onClick={() => {
-                          if (!isAdmin) {
-                            showToast('Access denied. Admin role required.', 'error');
+                          const orderStatus = order.status;
+                          const isPreparing = orderStatus === 'preparing';
+                          const isReady = orderStatus === 'ready';
+                          const isCompleted = orderStatus === 'completed';
+                          const canCancel = !(isPreparing || isReady || isCompleted) || isAdmin;
+
+                          if (!canCancel) {
+                            showToast('Access denied. Only Admin can cancel preparing, ready, or completed orders.', 'error');
                             return;
                           }
                           setCancelModalOrder(order);
                           setCancelReason('Customer Cancelled');
-                          setRefundRaw(true);
-                          setLogWaste(false);
+                          setRefundRaw(isPreparing || isReady || isCompleted);
+                          setLogWaste(isPreparing || isReady || isCompleted);
                         }}
                         className={`flex-1 py-2.5 rounded-xl font-black text-[11px] uppercase tracking-wider text-center cursor-pointer transition-all active:scale-95 ${
-                          isAdmin 
+                          (isAdmin || !(order.status === 'preparing' || order.status === 'ready' || order.status === 'completed')) 
                             ? 'bg-gradient-to-r from-red-600 to-rose-700 text-white shadow-lg hover:brightness-110' 
                             : 'bg-zinc-800 text-zinc-500 cursor-not-allowed border border-zinc-750'
                         }`}
@@ -715,14 +726,26 @@ const ReturnsPending = ({ onBack }) => {
                       </div>
                     )}
                   </div>
-                  {req.status === 'pending' && isAdmin && (
+                  {req.status === 'pending' && (isAdmin || canApprove(req)) && (
                     <div className="flex flex-col gap-2 shrink-0">
                       <button
                         onClick={async () => {
+                          const resolve_remark = window.prompt("Enter remarks / reason for approving cancellation (Mandatory):");
+                          if (resolve_remark === null) return;
+                          if (!resolve_remark.trim()) {
+                            showToast('Remarks are required to approve cancellation!', 'error');
+                            return;
+                          }
                           const wasStarted = ['preparing', 'ready', 'completed'].includes(req.order_status);
                           const res = await fetch(`${API_BASE}/orders/cancel-requests/${req.id}/approve`, {
                             method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ resolved_by: currentUser?.username || 'admin', resolved_role: currentUser?.role || 'admin', refund_raw: wasStarted, log_waste: wasStarted })
+                            body: JSON.stringify({ 
+                              resolved_by: currentUser?.username || 'Staff', 
+                              resolved_role: currentUser?.role || 'cashier', 
+                              refund_raw: wasStarted, 
+                              log_waste: wasStarted,
+                              resolve_remark: resolve_remark.trim()
+                            })
                           });
                           const d = await res.json();
                           if (res.ok) { showToast('Approved & order cancelled', 'success'); fetchData(); }
@@ -734,10 +757,13 @@ const ReturnsPending = ({ onBack }) => {
                       </button>
                       <button
                         onClick={async () => {
-                          const reason = window.prompt('Reject reason (optional):') || 'Rejected by admin';
+                          const reason = window.prompt('Reject reason (optional):') || 'Rejected by staff';
                           const res = await fetch(`${API_BASE}/orders/cancel-requests/${req.id}/reject`, {
                             method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ resolved_by: currentUser?.username || 'admin', reject_reason: reason })
+                            body: JSON.stringify({ 
+                              resolved_by: currentUser?.username || 'Staff', 
+                              reject_reason: reason 
+                            })
                           });
                           const d = await res.json();
                           if (res.ok) { showToast('Request rejected', 'success'); fetchData(); }
@@ -748,6 +774,11 @@ const ReturnsPending = ({ onBack }) => {
                         <XCircle size={11}/> Reject
                       </button>
                     </div>
+                  )}
+                  {req.status === 'pending' && !isAdmin && !canApprove(req) && (
+                    <span className="text-xs text-amber-500 font-bold bg-amber-950/20 border border-amber-500/20 px-2.5 py-1.5 rounded-lg">
+                      Needs Admin Approval
+                    </span>
                   )}
                 </div>
               </div>
