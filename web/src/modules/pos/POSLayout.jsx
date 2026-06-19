@@ -16,7 +16,7 @@ import { getOfflineItem, setOfflineItem, removeOfflineItem } from '../../utils/o
 import { moveToTrash } from '../../utils/trashDB';
 import CancelRequestsPanel from './components/CancelRequestsPanel';
 
-const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeliveryId }) => {
+const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDirectSelectDeliveryId, navigateTo }) => {
   const [view, setView] = useState('floor'); // 'floor', 'order', or 'delivery-order'
   const [selectedTable, setSelectedTable] = useState(null);
   const [cartItems, setCartItems] = useState([]);
@@ -2838,7 +2838,10 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
             <span>ATTENTION: {pendingCancelCount} WAITER CANCELLATION REQUESTS PENDING APPROVAL!</span>
           </div>
           <button 
-            onClick={() => setCancelRequestsOpen(true)}
+            onClick={() => {
+              localStorage.setItem('returns_pending_initial_tab', 'cancel-requests');
+              if (navigateTo) navigateTo('returns');
+            }}
             className="bg-white text-red-600 hover:bg-zinc-100 active:scale-95 transition-all px-4 py-1.5 rounded-lg text-[10px] font-black shadow-md border-0 uppercase"
           >
             Solve Requests
@@ -3601,7 +3604,10 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
           {/* Cancel Requests Floating Badge — Cashier & Admin Only */}
           {(currentUser?.role === 'cashier' || currentUser?.role === 'admin') && (
             <button
-              onClick={() => setCancelRequestsOpen(true)}
+              onClick={() => {
+                localStorage.setItem('returns_pending_initial_tab', 'cancel-requests');
+                if (navigateTo) navigateTo('returns');
+              }}
               className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-2xl shadow-2xl transition-all font-black text-xs uppercase tracking-wider"
               style={{
                 background: pendingCancelCount > 0 ? 'linear-gradient(135deg,#f59e0b,#ef4444)' : '#1c1917',

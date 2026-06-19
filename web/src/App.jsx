@@ -1001,6 +1001,7 @@ function App() {
               currentUser={currentUser}
               globalDirectSelectDeliveryId={globalSelectedDeliveryId}
               onClearGlobalDirectSelectDeliveryId={() => setGlobalSelectedDeliveryId(null)}
+              navigateTo={navigateTo}
             />
           )}
           {currentView === 'delivery' && <DeliveryManager navigateTo={navigateTo} />}

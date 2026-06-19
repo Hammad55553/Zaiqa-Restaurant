@@ -4,7 +4,11 @@ import { AlertCircle, AlertTriangle, Trash2, ShieldAlert, Archive, CheckCircle2,
 const API_BASE = 'http://localhost:5005/api';
 
 const ReturnsPending = ({ onBack }) => {
-  const [activeTab, setActiveTab] = useState('pending'); // 'pending', 'cancelled', 'waste', 'voided', 'cancel-requests'
+  const [activeTab, setActiveTab] = useState(() => {
+    const saved = localStorage.getItem('returns_pending_initial_tab');
+    localStorage.removeItem('returns_pending_initial_tab');
+    return saved || 'pending';
+  }); // 'pending', 'cancelled', 'waste', 'voided', 'cancel-requests'
   const [orders, setOrders] = useState([]);
   const [wasteList, setWasteList] = useState([]);
   const [outflowList, setOutflowList] = useState([]);
