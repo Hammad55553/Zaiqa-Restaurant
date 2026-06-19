@@ -10,6 +10,7 @@ interface CartItem {
   notes?: string;
   category_name?: string;
   sent?: boolean;
+  originalQty?: number;
 }
 
 interface CartSectionProps {
@@ -93,12 +94,14 @@ export default function CartSection({
                       <View style={{ flex: 1, paddingRight: 8 }}>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                           <Text style={[styles.cartItemName, { color: '#334155' }]} numberOfLines={1}>{item.name}</Text>
-                          <TouchableOpacity 
-                            onPress={() => setCartItems((prev: any) => prev.filter((i: any) => i.id !== item.id))}
-                            activeOpacity={0.7}
-                          >
-                            <Trash2 size={13} color="#ef4444" />
-                          </TouchableOpacity>
+                          {role !== 'waiter' && (
+                            <TouchableOpacity 
+                              onPress={() => setCartItems((prev: any) => prev.filter((i: any) => i.id !== item.id))}
+                              activeOpacity={0.7}
+                            >
+                              <Trash2 size={13} color="#ef4444" />
+                            </TouchableOpacity>
+                          )}
                         </View>
                         <Text style={styles.cartItemPrice}>Rs. {item.price} x {item.qty}</Text>
                         <TextInput 

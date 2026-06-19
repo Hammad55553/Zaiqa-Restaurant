@@ -374,9 +374,50 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
       } catch {}
     };
     pollCancelRequests();
-    const interval = setInterval(pollCancelRequests, 15000);
+    const interval = setInterval(pollCancelRequests, 10000);
     return () => clearInterval(interval);
   }, [cancelRequestsOpen]);
+
+  const playNotificationChime = () => {
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      const ctx = new AudioContext();
+      
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+      osc.frequency.setValueAtTime(880.00, ctx.currentTime + 0.12); // A5
+      
+      gain.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+      
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.4);
+    } catch (e) {
+      console.warn("AudioContext play failed:", e);
+    }
+  };
+
+  // Play chime periodically if cancel requests are pending
+  useEffect(() => {
+    if (pendingCancelCount <= 0 || cancelRequestsOpen) return;
+    
+    // Play chime immediately
+    playNotificationChime();
+    
+    const interval = setInterval(() => {
+      if (pendingCancelCount > 0 && !cancelRequestsOpen) {
+        playNotificationChime();
+      }
+    }, 6000); // chime every 6 seconds
+    
+    return () => clearInterval(interval);
+  }, [pendingCancelCount, cancelRequestsOpen]);
 
   // Load & sync delivery orders from IndexedDB
   const loadDeliveryOrders = async () => {
@@ -2790,6 +2831,20 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
 
   return (
     <div className="flex flex-col h-full bg-[#f8f9fc]">
+      {pendingCancelCount > 0 && (currentUser?.role === 'cashier' || currentUser?.role === 'admin') && (
+        <div className="bg-gradient-to-r from-red-600 via-orange-500 to-red-600 text-white font-black text-[11px] md:text-xs uppercase tracking-wider py-3 px-6 flex items-center justify-between shadow-lg animate-pulse shrink-0 border-b-2 border-red-700 select-none">
+          <div className="flex items-center gap-2">
+            <span className="text-sm">⚠️</span>
+            <span>ATTENTION: {pendingCancelCount} WAITER CANCELLATION REQUESTS PENDING APPROVAL!</span>
+          </div>
+          <button 
+            onClick={() => setCancelRequestsOpen(true)}
+            className="bg-white text-red-600 hover:bg-zinc-100 active:scale-95 transition-all px-4 py-1.5 rounded-lg text-[10px] font-black shadow-md border-0 uppercase"
+          >
+            Solve Requests
+          </button>
+        </div>
+      )}
       {/* Area / Tab Selector */}
       <div className="px-6 lg:px-10 pt-8 pb-4 shrink-0 overflow-x-auto custom-scrollbar flex gap-4">
         {['Male', 'Family', 'Lawn'].map(area => (

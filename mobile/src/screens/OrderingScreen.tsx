@@ -29,6 +29,7 @@ interface CartItem extends MenuItem {
   qty: number;
   notes?: string;
   sent?: boolean;
+  originalQty?: number;
 }
 
 interface QueuedOrder {
@@ -323,7 +324,8 @@ export default function OrderingScreen({
               qty: item.quantity,
               notes: item.notes || '',
               category_name: '',
-              sent: true
+              sent: true,
+              originalQty: item.quantity
             }));
             setCartItems(mappedItems);
             setOriginalCartItems(JSON.parse(JSON.stringify(mappedItems)));
@@ -414,6 +416,17 @@ export default function OrderingScreen({
   };
 
   const updateQty = (id: any, delta: number) => {
+    const targetItem = cartItems.find(i => i.id === id);
+    if (targetItem && targetItem.sent && userRole === 'waiter' && delta < 0) {
+      if (targetItem.qty <= (targetItem.originalQty || 0)) {
+        Alert.alert(
+          'Action Restricted',
+          'Already placed items cannot be reduced or removed by waiters. Please ask Cashier or Admin to modify.'
+        );
+        return;
+      }
+    }
+
     setCartItems(prev => prev.map(item => {
       if (item.id === id) {
         const newQty = item.qty + delta;
