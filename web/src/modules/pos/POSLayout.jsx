@@ -40,6 +40,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
 
   const [activeOrderId, setActiveOrderId] = useState(null);
   const [activeOrderStatus, setActiveOrderStatus] = useState('pending');
+  const [activeOrderInvoiceNumber, setActiveOrderInvoiceNumber] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [cancelRequestsOpen, setCancelRequestsOpen] = useState(false);
   const [pendingCancelCount, setPendingCancelCount] = useState(0);
@@ -677,6 +678,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
           hasLoadedOrder = true;
           setActiveOrderId(order.id);
           setActiveOrderStatus(order.status || 'pending');
+          setActiveOrderInvoiceNumber(order.invoice_number || null);
           setOrderCustomerName(order.customer_name || '');
           setOrderRemarks(order.remarks || '');
           
@@ -730,11 +732,13 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
       if (!hasLoadedOrder) {
         const finalItems = await checkAndAppendPreparedWaste([]);
         setCartItems(finalItems);
+        setActiveOrderInvoiceNumber(null);
       }
     } catch (err) {
       console.error("Failed to fetch active order:", err);
       const finalItems = await checkAndAppendPreparedWaste([]);
       setCartItems(finalItems);
+      setActiveOrderInvoiceNumber(null);
     }
   };
 
@@ -777,6 +781,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
       total: tot,
       serviceCharges: applyServiceCharges ? Number(serviceCharges || 0) : 0,
       orderId: activeOrderId,
+      invoiceNumber: activeOrderInvoiceNumber || (activeOrderId ? `INV-${activeOrderId}` : null),
       date: new Date().toISOString(),
     };
 
