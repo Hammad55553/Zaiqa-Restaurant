@@ -81,22 +81,22 @@ const ReceiptSlip = ({ printData }) => {
       {/* ORDER INFO */}
       <div style={{ marginBottom: '1mm' }}>
         <div style={row}>
-          <span style={{ fontWeight: '800' }}>Date:</span>
-          <span style={{ fontWeight: '700' }}>{formatDate(date)}</span>
+          <span style={{ fontWeight: '500', textTransform: 'uppercase', fontSize: '11px' }}>Date:</span>
+          <span style={{ fontWeight: '800' }}>{formatDate(date)}</span>
         </div>
         <div style={row}>
-          <span style={{ fontWeight: '800' }}>Order No:</span>
+          <span style={{ fontWeight: '500', textTransform: 'uppercase', fontSize: '11px' }}>Order No:</span>
           <span style={{ fontWeight: '950', fontSize: '14px' }}>#{orderId || 'PENDING'}</span>
         </div>
         {table && (typeof table === 'string' ? table !== 'Delivery' : table.area !== 'Delivery') && (
           <div style={row}>
-            <span style={{ fontWeight: '800' }}>Table:</span>
+            <span style={{ fontWeight: '500', textTransform: 'uppercase', fontSize: '11px' }}>Table:</span>
             <span style={{ fontWeight: '950', fontSize: '13px' }}>{typeof table === 'object' ? `${table.area} - ${table.number}` : table}</span>
           </div>
         )}
         <div style={row}>
-          <span style={{ fontWeight: '800' }}>Cashier:</span>
-          <span style={{ fontWeight: '700' }}>{(() => {
+          <span style={{ fontWeight: '500', textTransform: 'uppercase', fontSize: '11px' }}>Cashier:</span>
+          <span style={{ fontWeight: '800' }}>{(() => {
             if (printData?.cashier) {
               try {
                 if (typeof printData.cashier === 'string' && printData.cashier.startsWith('{')) {
@@ -120,8 +120,8 @@ const ReceiptSlip = ({ printData }) => {
           })()}</span>
         </div>
         <div style={row}>
-          <span style={{ fontWeight: '800' }}>Terminal:</span>
-          <span style={{ fontWeight: '700' }}>Main POS</span>
+          <span style={{ fontWeight: '500', textTransform: 'uppercase', fontSize: '11px' }}>Terminal:</span>
+          <span style={{ fontWeight: '800' }}>Main POS</span>
         </div>
       </div>
 
@@ -137,13 +137,13 @@ const ReceiptSlip = ({ printData }) => {
         <>
           <div style={{ marginBottom: '1.5mm', fontSize: '11px', color: '#000' }}>
             <div style={row}>
-              <span style={{ fontWeight: '800' }}>Customer:</span>
+              <span style={{ fontWeight: '500', textTransform: 'uppercase', fontSize: '11px' }}>Customer:</span>
               <span style={{ fontWeight: '950' }}>{customerName}</span>
             </div>
             {customerPhone && customerPhone !== 'N/A' && customerPhone.trim() !== '' && (
               <div style={row}>
-                <span style={{ fontWeight: '800' }}>Phone:</span>
-                <span style={{ fontWeight: '700' }}>{customerPhone}</span>
+                <span style={{ fontWeight: '500', textTransform: 'uppercase', fontSize: '11px' }}>Phone:</span>
+                <span style={{ fontWeight: '800' }}>{customerPhone}</span>
               </div>
             )}
           </div>
@@ -158,34 +158,34 @@ const ReceiptSlip = ({ printData }) => {
             <div style={{ fontWeight: '950', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '1.5mm' }}>Delivery Details:</div>
             {deliveryAddress && (
               <div style={{ ...row, display: 'block', marginBottom: '1.5mm' }}>
-                <span style={{ fontWeight: '800' }}>Address:</span>
-                <div style={{ fontWeight: '950', paddingLeft: '2mm', marginTop: '0.5mm', whiteSpace: 'pre-wrap', fontSize: '11px', lineHeight: '1.3', color: '#000' }}>
+                <span style={{ fontWeight: '500', textTransform: 'uppercase', fontSize: '11px' }}>Address:</span>
+                <div style={{ fontWeight: '800', paddingLeft: '2mm', marginTop: '0.5mm', whiteSpace: 'pre-wrap', fontSize: '11px', lineHeight: '1.3', color: '#000' }}>
                   {deliveryAddress}
                 </div>
               </div>
             )}
             <div style={row}>
-              <span style={{ fontWeight: '800' }}>Method:</span>
+              <span style={{ fontWeight: '500', textTransform: 'uppercase', fontSize: '11px' }}>Method:</span>
               <span style={{ fontWeight: '950' }}>
                 {paymentMethod === 'online' ? '📱 ONLINE' : paymentMethod === 'khata' ? '💳 KHATA' : '💵 COD'}
               </span>
             </div>
             {transactionId && (
               <div style={row}>
-                <span style={{ fontWeight: '800' }}>Txn ID:</span>
+                <span style={{ fontWeight: '500', textTransform: 'uppercase', fontSize: '11px' }}>Txn ID:</span>
                 <span style={{ fontWeight: '950' }}>{transactionId}</span>
               </div>
             )}
             {riderName && (
               <div style={row}>
-                <span style={{ fontWeight: '800' }}>Rider:</span>
+                <span style={{ fontWeight: '500', textTransform: 'uppercase', fontSize: '11px' }}>Rider:</span>
                 <span style={{ fontWeight: '950' }}>{riderName}</span>
               </div>
             )}
             {remarks && (
               <div style={{ ...row, display: 'block', marginTop: '1mm' }}>
-                <span style={{ fontWeight: '800' }}>Remarks:</span>
-                <div style={{ fontWeight: '700', paddingLeft: '2mm', color: '#000' }}>{remarks}</div>
+                <span style={{ fontWeight: '500', textTransform: 'uppercase', fontSize: '11px' }}>Remarks:</span>
+                <div style={{ fontWeight: '800', paddingLeft: '2mm', color: '#000' }}>{remarks}</div>
               </div>
             )}
           </div>
@@ -194,10 +194,10 @@ const ReceiptSlip = ({ printData }) => {
       )}
 
       {/* ITEMS HEADER */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: '950', textTransform: 'uppercase', letterSpacing: '0.5px', paddingBottom: '1mm', color: '#000' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: '950', textTransform: 'uppercase', letterSpacing: '0.5px', paddingBottom: '1mm', color: '#000' }}>
         <span style={{ width: '30px' }}>QTY</span>
-        <span style={{ flex: 1 }}>ITEM</span>
-        <span style={{ textAlign: 'right', minWidth: '60px' }}>AMT</span>
+        <span style={{ flex: 1 }}>ITEM DESCRIPTION</span>
+        <span style={{ textAlign: 'right', minWidth: '60px' }}>AMOUNT</span>
       </div>
       <div style={solid} />
 
@@ -205,15 +205,15 @@ const ReceiptSlip = ({ printData }) => {
       <div style={{ marginBottom: '1mm' }}>
         {displayItems.map((item, index) => (
           <div key={index} style={{ marginBottom: '2.5mm' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#000', fontWeight: '700' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#000', fontWeight: '800' }}>
               <span style={{ width: '30px', fontWeight: '950' }}>{item.qty}x</span>
               <span style={{ flex: 1, paddingRight: '3px' }}>{item.name}</span>
               <span style={{ textAlign: 'right', minWidth: '60px', fontWeight: '950' }}>
                 {(item.price * item.qty).toFixed(0)}
               </span>
             </div>
-            <div style={{ fontSize: '10.5px', color: '#000', paddingLeft: '30px', fontWeight: '700' }}>
-              Rs. {item.price} x {item.qty}
+            <div style={{ fontSize: '10.5px', color: '#444', paddingLeft: '30px', fontWeight: '500' }}>
+              Rs. {item.price} each
             </div>
           </div>
         ))}
@@ -224,18 +224,18 @@ const ReceiptSlip = ({ printData }) => {
       {/* TOTALS */}
       <div style={{ marginBottom: '1.5mm' }}>
         <div style={row}>
-          <span style={{ fontWeight: '700' }}>Subtotal</span>
+          <span style={{ fontWeight: '500', textTransform: 'uppercase', fontSize: '11px' }}>Subtotal:</span>
           <span style={{ fontWeight: '800' }}>Rs. {subtotal.toFixed(0)}</span>
         </div>
         {serviceChargesAmt > 0 && (
           <div style={row}>
-            <span style={{ fontWeight: '700' }}>Service Charges</span>
+            <span style={{ fontWeight: '500', textTransform: 'uppercase', fontSize: '11px' }}>Service Charges:</span>
             <span style={{ fontWeight: '800' }}>Rs. {serviceChargesAmt.toFixed(0)}</span>
           </div>
         )}
         {tax > 0 && (
           <div style={row}>
-            <span style={{ fontWeight: '700' }}>GST / Tax</span>
+            <span style={{ fontWeight: '500', textTransform: 'uppercase', fontSize: '11px' }}>GST / Tax:</span>
             <span style={{ fontWeight: '800' }}>Rs. {tax.toFixed(0)}</span>
           </div>
         )}
