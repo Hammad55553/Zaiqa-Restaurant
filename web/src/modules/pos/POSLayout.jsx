@@ -809,7 +809,10 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
   };
 
   const executeCheckout = async (customerPhone = '', paymentStatus = 'PAID') => {
+    let shouldClearTable = true;
     try {
+      shouldClearTable = window.confirm("Do you want to clear this table and make it available?");
+
       // Calculate totals for invoice record
       const isServiceCharge = (i) => i.name === 'Service Charges' || i.item_name === 'Service Charges';
       const sub = cartItems.filter(i => !isServiceCharge(i)).reduce((sum, item) => sum + item.price * item.qty, 0);
@@ -826,7 +829,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
       const response = await fetch(`${API_BASE}/orders/${activeOrderId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'completed', checkout: true, payment_status: paymentStatus })
+        body: JSON.stringify({ status: 'completed', checkout: true, payment_status: paymentStatus, release_table: shouldClearTable })
       });
 
       let serverInvoiceNum = activeOrderInvoiceNumber || `INV-${invoiceId}`;
@@ -879,9 +882,14 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
       }, 300);
 
       if (response.ok) {
-        // Clear local table state
-        const updatedTable = { ...selectedTable, status: 'available' };
-        delete updatedTable.startTime;
+        // Clear local table state conditionally
+        let updatedTable;
+        if (shouldClearTable) {
+          updatedTable = { ...selectedTable, status: 'available' };
+          delete updatedTable.startTime;
+        } else {
+          updatedTable = { ...selectedTable, status: 'dining' };
+        }
 
         setTables(prev => prev.map(t => t.id === selectedTable.id ? updatedTable : t));
         setSelectedTable(null);
@@ -893,8 +901,13 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
         setIsCheckoutModalOpen(false);
       } else {
         // Offline checkout fallback
-        const updatedTable = { ...selectedTable, status: 'available' };
-        delete updatedTable.startTime;
+        let updatedTable;
+        if (shouldClearTable) {
+          updatedTable = { ...selectedTable, status: 'available' };
+          delete updatedTable.startTime;
+        } else {
+          updatedTable = { ...selectedTable, status: 'dining' };
+        }
         setTables(prev => prev.map(t => t.id === selectedTable.id ? updatedTable : t));
         setSelectedTable(null);
         setCartItems([]);
@@ -907,8 +920,13 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
     } catch (err) {
       console.error("Checkout error:", err);
       // Offline fallback
-      const updatedTable = { ...selectedTable, status: 'available' };
-      delete updatedTable.startTime;
+      let updatedTable;
+      if (shouldClearTable) {
+        updatedTable = { ...selectedTable, status: 'available' };
+        delete updatedTable.startTime;
+      } else {
+        updatedTable = { ...selectedTable, status: 'dining' };
+      }
       setTables(prev => prev.map(t => t.id === selectedTable.id ? updatedTable : t));
       setSelectedTable(null);
       setCartItems([]);

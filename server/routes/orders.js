@@ -164,8 +164,9 @@ router.patch('/:id/status', (req, res) => {
         return res.status(500).json({ error: 'Failed to update order status' });
       }
 
-      // If order is completed, set table to available
-      if (orderRow.table_number && orderRow.area !== 'Delivery' && targetStatus === 'completed') {
+      // If order is completed, set table to available (optional release_table parameter)
+      const releaseTable = req.body.release_table !== false;
+      if (orderRow.table_number && orderRow.area !== 'Delivery' && targetStatus === 'completed' && releaseTable) {
         db.run(`UPDATE tables SET status = 'available' WHERE table_number = ?`, [orderRow.table_number], (errT) => {
           if (errT) console.error("Error updating table status on complete:", errT);
           db.get(`SELECT id FROM tables WHERE table_number = ?`, [orderRow.table_number], (errG, row) => {
