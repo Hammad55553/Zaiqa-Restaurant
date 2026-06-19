@@ -18,6 +18,7 @@ const Menu = ({ onAddToCart, disabled }) => {
   const [customQty, setCustomQty] = useState(1);
   const [showDropdown, setShowDropdown] = useState(false);
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     const fetchMenu = async () => {
@@ -54,7 +55,10 @@ const Menu = ({ onAddToCart, disabled }) => {
   const dropdownItems = customName ? items.filter(i => i.name.toLowerCase().includes(customName.toLowerCase())) : [];
 
   const handleAddCustomItem = () => {
-    if (!customName || !customPrice) return alert("Please enter name and price");
+    if (!customName.trim() || !customPrice.trim()) {
+      setError("Please enter both Name and Price.");
+      return;
+    }
     
     // Check if it exactly matches an existing item
     const existingItem = items.find(i => i.name.toLowerCase() === customName.toLowerCase() && i.price == customPrice);
@@ -74,6 +78,7 @@ const Menu = ({ onAddToCart, disabled }) => {
     setCustomPrice('');
     setCustomQty(1);
     setShowDropdown(false);
+    setError('');
   };
 
   return (
@@ -102,6 +107,12 @@ const Menu = ({ onAddToCart, disabled }) => {
               <h3 className="text-xl font-display font-bold text-white">Add Custom Item</h3>
             </div>
             <div className="p-6 space-y-5">
+              {error && (
+                <div className="flex items-center gap-2.5 p-3.5 bg-red-50 border border-red-100 text-red-600 rounded-2xl text-xs font-bold animate-fadeIn transition-all">
+                  <AlertCircle size={16} className="shrink-0 text-red-500" />
+                  <span>{error}</span>
+                </div>
+              )}
               <div className="relative">
                 <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Item Name</label>
                 <input 
@@ -110,6 +121,7 @@ const Menu = ({ onAddToCart, disabled }) => {
                   onChange={e => {
                     setCustomName(e.target.value);
                     setShowDropdown(true);
+                    setError('');
                   }} 
                   onFocus={() => setShowDropdown(true)}
                   onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
@@ -128,6 +140,7 @@ const Menu = ({ onAddToCart, disabled }) => {
                           setCustomName(item.name);
                           setCustomPrice(item.price);
                           setShowDropdown(false);
+                          setError('');
                         }}
                         className="px-4 py-3 hover:bg-orange-50 cursor-pointer flex justify-between items-center border-b border-gray-50 last:border-0 transition-colors"
                       >
@@ -141,7 +154,7 @@ const Menu = ({ onAddToCart, disabled }) => {
               <div className="flex gap-6">
                 <div className="flex-1">
                   <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Price (Rs)</label>
-                  <input type="number" value={customPrice} onChange={e=>setCustomPrice(e.target.value)} placeholder="0" className="w-full mt-2 px-0 py-2 bg-transparent border-b-2 border-zinc-200 focus:border-orange-500 rounded-none focus:outline-none transition-colors text-lg font-medium text-zinc-800"/>
+                  <input type="number" value={customPrice} onChange={e=>{setCustomPrice(e.target.value); setError('');}} placeholder="0" className="w-full mt-2 px-0 py-2 bg-transparent border-b-2 border-zinc-200 focus:border-orange-500 rounded-none focus:outline-none transition-colors text-lg font-medium text-zinc-800"/>
                 </div>
                 <div className="w-24">
                   <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Qty</label>
@@ -150,7 +163,7 @@ const Menu = ({ onAddToCart, disabled }) => {
               </div>
             </div>
             <div className="flex gap-4 p-6 bg-gray-50 border-t border-gray-100">
-              <button onClick={() => setShowCustomModal(false)} className="flex-1 py-3 font-bold text-zinc-500 hover:text-zinc-800 transition-colors">Cancel</button>
+              <button onClick={() => { setShowCustomModal(false); setError(''); }} className="flex-1 py-3 font-bold text-zinc-500 hover:text-zinc-800 transition-colors">Cancel</button>
               <button onClick={handleAddCustomItem} className="flex-[2] py-3 font-bold text-zinc-950 bg-orange-500 rounded-xl hover:bg-orange-400 transition-colors shadow-lg shadow-orange-500/20">Add to Order</button>
             </div>
           </div>
@@ -238,7 +251,10 @@ const Menu = ({ onAddToCart, disabled }) => {
 
           <button 
             type="button"
-            onClick={() => setShowCustomModal(true)}
+            onClick={() => {
+              setError('');
+              setShowCustomModal(true);
+            }}
             className="shrink-0 bg-zinc-950 text-white w-9 h-9 flex items-center justify-center rounded-xl font-bold hover:bg-zinc-800 hover:text-orange-500 transition-all shadow-sm group"
             title="Add Custom Item"
           >
