@@ -55,7 +55,7 @@ const TableCard = ({ table, onClick }) => {
     <div 
       onClick={() => onClick(table)}
       style={{ borderColor: theme.border, '--radio-color': theme.shadow }}
-      className={`group relative h-36 md:h-44 lg:h-48 rounded-2xl md:rounded-3xl overflow-hidden shadow-md hover:shadow-2xl transition-all duration-1000 cursor-pointer transform hover:-translate-y-1 border-2 ${isOccupied ? 'animate-radio-waves' : ''}`}
+      className={`group relative h-36 md:h-44 lg:h-48 rounded-2xl md:rounded-3xl overflow-hidden shadow-md hover:shadow-2xl transition-all duration-1000 cursor-pointer transform hover:-translate-y-1 border-2 ${isOccupied && table.startTime ? 'animate-radio-waves' : ''}`}
     >
       <img src="./table.png" alt="Restaurant Table" className="absolute inset-0 w-full h-full object-cover z-0 group-hover:scale-105 transition-transform duration-500" />
       

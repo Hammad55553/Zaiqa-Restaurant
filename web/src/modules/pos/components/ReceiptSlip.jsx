@@ -4,12 +4,12 @@ import Logo from '../../../assets/Logo.jpg';
 const ReceiptSlip = ({ printData }) => {
   if (!printData) return null;
 
-  const { 
-    items, 
-    subtotal, 
-    tax, 
-    total, 
-    orderId, 
+  const {
+    items,
+    subtotal,
+    tax,
+    total,
+    orderId,
     date,
     table,
     customerName,
@@ -32,9 +32,9 @@ const ReceiptSlip = ({ printData }) => {
     if (invoiceNumber && !invoiceNumber.match(/^INV-\d+$/)) return invoiceNumber;
     if (invoice_number && !invoice_number.match(/^INV-\d+$/)) return invoice_number;
     const d = date ? new Date(date) : new Date();
-    const dateStr = d.getFullYear() + 
-                    String(d.getMonth() + 1).padStart(2, '0') + 
-                    String(d.getDate()).padStart(2, '0');
+    const dateStr = d.getFullYear() +
+      String(d.getMonth() + 1).padStart(2, '0') +
+      String(d.getDate()).padStart(2, '0');
     const stableSuffix = String(orderId || '0').padStart(4, '0');
     return `INV-${dateStr}-${stableSuffix}`;
   })();
@@ -70,10 +70,10 @@ const ReceiptSlip = ({ printData }) => {
   const solid = { borderTop: '2px solid #000', margin: '1mm 0' };
   const row = { display: 'flex', justifyContent: 'space-between', marginBottom: '1.2mm', fontSize: '13px', color: '#000' };
 
-  const stampColor = 
+  const stampColor =
     currentPaymentStatus.toUpperCase() === 'PAID' ? '#16a34a' :
-    currentPaymentStatus.toUpperCase() === 'ONLINE PAID' ? '#2563eb' :
-    currentPaymentStatus.toUpperCase() === 'PENDING' ? '#dc2626' : '#d97706';
+      currentPaymentStatus.toUpperCase() === 'ONLINE PAID' ? '#2563eb' :
+        currentPaymentStatus.toUpperCase() === 'PENDING' ? '#dc2626' : '#d97706';
 
   return (
     <div style={wrap}>
@@ -103,7 +103,7 @@ const ReceiptSlip = ({ printData }) => {
 
       {/* ORDER INFO */}
       <div style={{ marginBottom: '1mm', position: 'relative' }}>
-        
+
         {/* Ink Stamp / Gol Mohr */}
         {currentPaymentStatus && currentPaymentStatus.toUpperCase() !== 'NONE' && currentPaymentStatus.toUpperCase() !== 'WITHOUT STAMP' && (
           <div style={{
@@ -177,7 +177,7 @@ const ReceiptSlip = ({ printData }) => {
                   const p = JSON.parse(printData.cashier);
                   return p.name || p.username || 'Staff';
                 }
-              } catch(e){}
+              } catch (e) { }
               if (typeof printData.cashier === 'object') {
                 return printData.cashier.name || printData.cashier.username || 'Staff';
               }
@@ -189,7 +189,7 @@ const ReceiptSlip = ({ printData }) => {
                 const parsed = JSON.parse(u);
                 return parsed.name || parsed.username || 'Staff';
               }
-            } catch (e) {}
+            } catch (e) { }
             return 'Staff';
           })()}</span>
         </div>
@@ -198,28 +198,28 @@ const ReceiptSlip = ({ printData }) => {
       <div style={dash} />
 
       {/* CUSTOMER DETAILS */}
-      {customerName && 
-       customerName !== 'Walk-in Customer' && 
-       customerName !== 'Walk-in Guest' && 
-       customerName !== 'Table Guest' && 
-       customerName !== 'Walk-in' && 
-       customerName.trim() !== '' && (
-        <>
-          <div style={{ marginBottom: '1.5mm', fontSize: '11px', color: '#000' }}>
-            <div style={row}>
-              <span style={{ fontWeight: '500', textTransform: 'uppercase', fontSize: '11px' }}>Customer:</span>
-              <span style={{ fontWeight: '950' }}>{customerName}</span>
-            </div>
-            {customerPhone && customerPhone !== 'N/A' && customerPhone.trim() !== '' && (
+      {customerName &&
+        customerName !== 'Walk-in Customer' &&
+        customerName !== 'Walk-in Guest' &&
+        customerName !== 'Table Guest' &&
+        customerName !== 'Walk-in' &&
+        customerName.trim() !== '' && (
+          <>
+            <div style={{ marginBottom: '1.5mm', fontSize: '11px', color: '#000' }}>
               <div style={row}>
-                <span style={{ fontWeight: '500', textTransform: 'uppercase', fontSize: '11px' }}>Phone:</span>
-                <span style={{ fontWeight: '800' }}>{customerPhone}</span>
+                <span style={{ fontWeight: '500', textTransform: 'uppercase', fontSize: '11px' }}>Customer:</span>
+                <span style={{ fontWeight: '950' }}>{customerName}</span>
               </div>
-            )}
-          </div>
-          <div style={dash} />
-        </>
-      )}
+              {customerPhone && customerPhone !== 'N/A' && customerPhone.trim() !== '' && (
+                <div style={row}>
+                  <span style={{ fontWeight: '500', textTransform: 'uppercase', fontSize: '11px' }}>Phone:</span>
+                  <span style={{ fontWeight: '800' }}>{customerPhone}</span>
+                </div>
+              )}
+            </div>
+            <div style={dash} />
+          </>
+        )}
 
       {/* DELIVERY DETAILS */}
       {(table === 'Delivery' || (table && typeof table === 'object' && table.area === 'Delivery')) && (
@@ -283,7 +283,7 @@ const ReceiptSlip = ({ printData }) => {
               </span>
             </div>
             <div style={{ fontSize: '10.5px', color: '#444', paddingLeft: '30px', fontWeight: '500' }}>
-              Rs. {item.price} each
+              Rs. {item.price}
             </div>
           </div>
         ))}
@@ -327,7 +327,7 @@ const ReceiptSlip = ({ printData }) => {
       <div style={{ ...center, marginTop: '4mm' }}>
         <div style={{ fontSize: '9.5px', color: '#000', marginBottom: '3mm', lineHeight: '1.5', textAlign: 'left', paddingLeft: '0', fontWeight: '700' }}>
           Please check your order and cash change before leaving.<br />
-          No challenge in court once checked out.<br />
+          Not valid for court. No challenge once checked out.<br />
           Order once served or prepared cannot be changed.<br />
           Dues once paid are non-refundable.<br />
           Instagram: @zaiqamahal.pk
@@ -341,7 +341,7 @@ const ReceiptSlip = ({ printData }) => {
         </div>
         <div style={{ ...dash, margin: '3mm 0 2mm' }} />
         <div style={{ fontSize: '9px', color: '#000', letterSpacing: '0.3px', textAlign: 'center', fontWeight: 'bold' }}>
-          Asper POS | Developed by Asper InfoTech Pvt Ltd
+          Software Developed by Asper InfoTech Pvt. Ltd.
         </div>
       </div>
     </div>
@@ -349,4 +349,3 @@ const ReceiptSlip = ({ printData }) => {
 };
 
 export default ReceiptSlip;
-
