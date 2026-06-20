@@ -24,7 +24,8 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: true
+      sandbox: true,
+      webSecurity: false
     },
     title: 'Zaiqah POS',
     backgroundColor: '#0f172a'
@@ -44,6 +45,7 @@ function createWindow() {
     mainWindow.loadURL('http://localhost:5173');
   }
 
+  mainWindow.webContents.openDevTools();
   Menu.setApplicationMenu(null);
 
   mainWindow.on('closed', () => {

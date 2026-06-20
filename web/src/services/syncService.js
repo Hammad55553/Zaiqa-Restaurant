@@ -227,7 +227,7 @@ class SyncService {
    */
   async syncOrders() {
     try {
-      const response = await fetch(`${API_BASE}/orders`);
+      const response = await fetch(`${API_BASE}/orders/active`);
       if (response.ok) {
         const orders = await response.json();
         this.emit('orders:update', orders);

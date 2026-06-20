@@ -78,11 +78,15 @@ router.post('/login', async (req, res) => {
   // 2. Try to authenticate via Supabase
   try {
     console.log(`🌐 Internet is ON. Checking Supabase for credentials of user: ${username}`);
-    const { data: onlineUser, error: onlineErr } = await supabase
-      .from('users')
-      .select('*')
-      .eq('username', username)
-      .single();
+    
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Supabase fetch timed out')), 5000)
+    );
+
+    const fetchPromise = supabase.from('users').select('*').eq('username', username).single();
+    
+    const { data: onlineUser, error: onlineErr } = await Promise.race([fetchPromise, timeoutPromise]);
+
 
     if (onlineErr || !onlineUser) {
       console.log(`⚠️ User not found on Supabase (or invalid query). Returning invalid credentials directly.`);
@@ -145,9 +149,14 @@ router.get('/', async (req, res) => {
   if (isOnline) {
     try {
       console.log('🌐 Fetching all users from Supabase to sync local users DB...');
-      const { data: onlineUsers, error: onlineErr } = await supabase
-        .from('users')
-        .select('*');
+      
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Supabase fetch timed out')), 5000)
+      );
+
+      const fetchPromise = supabase.from('users').select('*');
+      
+      const { data: onlineUsers, error: onlineErr } = await Promise.race([fetchPromise, timeoutPromise]);
 
       if (!onlineErr && onlineUsers) {
         // Upsert all online users into local SQLite DB
