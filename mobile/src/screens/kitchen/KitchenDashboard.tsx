@@ -11,8 +11,9 @@ import {
   Pressable,
   AppState,
   DeviceEventEmitter,
+  BackHandler,
 } from 'react-native';
-import { Flame, CheckCircle2, LogOut, MoreVertical, RefreshCw } from 'lucide-react-native';
+import { Flame, CheckCircle2, LogOut, MoreVertical, RefreshCw, AlertCircle } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE } from '../../config';
@@ -105,6 +106,29 @@ export default function KitchenDashboard({ username, name, permissions, onLogout
   const [activeTab, setActiveTab] = useState<'live' | 'history'>('live');
   const chatEnabled = permissions?.includes('chat') || false;
   const [showChat, setShowChat] = useState(false);
+  const [showExitModal, setShowExitModal] = useState(false);
+
+  useEffect(() => {
+    const backAction = () => {
+      if (showChat) {
+        setShowChat(false);
+        return true;
+      }
+      if (activeTab !== 'live') {
+        setActiveTab('live');
+        return true;
+      }
+      setShowExitModal(true);
+      return true;
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      'hardwareBackPress',
+      backAction
+    );
+
+    return () => backHandler.remove();
+  }, [showChat, activeTab]);
 
   // ── Network Status ──
   const { status: netStatus, ping: pingServer } = useServerStatus({
@@ -336,6 +360,43 @@ export default function KitchenDashboard({ username, name, permissions, onLogout
       ) : (
         <ChatScreen username={username} name={name} role="kitchen" onBack={() => setShowChat(false)} />
       )}
+
+      {/* EXIT CONFIRMATION MODAL */}
+      <Modal
+        visible={showExitModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowExitModal(false)}
+      >
+        <View style={styles.exitModalOverlay}>
+          <View style={styles.exitModalCard}>
+            <View style={styles.exitIconCircle}>
+              <AlertCircle size={28} color="#f97316" />
+            </View>
+            
+            <Text style={styles.exitModalTitle}>Exit Application?</Text>
+            <Text style={styles.exitModalDesc}>Are you sure you want to exit Zaiqa Mahal Ordering App?</Text>
+            
+            <View style={styles.exitModalActions}>
+              <TouchableOpacity 
+                style={styles.exitCancelBtn} 
+                onPress={() => setShowExitModal(false)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.exitCancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.exitConfirmBtn} 
+                onPress={() => BackHandler.exitApp()}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.exitConfirmBtnText}>Exit App</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -404,4 +465,81 @@ const styles = StyleSheet.create({
   menuIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   menuLabel: { fontSize: 14, fontWeight: '700', color: '#f1f5f9', flex: 1 },
   menuDivider: { height: 1, backgroundColor: '#334155', marginHorizontal: 12 },
+  exitModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  exitModalCard: {
+    width: '90%',
+    backgroundColor: '#1e293b',
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#334155',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  exitIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(249, 115, 22, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  exitModalTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#ffffff',
+    marginBottom: 8,
+  },
+  exitModalDesc: {
+    fontSize: 14,
+    color: '#94a3b8',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  exitModalActions: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 12,
+  },
+  exitCancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#334155',
+    alignItems: 'center',
+  },
+  exitCancelBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#e2e8f0',
+  },
+  exitConfirmBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#f97316',
+    alignItems: 'center',
+    shadowColor: '#f97316',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  exitConfirmBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#ffffff',
+  },
 });

@@ -17,6 +17,7 @@ import {
   DeviceEventEmitter,
   TextInput,
   Alert,
+  BackHandler,
 } from 'react-native';
 import { Bike, LogOut, RefreshCw, Clock, MapPin, Phone, User, FileText, CheckCircle2, MoreVertical, X, AlertCircle, Settings } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -220,6 +221,34 @@ export default function RiderDashboard({ username, name, permissions, onLogout }
   const toast = useToast();
   const chatEnabled = permissions?.includes('chat') || false;
   const [showChat, setShowChat] = useState(false);
+  const [showExitModal, setShowExitModal] = useState(false);
+
+  useEffect(() => {
+    const backAction = () => {
+      if (showChat) {
+        setShowChat(false);
+        return true;
+      }
+      if (selectedOrder) {
+        setSelectedOrder(null);
+        return true;
+      }
+      if (activeTab !== 'active') {
+        setActiveTab('active');
+        return true;
+      }
+      setShowExitModal(true);
+      return true;
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      'hardwareBackPress',
+      backAction
+    );
+
+    return () => backHandler.remove();
+  }, [showChat, selectedOrder, activeTab]);
+
   const [orders, setOrders] = useState<DeliveryOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -651,6 +680,44 @@ export default function RiderDashboard({ username, name, permissions, onLogout }
       ) : (
         <ChatScreen username={username} name={name} role="rider" onBack={() => setShowChat(false)} />
       )}
+
+      {/* EXIT CONFIRMATION MODAL */}
+      <Modal
+        visible={showExitModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowExitModal(false)}
+      >
+        <View style={styles.exitModalOverlay}>
+          <View style={styles.exitModalCard}>
+            <View style={styles.exitIconCircle}>
+              <AlertCircle size={28} color="#f97316" />
+            </View>
+            
+            <Text style={styles.exitModalTitle}>Exit Application?</Text>
+            <Text style={styles.exitModalDesc}>Are you sure you want to exit Zaiqa Mahal Rider Portal?</Text>
+            
+            <View style={styles.exitModalActions}>
+              <TouchableOpacity 
+                style={styles.exitCancelBtn} 
+                onPress={() => setShowExitModal(false)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.exitCancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.exitConfirmBtn} 
+                onPress={() => BackHandler.exitApp()}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.exitConfirmBtnText}>Exit App</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </View>
   );
 }
@@ -897,12 +964,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#64748b',
   },
-  // Modal Styles
-  // modalOverlay: {
-  //   flex: 1,
-  //   backgroundColor: 'rgba(0,0,0,0.6)',
-  //   justifyContent: 'flex-end',
-  // },
   modalContent: {
     backgroundColor: '#0f172a',
     borderTopLeftRadius: 28,
@@ -1088,5 +1149,82 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#64748b',
+  },
+  exitModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  exitModalCard: {
+    width: '90%',
+    backgroundColor: '#1e293b',
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#334155',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  exitIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(249, 115, 22, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  exitModalTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#ffffff',
+    marginBottom: 8,
+  },
+  exitModalDesc: {
+    fontSize: 14,
+    color: '#94a3b8',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  exitModalActions: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 12,
+  },
+  exitCancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#334155',
+    alignItems: 'center',
+  },
+  exitCancelBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#e2e8f0',
+  },
+  exitConfirmBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#f97316',
+    alignItems: 'center',
+    shadowColor: '#f97316',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  exitConfirmBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#ffffff',
   },
 });
