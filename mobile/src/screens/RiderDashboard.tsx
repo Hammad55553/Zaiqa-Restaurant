@@ -223,6 +223,18 @@ export default function RiderDashboard({ username, name, permissions, onLogout }
   const [showChat, setShowChat] = useState(false);
   const [showExitModal, setShowExitModal] = useState(false);
 
+  const [orders, setOrders] = useState<DeliveryOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<DeliveryOrder | null>(null);
+  const [updatingId, setUpdatingId] = useState<number | null>(null);
+  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Rider history report states
+  const [activeTab, setActiveTab] = useState<'active' | 'report'>('active');
+  const [completedOrders, setCompletedOrders] = useState<DeliveryOrder[]>([]);
+  const [loadingReport, setLoadingReport] = useState(false);
+
   useEffect(() => {
     const backAction = () => {
       if (showChat) {
@@ -248,18 +260,6 @@ export default function RiderDashboard({ username, name, permissions, onLogout }
 
     return () => backHandler.remove();
   }, [showChat, selectedOrder, activeTab]);
-
-  const [orders, setOrders] = useState<DeliveryOrder[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [selectedOrder, setSelectedOrder] = useState<DeliveryOrder | null>(null);
-  const [updatingId, setUpdatingId] = useState<number | null>(null);
-  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Rider history report states
-  const [activeTab, setActiveTab] = useState<'active' | 'report'>('active');
-  const [completedOrders, setCompletedOrders] = useState<DeliveryOrder[]>([]);
-  const [loadingReport, setLoadingReport] = useState(false);
 
   const fetchRiderReport = useCallback(async () => {
     try {
