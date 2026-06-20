@@ -93,9 +93,16 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [showExitModal, setShowExitModal] = useState<boolean>(false);
 
+  // Stock Sub-tab
+  const [stockSubTab, setStockSubTab] = useState<'inventory' | 'history'>('inventory');
+
+  // Receipt Slip Modal State
+  const [selectedOrderForSlip, setSelectedOrderForSlip] = useState<any | null>(null);
+
   // Data States
   const [tables, setTables] = useState<Table[]>([]);
   const [stockItems, setStockItems] = useState<StockItem[]>([]);
+  const [stockLogs, setStockLogs] = useState<any[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
 
@@ -129,6 +136,9 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
     else setLoading(true);
 
     try {
+      let currentStock: StockItem[] = [];
+      let currentLogs: any[] = [];
+
       if (onlineMode) {
         // --- Cloud Supabase Mode ---
         // Fetch Tables
@@ -139,7 +149,16 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
         // Fetch Stock
         const { data: dbStock, error: sErr } = await supabase.from('stock_items').select('*');
         if (sErr) throw sErr;
-        setStockItems(dbStock || []);
+        currentStock = dbStock || [];
+        setStockItems(currentStock);
+
+        // Fetch Stock Logs
+        const { data: dbLogs, error: lErr } = await supabase
+          .from('stock_logs')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (lErr) throw lErr;
+        currentLogs = dbLogs || [];
 
         // Fetch Orders
         const { data: dbOrders, error: oErr } = await supabase
@@ -165,11 +184,16 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
         // Stock
         const resStock = await fetch(`${API_BASE}/stock`);
         if (!resStock.ok) throw new Error();
-        const dataStock = await resStock.json();
-        setStockItems(dataStock || []);
+        currentStock = await resStock.json();
+        setStockItems(currentStock || []);
+
+        // Stock Logs
+        const resLogs = await fetch(`${API_BASE}/stock/history`);
+        if (!resLogs.ok) throw new Error();
+        currentLogs = await resLogs.json();
 
         // Orders
-        const resOrders = await fetch(`${API_BASE}/orders`);
+        const resOrders = await fetch(`${API_BASE}/orders/all`);
         if (!resOrders.ok) throw new Error();
         const dataOrders = await resOrders.json();
         setOrders(dataOrders || []);
@@ -180,6 +204,19 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
         const dataExpenses = await resExpenses.json();
         setExpenses(dataExpenses || []);
       }
+
+      // Map stock logs client-side to ensure item names and units are combined
+      const mappedLogs = currentLogs.map((log: any) => {
+        if (log.item_name && log.item_unit) return log; // Local mode already joined them
+        const matchedItem = currentStock.find((si: any) => si.id === log.item_id);
+        return {
+          ...log,
+          item_name: matchedItem ? matchedItem.name : `Ingredient #${log.item_id}`,
+          item_unit: matchedItem ? matchedItem.unit : 'units',
+        };
+      });
+      setStockLogs(mappedLogs);
+
     } catch (err) {
       toast.error('Sync Error', 'Failed to fetch dashboard data. Please check connection.');
     } finally {
@@ -363,8 +400,13 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
 
               {/* Recent Orders List */}
               <Text style={styles.sectionTitle}>Recent Orders ({orders.length})</Text>
-              {orders.slice(0, 5).map((order) => (
-                <View key={order.id} style={styles.orderItemCard}>
+              {orders.slice(0, 15).map((order) => (
+                <TouchableOpacity
+                  key={order.id}
+                  style={styles.orderItemCard}
+                  onPress={() => setSelectedOrderForSlip(order)}
+                  activeOpacity={0.75}
+                >
                   <View style={{ flex: 1 }}>
                     <Text style={styles.orderCardTitle}>Order #{order.id}</Text>
                     <Text style={styles.orderCardSub}>Table {order.table_number} • {order.area}</Text>
@@ -375,7 +417,7 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
                       {(order.status || '').toUpperCase()}
                     </Text>
                   </View>
-                </View>
+                </TouchableOpacity>
               ))}
             </View>
           )}
@@ -407,22 +449,75 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
           {/* TAB STOCK */}
           {activeTab === 'stock' && (
             <View style={styles.contentWrapper}>
-              <Text style={styles.sectionTitle}>Kitchen Inventory Alert Console</Text>
-              {stockItems.length === 0 ? (
-                <Text style={styles.emptyText}>No stock items configured.</Text>
+              <View style={styles.segmentedControl}>
+                <TouchableOpacity
+                  style={[styles.segmentBtn, stockSubTab === 'inventory' && styles.segmentBtnActive]}
+                  onPress={() => setStockSubTab('inventory')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.segmentText, stockSubTab === 'inventory' && styles.segmentTextActive]}>INVENTORY LEVELS</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.segmentBtn, stockSubTab === 'history' && styles.segmentBtnActive]}
+                  onPress={() => setStockSubTab('history')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.segmentText, stockSubTab === 'history' && styles.segmentTextActive]}>AUDIT LOGS / HISTORY</Text>
+                </TouchableOpacity>
+              </View>
+
+              {stockSubTab === 'inventory' ? (
+                <>
+                  <Text style={styles.sectionTitle}>Kitchen Inventory Alert Console</Text>
+                  {stockItems.length === 0 ? (
+                    <Text style={styles.emptyText}>No stock items configured.</Text>
+                  ) : (
+                    stockItems.map((stock) => (
+                      <View key={stock.id} style={styles.stockItemCard}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.stockCardTitle}>{stock.name}</Text>
+                          <Text style={styles.stockCardSub}>Unit: {stock.unit} • Threshold Alert: {stock.min_alert}</Text>
+                        </View>
+                        <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                          <Text style={styles.stockCardVal}>{stock.quantity} {stock.unit}</Text>
+                          {getStockStatusBadge(stock.quantity, stock.min_alert)}
+                        </View>
+                      </View>
+                    ))
+                  )}
+                </>
               ) : (
-                stockItems.map((stock) => (
-                  <View key={stock.id} style={styles.stockItemCard}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.stockCardTitle}>{stock.name}</Text>
-                      <Text style={styles.stockCardSub}>Unit: {stock.unit} • Threshold Alert: {stock.min_alert}</Text>
-                    </View>
-                    <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                      <Text style={styles.stockCardVal}>{stock.quantity} {stock.unit}</Text>
-                      {getStockStatusBadge(stock.quantity, stock.min_alert)}
-                    </View>
-                  </View>
-                ))
+                <>
+                  <Text style={styles.sectionTitle}>Stock Transaction History Logs</Text>
+                  {stockLogs.length === 0 ? (
+                    <Text style={styles.emptyText}>No stock transaction history found.</Text>
+                  ) : (
+                    stockLogs.map((log) => (
+                      <View key={log.id} style={styles.stockItemCard}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.stockCardTitle}>{log.item_name}</Text>
+                          <Text style={styles.stockCardSub}>
+                            {new Date(log.created_at || Date.now()).toLocaleString('en-PK', {
+                              day: '2-digit', month: '2-digit', year: 'numeric',
+                              hour: '2-digit', minute: '2-digit', hour12: true,
+                            })}
+                            {log.remarks ? ` • ${log.remarks}` : ''}
+                          </Text>
+                        </View>
+                        <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                          <Text style={[styles.stockCardVal, { color: log.action === 'remove' ? '#ef4444' : '#16a34a' }]}>
+                            {log.action === 'remove' ? '-' : '+'}{log.qty_changed} {log.item_unit}
+                          </Text>
+                          <View style={[styles.statusBadge, { backgroundColor: log.action === 'add' ? '#dcfce7' : log.action === 'remove' ? '#fecdd3' : '#e2e8f0' }]}>
+                            <Text style={[styles.statusText, { color: log.action === 'add' ? '#15803d' : log.action === 'remove' ? '#be123c' : '#475569' }]}>
+                              {log.action.toUpperCase()}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                    ))
+                  )}
+                </>
               )}
             </View>
           )}
@@ -528,6 +623,214 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
           <Text style={[styles.tabLabel, { color: activeTab === 'reports' ? '#3b82f6' : '#94a3b8' }]}>Reports</Text>
         </TouchableOpacity>
       </View>
+
+      {/* RECEIPT SLIP MODAL */}
+      <Modal
+        visible={!!selectedOrderForSlip}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSelectedOrderForSlip(null)}
+      >
+        <View style={styles.slipModalOverlay}>
+          <View style={styles.slipCard}>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+              {/* Logo / Header */}
+              <View style={styles.slipCenter}>
+                <Image source={require('../../../assets/Logo.jpg')} style={styles.slipLogo as any} resizeMode="contain" />
+                <Text style={styles.slipTitle}>ZAIQA MAHAL</Text>
+                <Text style={styles.slipSub}>
+                  Chishtian Road, Near Ali Park{"\n"}
+                  Hasilpur, 63000{"\n"}
+                  Ph: 0300-3910101
+                </Text>
+              </View>
+
+              <View style={styles.slipDividerDashed} />
+
+              {/* Stamp (Official Paid/Pending Indicator) */}
+              {selectedOrderForSlip && (
+                <View style={[
+                  styles.slipStamp,
+                  {
+                    borderColor: selectedOrderForSlip.status === 'completed' ? '#16a34a' : '#dc2626',
+                  }
+                ]}>
+                  <Text style={[
+                    styles.slipStampText,
+                    { color: selectedOrderForSlip.status === 'completed' ? '#16a34a' : '#dc2626' }
+                  ]}>
+                    {selectedOrderForSlip.status === 'completed' ? 'PAID' : selectedOrderForSlip.status.toUpperCase()}
+                  </Text>
+                </View>
+              )}
+
+              {/* Order Metadata */}
+              {selectedOrderForSlip && (
+                <View style={styles.slipMetaContainer}>
+                  <View style={styles.slipRow}>
+                    <Text style={styles.slipMetaLabel}>DATE:</Text>
+                    <Text style={styles.slipMetaVal}>
+                      {new Date(selectedOrderForSlip.created_at || Date.now()).toLocaleString('en-PK', {
+                        day: '2-digit', month: '2-digit', year: 'numeric',
+                        hour: '2-digit', minute: '2-digit', hour12: true,
+                      })}
+                    </Text>
+                  </View>
+                  <View style={styles.slipRow}>
+                    <Text style={styles.slipMetaLabel}>ORDER ID:</Text>
+                    <Text style={styles.slipMetaVal}>#{selectedOrderForSlip.id}</Text>
+                  </View>
+                  <View style={styles.slipRow}>
+                    <Text style={styles.slipMetaLabel}>INVOICE NO:</Text>
+                    <Text style={styles.slipMetaVal}>INV-{new Date(selectedOrderForSlip.created_at || Date.now()).getFullYear()}{String(new Date(selectedOrderForSlip.created_at || Date.now()).getMonth()+1).padStart(2,'0')}{String(new Date(selectedOrderForSlip.created_at || Date.now()).getDate()).padStart(2,'0')}-{String(selectedOrderForSlip.id).padStart(4,'0')}</Text>
+                  </View>
+                  <View style={styles.slipRow}>
+                    <Text style={styles.slipMetaLabel}>TABLE:</Text>
+                    <Text style={styles.slipMetaVal}>{selectedOrderForSlip.table_number} ({selectedOrderForSlip.area})</Text>
+                  </View>
+                  {selectedOrderForSlip.customer_name && selectedOrderForSlip.customer_name !== 'Walk-in' && (
+                    <View style={styles.slipRow}>
+                      <Text style={styles.slipMetaLabel}>CUSTOMER:</Text>
+                      <Text style={styles.slipMetaVal}>{selectedOrderForSlip.customer_name}</Text>
+                    </View>
+                  )}
+                </View>
+              )}
+
+              <View style={styles.slipDividerDashed} />
+
+              {/* Itemized Table */}
+              <View style={styles.slipTableHeader}>
+                <Text style={[styles.slipCol, { flex: 3 }]}>ITEM</Text>
+                <Text style={[styles.slipCol, { flex: 1, textAlign: 'center' }]}>QTY</Text>
+                <Text style={[styles.slipCol, { flex: 1.5, textAlign: 'right' }]}>PRICE</Text>
+                <Text style={[styles.slipCol, { flex: 1.5, textAlign: 'right' }]}>TOTAL</Text>
+              </View>
+
+              {selectedOrderForSlip && (() => {
+                let parsedItems = [];
+                try {
+                  if (typeof selectedOrderForSlip.items === 'string') {
+                    parsedItems = JSON.parse(selectedOrderForSlip.items);
+                  } else if (Array.isArray(selectedOrderForSlip.items)) {
+                    parsedItems = selectedOrderForSlip.items;
+                  }
+                } catch (e) {
+                  console.warn('Error parsing order items for slip:', e);
+                }
+
+                return parsedItems.map((item: any, idx: number) => (
+                  <View key={idx} style={styles.slipItemRow}>
+                    <Text style={[styles.slipItemText, { flex: 3 }]} numberOfLines={2}>
+                      {item.name || item.item_name}
+                    </Text>
+                    <Text style={[styles.slipItemText, { flex: 1, textAlign: 'center' }]}>
+                      {item.qty || item.quantity}
+                    </Text>
+                    <Text style={[styles.slipItemText, { flex: 1.5, textAlign: 'right' }]}>
+                      {item.price}
+                    </Text>
+                    <Text style={[styles.slipItemText, { flex: 1.5, textAlign: 'right', fontWeight: '800' }]}>
+                      {(item.qty || item.quantity) * item.price}
+                    </Text>
+                  </View>
+                ));
+              })()}
+
+              <View style={styles.slipDividerSolid} />
+
+              {/* Totals Summary */}
+              {selectedOrderForSlip && (
+                <View style={styles.slipTotalsContainer}>
+                  <View style={styles.slipRow}>
+                    <Text style={styles.slipTotalLabel}>Subtotal</Text>
+                    <Text style={styles.slipTotalVal}>Rs. {selectedOrderForSlip.total_amount}</Text>
+                  </View>
+                  <View style={styles.slipRow}>
+                    <Text style={styles.slipTotalLabel}>GST (0%)</Text>
+                    <Text style={styles.slipTotalVal}>Rs. 0</Text>
+                  </View>
+                  <View style={[styles.slipRow, { marginTop: 6 }]}>
+                    <Text style={[styles.slipTotalLabel, { fontSize: 16, fontWeight: '900' }]}>TOTAL AMOUNT</Text>
+                    <Text style={[styles.slipTotalVal, { fontSize: 16, fontWeight: '900' }]}>Rs. {selectedOrderForSlip.total_amount}</Text>
+                  </View>
+                </View>
+              )}
+
+              <View style={styles.slipDividerDashed} />
+
+              <View style={styles.slipCenter}>
+                <Text style={styles.slipFooterText}>Thank you for dining with us!</Text>
+                <Text style={[styles.slipFooterText, { fontSize: 8, color: '#64748b', marginTop: 4 }]}>
+                  Powered by Zaiqa Mahal Systems
+                </Text>
+              </View>
+            </ScrollView>
+
+            {/* Actions */}
+            <View style={styles.slipActions}>
+              <TouchableOpacity
+                style={[styles.slipActionBtn, { backgroundColor: '#334155' }]}
+                onPress={() => setSelectedOrderForSlip(null)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.slipActionBtnText}>Close</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.slipActionBtn, { backgroundColor: '#f97316' }]}
+                onPress={async () => {
+                  if (!selectedOrderForSlip) return;
+                  let parsedItems = [];
+                  try {
+                    if (typeof selectedOrderForSlip.items === 'string') {
+                      parsedItems = JSON.parse(selectedOrderForSlip.items);
+                    } else if (Array.isArray(selectedOrderForSlip.items)) {
+                      parsedItems = selectedOrderForSlip.items;
+                    }
+                  } catch (e) {}
+
+                  const itemsStr = parsedItems.map((item: any) => 
+                    `${item.qty || item.quantity}x ${item.name || item.item_name} - Rs. ${(item.qty || item.quantity) * item.price}`
+                  ).join('\n');
+
+                  const textReceipt = 
+`===========================
+       ZAIQA MAHAL
+===========================
+Hasilpur, Ph: 0300-3910101
+---------------------------
+Order ID: #${selectedOrderForSlip.id}
+Table: ${selectedOrderForSlip.table_number} (${selectedOrderForSlip.area})
+Date: ${new Date(selectedOrderForSlip.created_at || Date.now()).toLocaleString('en-PK')}
+Status: ${selectedOrderForSlip.status.toUpperCase()}
+---------------------------
+${itemsStr}
+---------------------------
+Subtotal: Rs. ${selectedOrderForSlip.total_amount}
+GST: Rs. 0
+TOTAL: Rs. ${selectedOrderForSlip.total_amount}
+===========================
+Thank you for dining with us!`;
+
+                  try {
+                    await Share.share({
+                      message: textReceipt,
+                      title: `Receipt_Order_${selectedOrderForSlip.id}`,
+                    });
+                    toast.success('Shared', 'Receipt shared successfully.');
+                  } catch (e) {
+                    toast.error('Failed', 'Could not share receipt.');
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.slipActionBtnText}>Share Slip</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* EXIT CONFIRMATION MODAL */}
       <Modal visible={showExitModal} transparent animationType="fade" onRequestClose={() => setShowExitModal(false)}>
@@ -969,5 +1272,193 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     color: '#ffffff',
+  },
+  segmentedControl: {
+    flexDirection: 'row',
+    backgroundColor: '#1e293b',
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  segmentBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  segmentBtnActive: {
+    backgroundColor: '#3b82f6',
+  },
+  segmentText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#94a3b8',
+    letterSpacing: 0.5,
+  },
+  segmentTextActive: {
+    color: '#ffffff',
+  },
+  slipModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  slipCard: {
+    width: '95%',
+    maxHeight: '85%',
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 15,
+    elevation: 8,
+  },
+  slipCenter: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 8,
+  },
+  slipLogo: {
+    width: 64,
+    height: 64,
+    marginBottom: 8,
+    borderRadius: 32,
+  },
+  slipTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#000000',
+    letterSpacing: 1,
+  },
+  slipSub: {
+    fontSize: 11,
+    color: '#334155',
+    textAlign: 'center',
+    lineHeight: 15,
+    marginTop: 4,
+    fontWeight: '600',
+  },
+  slipDividerDashed: {
+    borderWidth: 1,
+    borderColor: '#000000',
+    borderStyle: 'dashed',
+    marginVertical: 12,
+  },
+  slipDividerSolid: {
+    borderWidth: 1,
+    borderColor: '#000000',
+    marginVertical: 12,
+  },
+  slipStamp: {
+    position: 'absolute',
+    top: '30%',
+    left: '50%',
+    marginLeft: -60,
+    width: 120,
+    height: 60,
+    borderWidth: 3,
+    borderRadius: 8,
+    borderStyle: 'solid',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transform: [{ rotate: '-12deg' }],
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    zIndex: 10,
+    opacity: 0.8,
+  },
+  slipStampText: {
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  slipMetaContainer: {
+    marginVertical: 4,
+    gap: 4,
+  },
+  slipRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  slipMetaLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#000000',
+  },
+  slipMetaVal: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#000000',
+  },
+  slipTableHeader: {
+    flexDirection: 'row',
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderColor: '#000000',
+    marginBottom: 8,
+  },
+  slipCol: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#000000',
+  },
+  slipItemRow: {
+    flexDirection: 'row',
+    paddingVertical: 6,
+    alignItems: 'center',
+  },
+  slipItemText: {
+    fontSize: 11,
+    color: '#000000',
+    fontWeight: '600',
+  },
+  slipTotalsContainer: {
+    gap: 4,
+    marginVertical: 4,
+  },
+  slipTotalLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#000000',
+  },
+  slipTotalVal: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#000000',
+  },
+  slipFooterText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#000000',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  slipActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+    borderTopWidth: 1,
+    borderColor: '#f1f5f9',
+    paddingTop: 16,
+  },
+  slipActionBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  slipActionBtnText: {
+    color: '#ffffff',
+    fontWeight: '800',
+    fontSize: 13,
   },
 });
