@@ -102,10 +102,10 @@ const DrilldownModal = ({ drilldownModal, drilldownSearch, setDrilldownSearch, s
     const isOrders = drilldownModal.type === 'orders';
     const rowsHtml = filteredRecords.map((r, i) => {
       const dateVal = r.created_at || r.date;
-      const refVal = drilldownModal.type === 'orders' ? `#Invoice ${r.id}` : 
+      const refVal = drilldownModal.type === 'orders' ? (r.invoice_number || `#Inv ${r.id}`) : 
                      drilldownModal.type === 'service_charges' ? `#Order ${r.id}` : 
                      `#Exp ${r.id}`;
-      const detailVal = drilldownModal.type === 'orders' ? `${r.customer_name || 'Guest'} (${r.area || 'Main'} - ${r.table_number || ''})` :
+      const detailVal = drilldownModal.type === 'orders' ? `${r.customer_name || 'Guest'} (${r.area || 'Main'} - ${r.table_number || ''}) [${(r.payment_status || 'PENDING').toUpperCase()}]` :
                         drilldownModal.type === 'service_charges' ? `${r.customer_name || 'Guest'} - ${r.item_name}` :
                         `${r.category} - ${r.description || 'No description'}`;
       
@@ -416,10 +416,10 @@ const DrilldownModal = ({ drilldownModal, drilldownSearch, setDrilldownSearch, s
               <tbody>
                 {filteredRecords.map((r, i) => {
                   const dateVal = r.created_at || r.date;
-                  const refVal = drilldownModal.type === 'orders' ? `#Invoice ${r.id}` :
+                  const refVal = drilldownModal.type === 'orders' ? (r.invoice_number || `#Inv ${r.id}`) :
                     drilldownModal.type === 'service_charges' ? `#Order ${r.id}` :
                       `#Exp ${r.id}`;
-                  const detailVal = drilldownModal.type === 'orders' ? `${r.customer_name || 'Guest'} (${r.area || 'Main'} - ${r.table_number || ''})` :
+                  const detailVal = drilldownModal.type === 'orders' ? `${r.customer_name || 'Guest'} (${r.area || 'Main'} - ${r.table_number || ''}) [${(r.payment_status || 'PENDING').toUpperCase()}]` :
                     drilldownModal.type === 'service_charges' ? `${r.customer_name || 'Guest'} - ${r.item_name}` :
                       `${r.category} - ${r.description || 'No description'}`;
 

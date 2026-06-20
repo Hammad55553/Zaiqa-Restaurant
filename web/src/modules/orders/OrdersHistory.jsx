@@ -56,6 +56,8 @@ const OrdersHistory = ({ currentUser, onViewReceipt }) => {
       customerName: order.customer_name || '',
       paymentMethod: order.payment_method || 'cash',
       remarks: order.remarks || '',
+      invoiceNumber: order.invoice_number || `INV-${order.id}`,
+      paymentStatus: order.payment_status || 'PENDING',
       serviceCharges: (order.items || []).find(item => item.item_name === 'Service Charges' || item.name === 'Service Charges')?.price || 0
     };
 
@@ -319,6 +321,8 @@ const OrdersHistory = ({ currentUser, onViewReceipt }) => {
               {/* Info Grid */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
                 {[
+                  { label: 'Invoice No', value: selectedOrder.invoice_number || `INV-${selectedOrder.id}` },
+                  { label: 'Payment Status', value: <span style={{ textTransform: 'uppercase', color: selectedOrder.payment_status === 'PAID' ? '#16a34a' : '#ea580c' }}>{selectedOrder.payment_status || 'PENDING'}</span> },
                   { label: 'Table', value: `${selectedOrder.table_number} · ${selectedOrder.area || 'Main'}` },
                   { label: 'Status', value: <Badge status={selectedOrder.status} /> },
                   { label: 'Customer', value: selectedOrder.customer_name || 'Walk-in' },
