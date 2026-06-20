@@ -144,9 +144,9 @@ const TableManager = () => {
       { number: 'F-1', area: 'Family', seats: 6 },
       { number: 'F-2', area: 'Family', seats: 8 },
       { number: 'F-3', area: 'Family', seats: 4 },
-      { number: 'L-1', area: 'Lawn', seats: 10 },
-      { number: 'L-2', area: 'Lawn', seats: 4 },
-      { number: 'L-3', area: 'Lawn', seats: 6 },
+      { number: 'L-1', area: 'Male Lawn', seats: 10 },
+      { number: 'L-2', area: 'Male Lawn', seats: 4 },
+      { number: 'L-3', area: 'Family Lawn', seats: 6 },
     ];
     setSaving(true);
     for (const t of INITIAL) {
@@ -265,7 +265,8 @@ const TableManager = () => {
             >
               <option value="Male">Male</option>
               <option value="Family">Family</option>
-              <option value="Lawn">Lawn</option>
+              <option value="Male Lawn">Male Lawn</option>
+              <option value="Family Lawn">Family Lawn</option>
             </select>
           </div>
 

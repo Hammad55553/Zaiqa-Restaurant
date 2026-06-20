@@ -235,6 +235,44 @@ const initDb = () => {
         FOREIGN KEY (item_id) REFERENCES stock_items (id) ON DELETE CASCADE
       )`);
 
+      // SQLite Triggers to automatically enqueue stock logs mutations to Supabase sync queue
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS trg_sync_stock_logs_insert
+        AFTER INSERT ON stock_logs
+        BEGIN
+          INSERT INTO sync_queue (table_name, record_id, action, payload, status)
+          VALUES (
+            'stock_logs',
+            NEW.id,
+            'insert',
+            json_object(
+              'id', NEW.id,
+              'item_id', NEW.item_id,
+              'action', NEW.action,
+              'qty_changed', NEW.qty_changed,
+              'remarks', NEW.remarks,
+              'created_at', NEW.created_at
+            ),
+            'pending'
+          );
+        END;
+      `);
+
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS trg_sync_stock_logs_delete
+        AFTER DELETE ON stock_logs
+        BEGIN
+          INSERT INTO sync_queue (table_name, record_id, action, payload, status)
+          VALUES (
+            'stock_logs',
+            OLD.id,
+            'delete',
+            json_object('id', OLD.id),
+            'pending'
+          );
+        END;
+      `);
+
       // Recipe/BOM (Bill of Materials) Table
       // Links Menu Items (items table) with Raw Materials (stock_items table)
       db.run(`CREATE TABLE IF NOT EXISTS item_ingredients (
@@ -438,7 +476,154 @@ const initDb = () => {
       db.run(`CREATE INDEX IF NOT EXISTS idx_expenses_date        ON expenses(date)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_expenses_cat         ON expenses(category)`);
 
-      console.log('✅ DB indexes verified/created.');
+      // SQLite Triggers to sync supplier_ledger mutations to Supabase sync queue
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS trg_sync_supplier_ledger_insert
+        AFTER INSERT ON supplier_ledger
+        BEGIN
+          INSERT INTO sync_queue (table_name, record_id, action, payload, status)
+          VALUES (
+            'supplier_ledger',
+            NEW.id,
+            'insert',
+            json_object(
+              'id', NEW.id,
+              'supplier_id', NEW.supplier_id,
+              'type', NEW.type,
+              'amount', NEW.amount,
+              'note', NEW.note,
+              'date', NEW.date
+            ),
+            'pending'
+          );
+        END;
+      `);
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS trg_sync_supplier_ledger_delete
+        AFTER DELETE ON supplier_ledger
+        BEGIN
+          INSERT INTO sync_queue (table_name, record_id, action, payload, status)
+          VALUES (
+            'supplier_ledger',
+            OLD.id,
+            'delete',
+            json_object('id', OLD.id),
+            'pending'
+          );
+        END;
+      `);
+
+      // SQLite Triggers to sync customer_ledger mutations to Supabase sync queue
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS trg_sync_customer_ledger_insert
+        AFTER INSERT ON customer_ledger
+        BEGIN
+          INSERT INTO sync_queue (table_name, record_id, action, payload, status)
+          VALUES (
+            'customer_ledger',
+            NEW.id,
+            'insert',
+            json_object(
+              'id', NEW.id,
+              'customer_id', NEW.customer_id,
+              'type', NEW.type,
+              'amount', NEW.amount,
+              'note', NEW.note,
+              'date', NEW.date
+            ),
+            'pending'
+          );
+        END;
+      `);
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS trg_sync_customer_ledger_delete
+        AFTER DELETE ON customer_ledger
+        BEGIN
+          INSERT INTO sync_queue (table_name, record_id, action, payload, status)
+          VALUES (
+            'customer_ledger',
+            OLD.id,
+            'delete',
+            json_object('id', OLD.id),
+            'pending'
+          );
+        END;
+      `);
+
+      // SQLite Triggers to sync prepared_waste mutations to Supabase sync queue
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS trg_sync_prepared_waste_insert
+        AFTER INSERT ON prepared_waste
+        BEGIN
+          INSERT INTO sync_queue (table_name, record_id, action, payload, status)
+          VALUES (
+            'prepared_waste',
+            NEW.id,
+            'insert',
+            json_object(
+              'id', NEW.id,
+              'item_name', NEW.item_name,
+              'quantity', NEW.quantity,
+              'reason', NEW.reason,
+              'created_at', NEW.created_at
+            ),
+            'pending'
+          );
+        END;
+      `);
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS trg_sync_prepared_waste_delete
+        AFTER DELETE ON prepared_waste
+        BEGIN
+          INSERT INTO sync_queue (table_name, record_id, action, payload, status)
+          VALUES (
+            'prepared_waste',
+            OLD.id,
+            'delete',
+            json_object('id', OLD.id),
+            'pending'
+          );
+        END;
+      `);
+
+      // SQLite Triggers to sync prepared_waste_outflow mutations to Supabase sync queue
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS trg_sync_prepared_waste_outflow_insert
+        AFTER INSERT ON prepared_waste_outflow
+        BEGIN
+          INSERT INTO sync_queue (table_name, record_id, action, payload, status)
+          VALUES (
+            'prepared_waste_outflow',
+            NEW.id,
+            'insert',
+            json_object(
+              'id', NEW.id,
+              'item_name', NEW.item_name,
+              'quantity', NEW.quantity,
+              'destination', NEW.destination,
+              'notes', NEW.notes,
+              'created_at', NEW.created_at
+            ),
+            'pending'
+          );
+        END;
+      `);
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS trg_sync_prepared_waste_outflow_delete
+        AFTER DELETE ON prepared_waste_outflow
+        BEGIN
+          INSERT INTO sync_queue (table_name, record_id, action, payload, status)
+          VALUES (
+            'prepared_waste_outflow',
+            OLD.id,
+            'delete',
+            json_object('id', OLD.id),
+            'pending'
+          );
+        END;
+      `);
+
+      console.log('✅ DB indexes and triggers verified/created.');
     });
 };
 

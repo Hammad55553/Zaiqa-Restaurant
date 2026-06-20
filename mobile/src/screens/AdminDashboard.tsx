@@ -15,7 +15,11 @@ import {
   Animated,
   Pressable,
   Dimensions,
+  Alert,
+  DeviceEventEmitter,
+  Platform,
 } from 'react-native';
+import ViewShot from 'react-native-view-shot';
 import {
   TrendingUp,
   Package,
@@ -34,12 +38,304 @@ import {
   Menu,
   X,
   User,
+  Bell,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import RNShare from 'react-native-share';
+import RNPrint from 'react-native-print';
 import { API_BASE } from '../config';
 import { useToast } from '../components/Toast';
 import { supabase } from '../lib/supabase';
+
+// Modular Components
+import OverviewTab from '../components/admin/OverviewTab';
+import TablesTab from '../components/admin/TablesTab';
+import StockTab from '../components/admin/StockTab';
+import ExpensesTab from '../components/admin/ExpensesTab';
+import ReportsTab from '../components/admin/ReportsTab';
+import NotificationsModal from '../components/admin/NotificationsModal';
+import ReceiptSlipModal from '../components/admin/ReceiptSlipModal';
+
+const toBase64 = (str: string) => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  let result = '';
+  let i = 0;
+  const utf8Str = unescape(encodeURIComponent(str));
+  while (i < utf8Str.length) {
+    const char1 = utf8Str.charCodeAt(i++);
+    const char2 = utf8Str.charCodeAt(i++);
+    const char3 = utf8Str.charCodeAt(i++);
+    const byte1 = char1 >> 2;
+    const byte2 = ((char1 & 3) << 4) | (char2 >> 4);
+    const byte3 = isNaN(char2) ? 64 : ((char2 & 15) << 2) | (char3 >> 6);
+    const byte4 = isNaN(char2) || isNaN(char3) ? 64 : char3 & 63;
+    result += chars.charAt(byte1) + chars.charAt(byte2) + chars.charAt(byte3) + chars.charAt(byte4);
+  }
+  return result;
+};
+
+const generateReceiptHTML = (order: any, displayItems: any[], cashierName: string, dateFormatted: string, invStr: string, subtotalVal: number, serviceChargesAmt: number, taxAmt: number, stampColor: string, currentPaymentStatus: string) => {
+  const itemsHtml = displayItems.map((item: any) => {
+    const qty = item.qty || item.quantity || 0;
+    const name = item.name || item.item_name || '';
+    const price = item.price || 0;
+    const total = qty * price;
+    return `
+      <tr>
+        <td style="font-weight: bold;">${qty}x</td>
+        <td>${name}<br/><span style="font-size: 10px; color: #444;">Rs. ${price}</span></td>
+        <td style="text-align: right; font-weight: bold;">Rs. ${total.toFixed(0)}</td>
+      </tr>
+    `;
+  }).join('');
+
+  return `
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          body {
+            font-family: 'Courier New', Courier, monospace;
+            padding: 10px;
+            color: #000000;
+            background-color: #ffffff;
+            margin: 0;
+          }
+          .center { text-align: center; }
+          .logo-placeholder {
+            font-size: 24px;
+            font-weight: 900;
+            margin-bottom: 2px;
+            letter-spacing: 2px;
+          }
+          .title { font-size: 18px; font-weight: 900; margin-bottom: 4px; }
+          .sub { font-size: 11px; margin-bottom: 8px; line-height: 1.4; font-weight: bold; }
+          .divider { border-top: 1px dashed #000000; margin: 8px 0; }
+          .divider-solid { border-top: 2px solid #000000; margin: 8px 0; }
+          .row { display: flex; justify-content: space-between; font-size: 11px; margin: 4px 0; font-weight: bold; }
+          .bold { font-weight: 900; }
+          .stamp {
+            border: 3px double ${stampColor};
+            padding: 6px;
+            text-align: center;
+            margin: 12px auto;
+            width: 140px;
+            transform: rotate(-6deg);
+            font-size: 13px;
+            font-weight: 900;
+            background-color: #ffffff;
+          }
+          .stamp-title { font-size: 8px; font-weight: 900; margin-bottom: 2px; }
+          .stamp-main { font-size: 14px; font-weight: 900; text-decoration: underline; margin-bottom: 2px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+          th { border-bottom: 1px solid #000000; text-align: left; font-size: 11px; padding: 4px 0; font-weight: 900; }
+          td { font-size: 11px; padding: 6px 0; vertical-align: top; }
+          .text-right { text-align: right; }
+          .totals-container { margin-top: 6px; }
+          .total-row { display: flex; justify-content: space-between; font-size: 12px; margin: 3px 0; font-weight: bold; }
+          .grand-total { font-size: 16px; font-weight: 900; margin-top: 6px; }
+          .footer-disclaimers { font-size: 9px; line-height: 1.3; font-weight: bold; text-align: left; margin-top: 12px; }
+          .thank-you { font-size: 12px; font-weight: 900; text-align: center; margin-top: 12px; letter-spacing: 1px; }
+          .visit-again { font-size: 11px; font-weight: bold; text-align: center; margin-top: 3px; }
+          .developer-credit { font-size: 8px; font-weight: bold; text-align: center; margin-top: 10px; color: #333; }
+        </style>
+      </head>
+      <body>
+        <div class="center">
+          <div class="logo-placeholder">★ ★ ★</div>
+          <div class="title">ZAIQA MAHAL</div>
+          <div class="sub">
+            Chishtian Road, Near Ali Park<br/>
+            Hasilpur, 63000<br/>
+            Ph: 0300-3910101
+          </div>
+        </div>
+        <div class="divider"></div>
+        
+        ${currentPaymentStatus && currentPaymentStatus.toUpperCase() !== 'NONE' && currentPaymentStatus.toUpperCase() !== 'WITHOUT STAMP' ? `
+        <div class="stamp" style="color: ${stampColor}; border-color: ${stampColor};">
+          <div class="stamp-title" style="color: ${stampColor};">ZAIQA MAHAL</div>
+          <div class="stamp-main" style="color: ${stampColor};">${currentPaymentStatus}</div>
+          <div class="stamp-title" style="color: ${stampColor};">★ OFFICIAL ★</div>
+        </div>
+        ` : ''}
+
+        <div class="row"><span>DATE:</span><span>${dateFormatted}</span></div>
+        <div class="row"><span>ORDER NO:</span><span style="font-size: 13px;">#${order.id}</span></div>
+        <div class="row"><span>INVOICE NO:</span><span>${invStr}</span></div>
+        ${order.area !== 'Delivery' && order.table_number !== 'Delivery' ? `
+        <div class="row"><span>TABLE:</span><span>${order.table_number} (${order.area})</span></div>
+        ` : ''}
+        <div class="row"><span>CASHIER:</span><span>${cashierName}</span></div>
+        <div class="divider"></div>
+
+        ${order.customer_name &&
+      order.customer_name !== 'Walk-in Customer' &&
+      order.customer_name !== 'Walk-in Guest' &&
+      order.customer_name !== 'Table Guest' &&
+      order.customer_name !== 'Walk-in' &&
+      order.customer_name.trim() !== '' ? `
+          <div class="row"><span>CUSTOMER:</span><span>${order.customer_name}</span></div>
+          ${order.customer_phone && order.customer_phone !== 'N/A' && order.customer_phone.trim() !== '' ? `
+            <div class="row"><span>PHONE:</span><span>${order.customer_phone}</span></div>
+          ` : ''}
+          <div class="divider"></div>
+        ` : ''}
+
+        ${order.area === 'Delivery' || order.table_number === 'Delivery' ? `
+          <div class="row" style="font-size: 11px;"><span>DELIVERY DETAILS:</span></div>
+          ${order.delivery_address && order.delivery_address !== 'N/A' ? `
+            <div style="font-size: 11px; margin: 3px 0; font-weight: bold; padding-left: 8px;">ADDRESS: ${order.delivery_address}</div>
+          ` : ''}
+          <div class="row" style="padding-left: 8px;"><span>METHOD:</span><span>${order.payment_method === 'online' ? '📱 ONLINE' : order.payment_method === 'khata' ? '💳 KHATA' : '💵 COD'}</span></div>
+          ${order.transaction_id ? `<div class="row" style="padding-left: 8px;"><span>TXN ID:</span><span>${order.transaction_id}</span></div>` : ''}
+          ${order.rider_name || order.delivered_by ? `<div class="row" style="padding-left: 8px;"><span>RIDER:</span><span>${order.rider_name || order.delivered_by}</span></div>` : ''}
+          ${order.remarks && !order.remarks.startsWith('Delivery Order') ? `<div style="font-size: 11px; margin: 3px 0; font-weight: bold; padding-left: 8px;">REMARKS: ${order.remarks}</div>` : ''}
+          <div class="divider"></div>
+        ` : ''}
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 35px;">QTY</th>
+              <th>ITEM DESCRIPTION</th>
+              <th style="text-align: right; width: 80px;">AMOUNT</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemsHtml}
+          </tbody>
+        </table>
+        
+        <div class="divider"></div>
+        
+        <div class="totals-container">
+          <div class="total-row"><span>Subtotal:</span><span>Rs. ${subtotalVal.toFixed(0)}</span></div>
+          ${serviceChargesAmt > 0 ? `<div class="total-row"><span>Service Charges:</span><span>Rs. ${serviceChargesAmt.toFixed(0)}</span></div>` : ''}
+          ${taxAmt > 0 ? `<div class="total-row"><span>GST / Tax:</span><span>Rs. ${taxAmt.toFixed(0)}</span></div>` : ''}
+        </div>
+        
+        <div class="divider-solid"></div>
+        <div class="total-row grand-total"><span>TOTAL</span><span>Rs. ${order.total_amount.toFixed(0)}</span></div>
+        <div class="divider-solid"></div>
+        
+        <div class="footer-disclaimers">
+          Please check your order and cash change before leaving.<br/>
+          Not valid for court. No challenge once checked out.<br/>
+          Order once served or prepared cannot be changed.<br/>
+          Dues once paid are non-refundable.<br/>
+          Instagram: @zaiqamahal.pk
+        </div>
+        
+        <div class="divider"></div>
+        <div class="thank-you">THANK YOU</div>
+        <div class="visit-again">Please visit again!</div>
+        <div class="divider"></div>
+        <div class="developer-credit">Software Developed by Asper InfoTech Pvt. Ltd.</div>
+      </body>
+    </html>
+  `;
+};
+
+const generateReportHTML = (ordersList: any[], expensesList: any[], statsObj: any) => {
+  const ordersHtml = ordersList.map((o: any) => `
+    <tr>
+      <td>#${o.id}</td>
+      <td>${o.table_number} (${o.area})</td>
+      <td>${o.customer_name || 'Guest'}</td>
+      <td>${o.status.toUpperCase()}</td>
+      <td>Rs. ${o.total_amount}</td>
+      <td>${new Date(o.created_at).toLocaleDateString()}</td>
+    </tr>
+  `).join('');
+
+  const expensesHtml = expensesList.map((e: any) => `
+    <tr>
+      <td>${(e.category || '').toUpperCase()}</td>
+      <td>${e.remarks || 'N/A'}</td>
+      <td>Rs. ${e.amount}</td>
+    </tr>
+  `).join('');
+
+  return `
+    <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 20px; color: #333; }
+          h1 { text-align: center; color: #f97316; margin-bottom: 5px; }
+          .sub { text-align: center; color: #666; font-size: 14px; margin-bottom: 20px; }
+          .section-title { font-size: 18px; font-weight: bold; color: #0f172a; margin-top: 25px; margin-bottom: 10px; border-bottom: 2px solid #f97316; padding-bottom: 5px; }
+          .stats-grid { display: flex; gap: 15px; margin-bottom: 20px; }
+          .stat-card { flex: 1; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; text-align: center; }
+          .stat-label { font-size: 12px; color: #64748b; text-transform: uppercase; font-weight: bold; }
+          .stat-val { font-size: 20px; font-weight: bold; color: #0f172a; margin-top: 5px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; margin-bottom: 20px; }
+          th, td { border: 1px solid #cbd5e1; padding: 8px; text-align: left; font-size: 12px; }
+          th { background-color: #f8fafc; font-weight: bold; }
+          .text-right { text-align: right; }
+          .footer { text-align: center; font-size: 10px; color: #94a3b8; margin-top: 40px; }
+        </style>
+      </head>
+      <body>
+        <h1>ZAIQA MAHAL</h1>
+        <div class="sub">DAILY SALES & EXPENSES REPORT - ${new Date().toLocaleDateString('en-PK', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</div>
+        
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">Total Sales</div>
+            <div class="stat-val" style="color: #16a34a;">Rs. ${statsObj.totalSales}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Total Expenses</div>
+            <div class="stat-val" style="color: #ef4444;">Rs. ${statsObj.totalExpenses}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Net Profit</div>
+            <div class="stat-val" style="color: #3b82f6;">Rs. ${statsObj.netProfit}</div>
+          </div>
+        </div>
+        
+        <div class="section-title">Sales Orders Summary</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Order ID</th>
+              <th>Table/Area</th>
+              <th>Customer</th>
+              <th>Status</th>
+              <th>Amount</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${ordersHtml || '<tr><td colspan="6" style="text-align:center;">No orders logged today.</td></tr>'}
+          </tbody>
+        </table>
+
+        <div class="section-title">Expenses Summary</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Category</th>
+              <th>Remarks</th>
+              <th>Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${expensesHtml || '<tr><td colspan="3" style="text-align:center;">No expenses logged today.</td></tr>'}
+          </tbody>
+        </table>
+        
+        <div class="footer">
+          Generated automatically by Zaiqa Mahal Console App.<br/>
+          &copy; ${new Date().getFullYear()} Zaiqa Mahal. All rights reserved.
+        </div>
+      </body>
+    </html>
+  `;
+};
+
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SIDEBAR_WIDTH = SCREEN_WIDTH * 0.78;
@@ -97,7 +393,6 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [showExitModal, setShowExitModal] = useState<boolean>(false);
 
-  // Sidebar state & animation
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
   const sidebarAnim = useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
 
@@ -106,6 +401,8 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
 
   // Receipt Slip Modal State
   const [selectedOrderForSlip, setSelectedOrderForSlip] = useState<any | null>(null);
+  const viewShotRef = useRef<any>(null);
+
 
   // Data States
   const [tables, setTables] = useState<Table[]>([]);
@@ -122,6 +419,10 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
     occupiedTables: 0,
     netProfit: 0,
   });
+
+  // Notifications
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [showNotificationsModal, setShowNotificationsModal] = useState<boolean>(false);
 
   // Sidebar Controls
   const openSidebar = () => {
@@ -159,6 +460,45 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
     const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
     return () => backHandler.remove();
   }, [activeTab, sidebarOpen]);
+
+  // Notifications Effect
+  useEffect(() => {
+    AsyncStorage.getItem('ZAIQAH_NOTIFICATIONS').then((val) => {
+      if (val) {
+        try {
+          setNotifications(JSON.parse(val));
+        } catch (e) { }
+      }
+    });
+
+    const sub = DeviceEventEmitter.addListener('NEW_NOTIFICATION', (data: any) => {
+      setNotifications((prev) => {
+        const newNotif = {
+          id: String(Date.now()),
+          title: data.title || 'Notification',
+          desc: data.desc || data.body || '',
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          read: false,
+        };
+        const updated = [newNotif, ...prev];
+        AsyncStorage.setItem('ZAIQAH_NOTIFICATIONS', JSON.stringify(updated));
+        return updated;
+      });
+    });
+
+    return () => sub.remove();
+  }, []);
+
+  const markAllNotificationsAsRead = () => {
+    const updated = notifications.map((n) => ({ ...n, read: true }));
+    setNotifications(updated);
+    AsyncStorage.setItem('ZAIQAH_NOTIFICATIONS', JSON.stringify(updated));
+  };
+
+  const clearAllNotifications = () => {
+    setNotifications([]);
+    AsyncStorage.setItem('ZAIQAH_NOTIFICATIONS', JSON.stringify([]));
+  };
 
   // Fetch Dashboard Data
   const fetchData = useCallback(async (isRefresh = false) => {
@@ -227,7 +567,7 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
 
       const mappedLogs = currentLogs.map((log: any) => {
         if (log.item_name && log.item_unit) return log;
-        const matchedItem = currentStock.find((si: any) => si.id === log.item_id);
+        const matchedItem = currentStock.find((si: any) => String(si.id) === String(log.item_id));
         return {
           ...log,
           item_name: matchedItem ? matchedItem.name : `Ingredient #${log.item_id}`,
@@ -235,6 +575,35 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
         };
       });
       setStockLogs(mappedLogs);
+
+      // Auto-generate notifications for low stock items
+      setNotifications((prev) => {
+        let updated = [...prev];
+        let changed = false;
+
+        currentStock.forEach((item) => {
+          if (item.quantity <= item.min_alert) {
+            const notifTitle = item.quantity <= 0 ? 'Out of Stock Alert' : 'Low Stock Alert';
+            const notifDesc = `${item.name} is ${item.quantity <= 0 ? 'out of stock' : `running low (${item.quantity} ${item.unit} left)`}.`;
+            const exists = prev.some((n) => n.title === notifTitle && n.desc.startsWith(item.name));
+            if (!exists) {
+              updated.unshift({
+                id: `stock-${item.id}-${Date.now()}`,
+                title: notifTitle,
+                desc: notifDesc,
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                read: false,
+              });
+              changed = true;
+            }
+          }
+        });
+
+        if (changed) {
+          AsyncStorage.setItem('ZAIQAH_NOTIFICATIONS', JSON.stringify(updated));
+        }
+        return updated;
+      });
 
     } catch (err) {
       toast.error('Sync Error', 'Failed to fetch dashboard data. Please check connection.');
@@ -275,9 +644,11 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
         ...orders.map(o => [o.id, o.table_number, o.area, o.customer_name || 'Guest', o.status, o.total_amount, o.created_at])
       ].map(e => e.join(',')).join('\n');
 
-      await Share.share({
-        message: csvContent,
-        title: 'Daily Sales Report',
+      const base64Content = toBase64(csvContent);
+      await RNShare.open({
+        url: `data:text/csv;base64,${base64Content}`,
+        filename: `Daily_Sales_Report_${new Date().toISOString().split('T')[0]}.csv`,
+        type: 'text/csv',
       });
       toast.success('Report Shared', 'Sales report generated successfully.');
     } catch {
@@ -285,10 +656,31 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
     }
   };
 
-  // Simulate Print handler
-  const handlePrint = () => {
-    toast.success('Printing Started', 'Sending sales summary to local thermal receipt printer...');
+  // Print summary report
+  const handlePrint = async () => {
+    try {
+      const htmlContent = generateReportHTML(orders, expenses, stats);
+      await RNPrint.print({
+        html: htmlContent,
+      });
+      toast.success('Print Dialog Opened', 'Opening native print/save-as-PDF view...');
+    } catch {
+      toast.error('Print Failed', 'Unable to open print dialog.');
+    }
   };
+
+  const handlePrintReportPDF = async () => {
+    try {
+      const htmlContent = generateReportHTML(orders, expenses, stats);
+      await RNPrint.print({
+        html: htmlContent,
+      });
+      toast.success('Report PDF Generated', 'Opening print/PDF save dialog.');
+    } catch {
+      toast.error('Export Failed', 'Unable to generate PDF report.');
+    }
+  };
+
 
   const getStockStatusBadge = (qty: number, min: number) => {
     if (qty <= 0) {
@@ -314,24 +706,48 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <StatusBar barStyle="light-content" backgroundColor="#0f172a" translucent={false} />
 
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top }]}>
+      <View style={styles.header}>
         <TouchableOpacity style={styles.hamburgerBtn} onPress={openSidebar} activeOpacity={0.7}>
           <Menu size={22} color="#0f172a" />
         </TouchableOpacity>
 
-        <View style={{ flex: 1, marginLeft: 12 }}>
-          <Text style={styles.headerTitle}>
-            {activeTab === 'overview' && 'DASHBOARD'}
-            {activeTab === 'tables' && 'TABLE MAP'}
-            {activeTab === 'stock' && 'INVENTORY'}
-            {activeTab === 'expenses' && 'EXPENSES'}
-            {activeTab === 'reports' && 'REPORTS'}
-          </Text>
-          <Text style={styles.headerSub}>{(name || username || '').toUpperCase()}</Text>
+        {/* Logo and title */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginLeft: 12 }}>
+          <Image source={require('../../assets/Logo.jpg')} style={{ width: 32, height: 32, borderRadius: 16, marginRight: 8 }} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.headerTitle} numberOfLines={1}>
+              {activeTab === 'overview' && 'DASHBOARD'}
+              {activeTab === 'tables' && 'TABLE MAP'}
+              {activeTab === 'stock' && 'INVENTORY'}
+              {activeTab === 'expenses' && 'EXPENSES'}
+              {activeTab === 'reports' && 'REPORTS'}
+            </Text>
+            <Text style={styles.headerSub} numberOfLines={1}>{(name || username || '').toUpperCase()}</Text>
+          </View>
         </View>
+
+        {/* Notification Bell Button */}
+        <TouchableOpacity
+          style={[styles.refreshBtn, { marginRight: 8 }]}
+          onPress={() => setShowNotificationsModal(true)}
+          activeOpacity={0.7}
+        >
+          <Bell size={18} color="#0f172a" />
+          {notifications.some(n => !n.read) && (
+            <View style={{
+              position: 'absolute',
+              top: 8,
+              right: 8,
+              width: 8,
+              height: 8,
+              borderRadius: 4,
+              backgroundColor: '#ef4444',
+            }} />
+          )}
+        </TouchableOpacity>
 
         <TouchableOpacity style={styles.refreshBtn} onPress={() => fetchData(true)} activeOpacity={0.7}>
           <RefreshCw size={18} color="#0f172a" />
@@ -350,240 +766,40 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
           contentContainerStyle={{ paddingBottom: 64 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchData(true)} tintColor="#f97316" />}
         >
-          {/* TAB OVERVIEW */}
           {activeTab === 'overview' && (
-            <View style={styles.contentWrapper}>
-              {/* Stats Grid */}
-              <View style={styles.gridContainer}>
-                <View style={styles.gridCard}>
-                  <View style={[styles.gridIconCircle, { backgroundColor: '#dcfce7' }]}>
-                    <TrendingUp size={20} color="#15803d" />
-                  </View>
-                  <Text style={styles.gridCardLabel}>Total Sales</Text>
-                  <Text style={[styles.gridCardVal, { color: '#16a34a' }]}>Rs. {stats.totalSales}</Text>
-                </View>
-
-                <View style={styles.gridCard}>
-                  <View style={[styles.gridIconCircle, { backgroundColor: '#fee2e2' }]}>
-                    <TrendingDown size={20} color="#dc2626" />
-                  </View>
-                  <Text style={styles.gridCardLabel}>Total Expenses</Text>
-                  <Text style={[styles.gridCardVal, { color: '#ef4444' }]}>Rs. {stats.totalExpenses}</Text>
-                </View>
-              </View>
-
-              <View style={styles.gridContainer}>
-                <View style={styles.gridCard}>
-                  <View style={[styles.gridIconCircle, { backgroundColor: '#dbeafe' }]}>
-                    <DollarSign size={20} color="#1d4ed8" />
-                  </View>
-                  <Text style={styles.gridCardLabel}>Net Profit</Text>
-                  <Text style={[styles.gridCardVal, { color: '#3b82f6' }]}>Rs. {stats.netProfit}</Text>
-                </View>
-
-                <View style={styles.gridCard}>
-                  <View style={[styles.gridIconCircle, { backgroundColor: '#ffedd5' }]}>
-                    <Layers size={20} color="#c2410c" />
-                  </View>
-                  <Text style={styles.gridCardLabel}>Tables Occupied</Text>
-                  <Text style={[styles.gridCardVal, { color: '#f97316' }]}>{stats.occupiedTables} / {tables.length}</Text>
-                </View>
-              </View>
-
-              {/* Quick Actions Card */}
-              <View style={styles.actionsCard}>
-                <Text style={styles.sectionHeader}>QUICK REPORTS & EXPORTS</Text>
-                <View style={styles.actionButtonContainer}>
-                  <TouchableOpacity style={styles.reportActionBtn} onPress={handleDownloadReport} activeOpacity={0.7}>
-                    <FileText size={18} color="#ffffff" />
-                    <Text style={styles.reportActionBtnText}>Share Report CSV</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.reportActionBtn, { backgroundColor: '#10b981' }]} onPress={handlePrint} activeOpacity={0.7}>
-                    <Printer size={18} color="#ffffff" />
-                    <Text style={styles.reportActionBtnText}>Print Summary</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* Recent Orders List */}
-              <Text style={styles.sectionTitle}>Recent Orders ({orders.length})</Text>
-              {orders.slice(0, 15).map((order) => (
-                <TouchableOpacity
-                  key={order.id}
-                  style={styles.orderItemCard}
-                  onPress={() => setSelectedOrderForSlip(order)}
-                  activeOpacity={0.75}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.orderCardTitle}>Order #{order.id}</Text>
-                    <Text style={styles.orderCardSub}>Table {order.table_number} • {order.area}</Text>
-                  </View>
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={styles.orderAmount}>Rs. {order.total_amount}</Text>
-                    <Text style={[styles.orderStatus, { color: order.status === 'completed' ? '#16a34a' : '#f97316' }]}>
-                      {(order.status || '').toUpperCase()}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <OverviewTab
+              stats={stats}
+              tablesCount={tables.length}
+              orders={orders}
+              onDownloadReport={handleDownloadReport}
+              onPrintSummary={handlePrint}
+              onSelectOrder={setSelectedOrderForSlip}
+            />
           )}
 
-          {/* TAB TABLES */}
           {activeTab === 'tables' && (
-            <View style={styles.contentWrapper}>
-              <Text style={styles.sectionTitle}>Floor Occupancy Map</Text>
-              {tables.length === 0 ? (
-                <Text style={styles.emptyText}>No tables configured.</Text>
-              ) : (
-                tables.map((table) => (
-                  <View key={table.id} style={[styles.tableItemCard, { borderLeftColor: table.status === 'dining' ? '#ef4444' : '#16a34a' }]}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.tableCardTitle}>Table {table.table_number}</Text>
-                      <Text style={styles.tableCardSub}>{table.area} • {table.seats} Seats</Text>
-                    </View>
-                    <View style={styles.tableCardStatus}>
-                      <Text style={[styles.tableStatusLabel, { color: table.status === 'dining' ? '#ef4444' : '#16a34a' }]}>
-                        {table.status === 'dining' ? 'OCCUPIED' : 'AVAILABLE'}
-                      </Text>
-                    </View>
-                  </View>
-                ))
-              )}
-            </View>
+            <TablesTab tables={tables} />
           )}
 
-          {/* TAB STOCK */}
           {activeTab === 'stock' && (
-            <View style={styles.contentWrapper}>
-              <View style={styles.segmentedControl}>
-                <TouchableOpacity
-                  style={[styles.segmentBtn, stockSubTab === 'inventory' && styles.segmentBtnActive]}
-                  onPress={() => setStockSubTab('inventory')}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.segmentText, stockSubTab === 'inventory' && styles.segmentTextActive]}>INVENTORY LEVELS</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.segmentBtn, stockSubTab === 'history' && styles.segmentBtnActive]}
-                  onPress={() => setStockSubTab('history')}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.segmentText, stockSubTab === 'history' && styles.segmentTextActive]}>AUDIT LOGS / HISTORY</Text>
-                </TouchableOpacity>
-              </View>
-
-              {stockSubTab === 'inventory' ? (
-                <>
-                  <Text style={styles.sectionTitle}>Kitchen Inventory Alert Console</Text>
-                  {stockItems.length === 0 ? (
-                    <Text style={styles.emptyText}>No stock items configured.</Text>
-                  ) : (
-                    stockItems.map((stock) => (
-                      <View key={stock.id} style={styles.stockItemCard}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.stockCardTitle}>{stock.name}</Text>
-                          <Text style={styles.stockCardSub}>Unit: {stock.unit} • Threshold Alert: {stock.min_alert}</Text>
-                        </View>
-                        <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                          <Text style={styles.stockCardVal}>{stock.quantity} {stock.unit}</Text>
-                          {getStockStatusBadge(stock.quantity, stock.min_alert)}
-                        </View>
-                      </View>
-                    ))
-                  )}
-                </>
-              ) : (
-                <>
-                  <Text style={styles.sectionTitle}>Stock Transaction History Logs</Text>
-                  {stockLogs.length === 0 ? (
-                    <Text style={styles.emptyText}>No stock transaction history found.</Text>
-                  ) : (
-                    stockLogs.map((log) => (
-                      <View key={log.id} style={styles.stockItemCard}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.stockCardTitle}>{log.item_name}</Text>
-                          <Text style={styles.stockCardSub}>
-                            {new Date(log.created_at || Date.now()).toLocaleString('en-PK', {
-                              day: '2-digit', month: '2-digit', year: 'numeric',
-                              hour: '2-digit', minute: '2-digit', hour12: true,
-                            })}
-                            {log.remarks ? ` • ${log.remarks}` : ''}
-                          </Text>
-                        </View>
-                        <View style={{ alignItems: 'flex-end', gap: 4 }}>
-                          <Text style={[styles.stockCardVal, { color: log.action === 'remove' ? '#ef4444' : '#16a34a' }]}>
-                            {log.action === 'remove' ? '-' : '+'}{log.qty_changed} {log.item_unit}
-                          </Text>
-                          <View style={[styles.statusBadge, { backgroundColor: log.action === 'add' ? '#dcfce7' : log.action === 'remove' ? '#fecdd3' : '#e2e8f0' }]}>
-                            <Text style={[styles.statusText, { color: log.action === 'add' ? '#15803d' : log.action === 'remove' ? '#be123c' : '#475569' }]}>
-                              {log.action.toUpperCase()}
-                            </Text>
-                          </View>
-                        </View>
-                      </View>
-                    ))
-                  )}
-                </>
-              )}
-            </View>
+            <StockTab
+              stockSubTab={stockSubTab}
+              onSetStockSubTab={setStockSubTab}
+              stockItems={stockItems}
+              stockLogs={stockLogs}
+            />
           )}
 
-          {/* TAB EXPENSES */}
           {activeTab === 'expenses' && (
-            <View style={styles.contentWrapper}>
-              <Text style={styles.sectionTitle}>Daily Restaurant Expenditures</Text>
-              {expenses.length === 0 ? (
-                <Text style={styles.emptyText}>No expenses logged.</Text>
-              ) : (
-                expenses.map((exp) => (
-                  <View key={exp.id} style={styles.expenseItemCard}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.expenseCardTitle}>{(exp.category || '').toUpperCase()}</Text>
-                      <Text style={styles.expenseCardSub}>{exp.remarks || 'No remarks provided'}</Text>
-                    </View>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={styles.expenseAmount}>Rs. {exp.amount}</Text>
-                    </View>
-                  </View>
-                ))
-              )}
-            </View>
+            <ExpensesTab expenses={expenses} />
           )}
 
-          {/* TAB REPORTS */}
           {activeTab === 'reports' && (
-            <View style={styles.contentWrapper}>
-              <Text style={styles.sectionTitle}>Sales & Payment Split Analytics</Text>
-              
-              <View style={styles.analyticsCard}>
-                <Text style={styles.analyticsHeader}>Payment Methods Split</Text>
-                
-                <View style={styles.paymentRow}>
-                  <Text style={styles.paymentLabel}>Cash Sales</Text>
-                  <Text style={styles.paymentValue}>Rs. {stats.totalSales}</Text>
-                </View>
-                <View style={styles.progressBarBg}>
-                  <View style={[styles.progressBarFill, { width: '100%', backgroundColor: '#10b981' }]} />
-                </View>
-
-                <View style={[styles.paymentRow, { marginTop: 14 }]}>
-                  <Text style={styles.paymentLabel}>Card/Digital Sales</Text>
-                  <Text style={styles.paymentValue}>Rs. 0</Text>
-                </View>
-                <View style={styles.progressBarBg}>
-                  <View style={[styles.progressBarFill, { width: '0%', backgroundColor: '#3b82f6' }]} />
-                </View>
-              </View>
-
-              <View style={styles.actionsCard}>
-                <Text style={styles.sectionHeader}>EXPORT DATA</Text>
-                <TouchableOpacity style={styles.fullExportBtn} onPress={handleDownloadReport} activeOpacity={0.7}>
-                  <Download size={18} color="#ffffff" />
-                  <Text style={styles.fullExportBtnText}>Download Full Report CSV</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+            <ReportsTab
+              stats={stats}
+              onDownloadReport={handleDownloadReport}
+              onPrintReportPDF={handlePrintReportPDF}
+            />
           )}
         </ScrollView>
       )}
@@ -592,10 +808,10 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
       {sidebarOpen && (
         <View style={styles.sidebarOverlay}>
           <Pressable style={styles.sidebarBackdrop} onPress={closeSidebar} />
-          
+
           <Animated.View style={[styles.sidebarContent, { transform: [{ translateX: sidebarAnim }] }]}>
             <View style={[styles.sidebarHeader, { paddingTop: insets.top + 16 }]}>
-              <Image source={require('../../assets/Logo.jpg')} style={styles.sidebarLogo} />
+              <Image source={require('../../assets/Logo.jpg')} style={styles.sidebarLogo as any} />
               <View style={{ flex: 1, marginLeft: 12 }}>
                 <Text style={styles.sidebarTitle}>ZAIQA MAHAL</Text>
                 <Text style={styles.sidebarSubtitle}>Admin Dashboard</Text>
@@ -620,7 +836,7 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
             <View style={styles.sidebarNav}>
               <TouchableOpacity
                 style={[styles.navItem, activeTab === 'overview' && styles.navItemActive]}
-                onPress={() => { setActiveTab('overview'); closeSidebar(); }}
+                onPress={() => { console.log('👉 [Sidebar] Clicking Overview'); setActiveTab('overview'); closeSidebar(); }}
               >
                 <TrendingUp size={20} color={activeTab === 'overview' ? '#f97316' : '#64748b'} />
                 <Text style={[styles.navItemText, activeTab === 'overview' && styles.navItemTextActive]}>Overview Dashboard</Text>
@@ -628,7 +844,7 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
 
               <TouchableOpacity
                 style={[styles.navItem, activeTab === 'tables' && styles.navItemActive]}
-                onPress={() => { setActiveTab('tables'); closeSidebar(); }}
+                onPress={() => { console.log('👉 [Sidebar] Clicking Tables'); setActiveTab('tables'); closeSidebar(); }}
               >
                 <Layers size={20} color={activeTab === 'tables' ? '#f97316' : '#64748b'} />
                 <Text style={[styles.navItemText, activeTab === 'tables' && styles.navItemTextActive]}>Tables Floor Map</Text>
@@ -636,7 +852,7 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
 
               <TouchableOpacity
                 style={[styles.navItem, activeTab === 'stock' && styles.navItemActive]}
-                onPress={() => { setActiveTab('stock'); closeSidebar(); }}
+                onPress={() => { console.log('👉 [Sidebar] Clicking Stock'); setActiveTab('stock'); closeSidebar(); }}
               >
                 <Package size={20} color={activeTab === 'stock' ? '#f97316' : '#64748b'} />
                 <Text style={[styles.navItemText, activeTab === 'stock' && styles.navItemTextActive]}>Kitchen Inventory</Text>
@@ -644,7 +860,7 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
 
               <TouchableOpacity
                 style={[styles.navItem, activeTab === 'expenses' && styles.navItemActive]}
-                onPress={() => { setActiveTab('expenses'); closeSidebar(); }}
+                onPress={() => { console.log('👉 [Sidebar] Clicking Expenses'); setActiveTab('expenses'); closeSidebar(); }}
               >
                 <TrendingDown size={20} color={activeTab === 'expenses' ? '#f97316' : '#64748b'} />
                 <Text style={[styles.navItemText, activeTab === 'expenses' && styles.navItemTextActive]}>Restaurant Expenses</Text>
@@ -652,7 +868,7 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
 
               <TouchableOpacity
                 style={[styles.navItem, activeTab === 'reports' && styles.navItemActive]}
-                onPress={() => { setActiveTab('reports'); closeSidebar(); }}
+                onPress={() => { console.log('👉 [Sidebar] Clicking Reports'); setActiveTab('reports'); closeSidebar(); }}
               >
                 <FileText size={20} color={activeTab === 'reports' ? '#f97316' : '#64748b'} />
                 <Text style={[styles.navItemText, activeTab === 'reports' && styles.navItemTextActive]}>Sales Reports</Text>
@@ -690,212 +906,19 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
       )}
 
       {/* RECEIPT SLIP MODAL */}
-      <Modal
-        visible={!!selectedOrderForSlip}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setSelectedOrderForSlip(null)}
-      >
-        <View style={styles.slipModalOverlay}>
-          <View style={styles.slipCard}>
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
-              {/* Logo / Header */}
-              <View style={styles.slipCenter}>
-                <Image source={require('../../assets/Logo.jpg')} style={styles.slipLogo as any} resizeMode="contain" />
-                <Text style={styles.slipTitle}>ZAIQA MAHAL</Text>
-                <Text style={styles.slipSub}>
-                  Chishtian Road, Near Ali Park{"\n"}
-                  Hasilpur, 63000{"\n"}
-                  Ph: 0300-3910101
-                </Text>
-              </View>
+      <ReceiptSlipModal
+        order={selectedOrderForSlip}
+        onClose={() => setSelectedOrderForSlip(null)}
+      />
 
-              <View style={styles.slipDividerDashed} />
-
-              {/* Stamp (Official Paid/Pending Indicator) */}
-              {selectedOrderForSlip && (
-                <View style={[
-                  styles.slipStamp,
-                  {
-                    borderColor: selectedOrderForSlip.status === 'completed' ? '#16a34a' : '#dc2626',
-                  }
-                ]}>
-                  <Text style={[
-                    styles.slipStampText,
-                    { color: selectedOrderForSlip.status === 'completed' ? '#16a34a' : '#dc2626' }
-                  ]}>
-                    {selectedOrderForSlip.status === 'completed' ? 'PAID' : selectedOrderForSlip.status.toUpperCase()}
-                  </Text>
-                </View>
-              )}
-
-              {/* Order Metadata */}
-              {selectedOrderForSlip && (
-                <View style={styles.slipMetaContainer}>
-                  <View style={styles.slipRow}>
-                    <Text style={styles.slipMetaLabel}>DATE:</Text>
-                    <Text style={styles.slipMetaVal}>
-                      {new Date(selectedOrderForSlip.created_at || Date.now()).toLocaleString('en-PK', {
-                        day: '2-digit', month: '2-digit', year: 'numeric',
-                        hour: '2-digit', minute: '2-digit', hour12: true,
-                      })}
-                    </Text>
-                  </View>
-                  <View style={styles.slipRow}>
-                    <Text style={styles.slipMetaLabel}>ORDER ID:</Text>
-                    <Text style={styles.slipMetaVal}>#{selectedOrderForSlip.id}</Text>
-                  </View>
-                  <View style={styles.slipRow}>
-                    <Text style={styles.slipMetaLabel}>INVOICE NO:</Text>
-                    <Text style={styles.slipMetaVal}>INV-{new Date(selectedOrderForSlip.created_at || Date.now()).getFullYear()}{String(new Date(selectedOrderForSlip.created_at || Date.now()).getMonth()+1).padStart(2,'0')}{String(new Date(selectedOrderForSlip.created_at || Date.now()).getDate()).padStart(2,'0')}-{String(selectedOrderForSlip.id).padStart(4,'0')}</Text>
-                  </View>
-                  <View style={styles.slipRow}>
-                    <Text style={styles.slipMetaLabel}>TABLE:</Text>
-                    <Text style={styles.slipMetaVal}>{selectedOrderForSlip.table_number} ({selectedOrderForSlip.area})</Text>
-                  </View>
-                  {selectedOrderForSlip.customer_name && selectedOrderForSlip.customer_name !== 'Walk-in' && (
-                    <View style={styles.slipRow}>
-                      <Text style={styles.slipMetaLabel}>CUSTOMER:</Text>
-                      <Text style={styles.slipMetaVal}>{selectedOrderForSlip.customer_name}</Text>
-                    </View>
-                  )}
-                </View>
-              )}
-
-              <View style={styles.slipDividerDashed} />
-
-              {/* Itemized Table */}
-              <View style={styles.slipTableHeader}>
-                <Text style={[styles.slipCol, { flex: 3 }]}>ITEM</Text>
-                <Text style={[styles.slipCol, { flex: 1, textAlign: 'center' }]}>QTY</Text>
-                <Text style={[styles.slipCol, { flex: 1.5, textAlign: 'right' }]}>PRICE</Text>
-                <Text style={[styles.slipCol, { flex: 1.5, textAlign: 'right' }]}>TOTAL</Text>
-              </View>
-
-              {selectedOrderForSlip && (() => {
-                let parsedItems = [];
-                try {
-                  if (typeof selectedOrderForSlip.items === 'string') {
-                    parsedItems = JSON.parse(selectedOrderForSlip.items);
-                  } else if (Array.isArray(selectedOrderForSlip.items)) {
-                    parsedItems = selectedOrderForSlip.items;
-                  }
-                } catch (e) {
-                  console.warn('Error parsing order items for slip:', e);
-                }
-
-                return parsedItems.map((item: any, idx: number) => (
-                  <View key={idx} style={styles.slipItemRow}>
-                    <Text style={[styles.slipItemText, { flex: 3 }]} numberOfLines={2}>
-                      {item.name || item.item_name}
-                    </Text>
-                    <Text style={[styles.slipItemText, { flex: 1, textAlign: 'center' }]}>
-                      {item.qty || item.quantity}
-                    </Text>
-                    <Text style={[styles.slipItemText, { flex: 1.5, textAlign: 'right' }]}>
-                      {item.price}
-                    </Text>
-                    <Text style={[styles.slipItemText, { flex: 1.5, textAlign: 'right', fontWeight: '800' }]}>
-                      {(item.qty || item.quantity) * item.price}
-                    </Text>
-                  </View>
-                ));
-              })()}
-
-              <View style={styles.slipDividerSolid} />
-
-              {/* Totals Summary */}
-              {selectedOrderForSlip && (
-                <View style={styles.slipTotalsContainer}>
-                  <View style={styles.slipRow}>
-                    <Text style={styles.slipTotalLabel}>Subtotal</Text>
-                    <Text style={styles.slipTotalVal}>Rs. {selectedOrderForSlip.total_amount}</Text>
-                  </View>
-                  <View style={styles.slipRow}>
-                    <Text style={styles.slipTotalLabel}>GST (0%)</Text>
-                    <Text style={styles.slipTotalVal}>Rs. 0</Text>
-                  </View>
-                  <View style={[styles.slipRow, { marginTop: 6 }]}>
-                    <Text style={[styles.slipTotalLabel, { fontSize: 16, fontWeight: '900' }]}>TOTAL AMOUNT</Text>
-                    <Text style={[styles.slipTotalVal, { fontSize: 16, fontWeight: '900' }]}>Rs. {selectedOrderForSlip.total_amount}</Text>
-                  </View>
-                </View>
-              )}
-
-              <View style={styles.slipDividerDashed} />
-
-              <View style={styles.slipCenter}>
-                <Text style={styles.slipFooterText}>Thank you for dining with us!</Text>
-                <Text style={[styles.slipFooterText, { fontSize: 8, color: '#64748b', marginTop: 4 }]}>
-                  Powered by Zaiqa Mahal Systems
-                </Text>
-              </View>
-            </ScrollView>
-
-            {/* Actions */}
-            <View style={styles.slipActions}>
-              <TouchableOpacity
-                style={[styles.slipActionBtn, { backgroundColor: '#334155' }]}
-                onPress={() => setSelectedOrderForSlip(null)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.slipActionBtnText}>Close</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.slipActionBtn, { backgroundColor: '#f97316' }]}
-                onPress={async () => {
-                  if (!selectedOrderForSlip) return;
-                  let parsedItems = [];
-                  try {
-                    if (typeof selectedOrderForSlip.items === 'string') {
-                      parsedItems = JSON.parse(selectedOrderForSlip.items);
-                    } else if (Array.isArray(selectedOrderForSlip.items)) {
-                      parsedItems = selectedOrderForSlip.items;
-                    }
-                  } catch (e) {}
-
-                  const itemsStr = parsedItems.map((item: any) => 
-                    `${item.qty || item.quantity}x ${item.name || item.item_name} - Rs. ${(item.qty || item.quantity) * item.price}`
-                  ).join('\n');
-
-                  const textReceipt = 
-`===========================
-       ZAIQA MAHAL
-===========================
-Hasilpur, Ph: 0300-3910101
----------------------------
-Order ID: #${selectedOrderForSlip.id}
-Table: ${selectedOrderForSlip.table_number} (${selectedOrderForSlip.area})
-Date: ${new Date(selectedOrderForSlip.created_at || Date.now()).toLocaleString('en-PK')}
-Status: ${selectedOrderForSlip.status.toUpperCase()}
----------------------------
-${itemsStr}
----------------------------
-Subtotal: Rs. ${selectedOrderForSlip.total_amount}
-GST: Rs. 0
-TOTAL: Rs. ${selectedOrderForSlip.total_amount}
-===========================
-Thank you for dining with us!`;
-
-                  try {
-                    await Share.share({
-                      message: textReceipt,
-                      title: `Receipt_Order_${selectedOrderForSlip.id}`,
-                    });
-                    toast.success('Shared', 'Receipt shared successfully.');
-                  } catch (e) {
-                    toast.error('Failed', 'Could not share receipt.');
-                  }
-                }}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.slipActionBtnText}>Share Slip</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      {/* NOTIFICATIONS MODAL */}
+      <NotificationsModal
+        visible={showNotificationsModal}
+        onClose={() => setShowNotificationsModal(false)}
+        notifications={notifications}
+        onClearAll={clearAllNotifications}
+        onMarkAllAsRead={markAllNotificationsAsRead}
+      />
 
       {/* EXIT CONFIRMATION MODAL */}
       <Modal visible={showExitModal} transparent animationType="fade" onRequestClose={() => setShowExitModal(false)}>
@@ -924,7 +947,7 @@ Thank you for dining with us!`;
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8fafc' },
   header: {
-    height: 72,
+    height: 64,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
@@ -1440,25 +1463,40 @@ const styles = StyleSheet.create({
   },
   slipStamp: {
     position: 'absolute',
-    top: '30%',
+    top: '25%',
     left: '50%',
-    marginLeft: -60,
-    width: 120,
-    height: 60,
+    marginLeft: -48,
+    width: 96,
+    height: 96,
     borderWidth: 3,
-    borderRadius: 8,
-    borderStyle: 'solid',
+    borderRadius: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    transform: [{ rotate: '-12deg' }],
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    transform: [{ rotate: '-10deg' }],
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
     zIndex: 10,
-    opacity: 0.8,
+    opacity: 0.85,
   },
-  slipStampText: {
-    fontSize: 18,
+  slipStampInner: {
+    borderWidth: 1.2,
+    borderStyle: 'dashed',
+    borderRadius: 42,
+    width: 84,
+    height: 84,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  slipStampTextSmall: {
+    fontSize: 7.5,
     fontWeight: '900',
-    letterSpacing: 1,
+    letterSpacing: 0.5,
+  },
+  slipStampTextMain: {
+    fontSize: 12,
+    fontWeight: '900',
+    marginVertical: 2,
+    letterSpacing: 0.5,
+    textDecorationLine: 'underline',
   },
   slipMetaContainer: {
     marginVertical: 4,
@@ -1515,12 +1553,37 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: '#000000',
   },
-  slipFooterText: {
-    fontSize: 11,
+  slipFooterDisclaimers: {
+    fontSize: 9.5,
+    color: '#000000',
+    marginBottom: 12,
+    lineHeight: 14,
+    textAlign: 'left',
+    width: '100%',
     fontWeight: '700',
+  },
+  slipThankYou: {
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
     color: '#000000',
     textAlign: 'center',
-    marginTop: 8,
+  },
+  slipVisitAgain: {
+    fontSize: 11,
+    color: '#000000',
+    marginTop: 4,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  slipDeveloperCredit: {
+    fontSize: 9,
+    color: '#000000',
+    letterSpacing: 0.3,
+    textAlign: 'center',
+    fontWeight: 'bold',
+    width: '100%',
   },
   slipActions: {
     flexDirection: 'row',

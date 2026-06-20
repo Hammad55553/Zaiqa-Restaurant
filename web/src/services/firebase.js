@@ -46,7 +46,7 @@ export async function requestFcmToken() {
         // vapidKey: 'YOUR_PUBLIC_VAPID_KEY'
       });
       console.log('🔥 FCM Web Token acquired:', token);
-      
+
       // Store token locally or send to backend
       localStorage.setItem('fcm_web_token', token);
       return token;
@@ -64,7 +64,7 @@ export async function requestFcmToken() {
  * Listen for foreground push notifications
  */
 export function onMessageListener(callback) {
-  if (!messaging) return () => {};
+  if (!messaging) return () => { };
   return onMessage(messaging, (payload) => {
     console.log('📡 Foreground notification received:', payload);
     callback(payload);

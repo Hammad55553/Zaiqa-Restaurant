@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Square,
   CheckSquare,
+  Lock,
 } from 'lucide-react-native';
 import { API_BASE } from '../../config';
 import { KitchenOrder, OrderStatus, OrderItem } from '../../screens/kitchen/types';
@@ -68,14 +69,30 @@ const STATUS_CONFIG: Record<OrderStatus, {
   },
 };
 
-// ─── Time Elapsed ─────────────────────────────────────────────────────────────
+// ─── Time Elapsed & Safe Date Parser ──────────────────────────────────────────
+
+const parseUtcDate = (dateStr: string): Date => {
+  if (!dateStr) return new Date();
+  
+  // If it's a plain SQL datetime like "2026-06-20 12:40:00", treat it as UTC by adding Z
+  let normalized = dateStr;
+  if (!dateStr.includes('Z') && !dateStr.includes('+') && !dateStr.includes('T')) {
+    normalized = dateStr.replace(' ', 'T') + 'Z';
+  } else if (dateStr.includes('T') && !dateStr.includes('Z') && !dateStr.includes('+')) {
+    normalized = dateStr + 'Z';
+  }
+  
+  const parsed = new Date(normalized);
+  return isNaN(parsed.getTime()) ? new Date() : parsed;
+};
 
 function useElapsedTime(createdAt: string) {
   const [elapsed, setElapsed] = useState('');
 
   useEffect(() => {
     const update = () => {
-      const diff = Math.floor((Date.now() - new Date(createdAt).getTime()) / 1000);
+      const orderTime = parseUtcDate(createdAt).getTime();
+      const diff = Math.floor((Date.now() - orderTime) / 1000);
       if (diff < 60) setElapsed(`${diff}s`);
       else if (diff < 3600) setElapsed(`${Math.floor(diff / 60)}m ${diff % 60}s`);
       else setElapsed(`${Math.floor(diff / 3600)}h ${Math.floor((diff % 3600) / 60)}m`);
@@ -106,6 +123,31 @@ export default function KitchenOrderCard({
   const slideAnim = useRef(new Animated.Value(30)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  // 1-minute countdown timer logic for new orders
+  const [secondsLeft, setSecondsLeft] = useState(() => {
+    const orderTimeMs = parseUtcDate(order.created_at).getTime();
+    const elapsedMs = Date.now() - orderTimeMs;
+    return Math.min(60, Math.max(0, 60 - Math.floor(elapsedMs / 1000)));
+  });
+
+  useEffect(() => {
+    if (order.status !== 'pending' || secondsLeft <= 0) return;
+
+    const timer = setInterval(() => {
+      const orderTimeMs = parseUtcDate(order.created_at).getTime();
+      const elapsedMs = Date.now() - orderTimeMs;
+      const left = Math.min(60, Math.max(0, 60 - Math.floor(elapsedMs / 1000)));
+      setSecondsLeft(left);
+      if (left <= 0) {
+        clearInterval(timer);
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [order.created_at, order.status, secondsLeft]);
+
+  const isLocked = order.status === 'pending' && secondsLeft > 0;
 
   // Group items by batch/round
   const groupedItems = React.useMemo(() => {
@@ -215,56 +257,67 @@ export default function KitchenOrderCard({
       )}
 
       {/* ── Items ── */}
-      <View style={styles.itemsSection}>
-        {groupedItems.map((group) => (
-          <View key={group.timestamp} style={styles.roundBox}>
-            <View style={styles.roundHeader}>
-              <Text style={styles.roundTitle}>ROUND {group.round}</Text>
-              <Text style={styles.roundTime}>
-                {group.timestamp !== 'original' ? new Date(group.timestamp).toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit', hour12: true }) : ''}
-              </Text>
-            </View>
-            {group.items.map((item: OrderItem, idx: number) => {
-              const isReady = item.status === 'ready' || item.status === 'served';
-              return (
-                <View
-                  key={item.id}
-                  style={[
-                    styles.itemRow,
-                    idx < group.items.length - 1 && styles.itemRowBorder,
-                  ]}
-                >
-                  {order.status !== 'completed' && (
-                    <TouchableOpacity onPress={() => toggleItemStatus(item)} style={styles.checkboxContainer}>
-                      {isReady ? (
-                        <CheckSquare size={20} color="#16a34a" />
-                      ) : (
-                        <Square size={20} color="#94a3b8" />
-                      )}
-                    </TouchableOpacity>
-                  )}
-                  <View style={styles.qtyCircle}>
-                    <Text style={styles.qtyText}>{item.quantity}</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.itemName, isReady && styles.itemNameReady]}>
-                      {item.item_name}
-                    </Text>
-                    {item.notes ? (
-                      <View style={styles.itemNotesBox}>
-                        <Text style={styles.itemNotes}>⚠️ NOTE: {item.notes}</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                </View>
-              );
-            })}
+      {isLocked ? (
+        <View style={styles.lockedContainer}>
+          <View style={styles.lockBadge}>
+            <Lock size={18} color="#ea580c" />
+            <Text style={styles.lockTimerText}>{secondsLeft}s</Text>
           </View>
-        ))}
-      </View>
+          <Text style={styles.lockTitle}>New Order Pending Reveal</Text>
+          <Text style={styles.lockSubtitle}>Preparing details. Unlocking automatically in {secondsLeft} seconds...</Text>
+        </View>
+      ) : (
+        <View style={styles.itemsSection}>
+          {groupedItems.map((group) => (
+            <View key={group.timestamp} style={styles.roundBox}>
+              <View style={styles.roundHeader}>
+                <Text style={styles.roundTitle}>ROUND {group.round}</Text>
+                <Text style={styles.roundTime}>
+                  {group.timestamp !== 'original' ? new Date(group.timestamp).toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit', hour12: true }) : ''}
+                </Text>
+              </View>
+              {group.items.map((item: OrderItem, idx: number) => {
+                const isReady = item.status === 'ready' || item.status === 'served';
+                return (
+                  <View
+                    key={item.id}
+                    style={[
+                      styles.itemRow,
+                      idx < group.items.length - 1 && styles.itemRowBorder,
+                    ]}
+                  >
+                    {order.status !== 'completed' && (
+                      <TouchableOpacity onPress={() => toggleItemStatus(item)} style={styles.checkboxContainer}>
+                        {isReady ? (
+                          <CheckSquare size={20} color="#16a34a" />
+                        ) : (
+                          <Square size={20} color="#94a3b8" />
+                        )}
+                      </TouchableOpacity>
+                    )}
+                    <View style={styles.qtyCircle}>
+                      <Text style={styles.qtyText}>{item.quantity}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.itemName, isReady && styles.itemNameReady]}>
+                        {item.item_name}
+                      </Text>
+                      {item.notes ? (
+                        <View style={styles.itemNotesBox}>
+                          <Text style={styles.itemNotes}>⚠️ NOTE: {item.notes}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          ))}
+        </View>
+      )}
 
       {/* ── Remarks ── */}
-      {order.remarks ? (
+      {order.remarks && !isLocked ? (
         <View style={styles.remarksRow}>
           <Text style={styles.remarksLabel}>Note: </Text>
           <Text style={styles.remarksText}>{order.remarks}</Text>
@@ -272,16 +325,22 @@ export default function KitchenOrderCard({
       ) : null}
 
       {/* ── Action Button ── */}
-      {config.nextStatus && (
-        <TouchableOpacity
-          style={[styles.actionBtn, { backgroundColor: config.nextBg }, isUpdating && { opacity: 0.6 }]}
-          onPress={() => onStatusChange(order.id, config.nextStatus!)}
-          disabled={isUpdating}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.actionBtnText}>{config.nextLabel}</Text>
-          <ChevronRight size={16} color="#ffffff" />
-        </TouchableOpacity>
+      {isLocked ? (
+        <View style={[styles.actionBtn, { backgroundColor: '#cbd5e1' }]}>
+          <Text style={styles.actionBtnText}>LOCK PERIOD ACTIVE ({secondsLeft}s)</Text>
+        </View>
+      ) : (
+        config.nextStatus && (
+          <TouchableOpacity
+            style={[styles.actionBtn, { backgroundColor: config.nextBg }, isUpdating && { opacity: 0.6 }]}
+            onPress={() => onStatusChange(order.id, config.nextStatus!)}
+            disabled={isUpdating}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.actionBtnText}>{config.nextLabel}</Text>
+            <ChevronRight size={16} color="#ffffff" />
+          </TouchableOpacity>
+        )
       )}
     </Animated.View>
   );
@@ -508,5 +567,42 @@ const styles = StyleSheet.create({
   itemNameReady: {
     color: '#94a3b8',
     textDecorationLine: 'line-through',
+  },
+  lockedContainer: {
+    paddingVertical: 35,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fafafa',
+  },
+  lockBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff7ed',
+    borderColor: '#fed7aa',
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    gap: 6,
+    marginBottom: 10,
+  },
+  lockTimerText: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#ea580c',
+  },
+  lockTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#1e293b',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  lockSubtitle: {
+    fontSize: 11,
+    color: '#64748b',
+    fontWeight: '600',
+    textAlign: 'center',
   },
 });

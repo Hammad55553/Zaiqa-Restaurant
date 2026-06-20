@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Users, Lock, ChevronRight, Settings, Wifi, RefreshCw, X, CheckCircle, AlertTriangle, Download, Eye, EyeOff, AlertCircle } from 'lucide-react-native';
 import { serverIP, setServerIP, API_BASE } from '../config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '../lib/supabase';
 
 const { BundleUpdater } = NativeModules;
 const LOCAL_APP_VERSION = '1.0.0';
@@ -21,6 +22,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const [unsupportedRoleInfo, setUnsupportedRoleInfo] = useState<{ role: string, name: string } | null>(null);
 
   // Settings & update state
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [serverIPInput, setServerIPInput] = useState(serverIP);
   const [isTestingConn, setIsTestingConn] = useState(false);
@@ -72,7 +74,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     }
 
     setError('');
-    setIsTestingConn(true); // use loading state for login button if desired, or just do it in-line
+    setIsLoggingIn(true);
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 6000);
@@ -91,7 +93,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         if (data.requirePinSetup) {
           setPinSetupMode(true);
           setError('First time login. Please confirm your new PIN.');
-          setIsTestingConn(false);
+          setIsLoggingIn(false);
           return;
         }
 
@@ -100,7 +102,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         // Ensure they have a valid mobile role
         if (!['waiter', 'kitchen', 'rider', 'cashier', 'admin'].includes(loggedInUser.role)) {
           setUnsupportedRoleInfo({ role: loggedInUser.role, name: loggedInUser.name || loggedInUser.username });
-          setIsTestingConn(false);
+          setIsLoggingIn(false);
           return;
         }
 
@@ -120,10 +122,60 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         setError(errorMsg);
       }
     } catch (err) {
-      console.warn('Network error during login', err);
-      setError('Server unreachable. Please check connection to the Zaiqa Mahal server.');
+      console.warn('Network error during login, trying Supabase direct connection...', err);
+      try {
+        const { data: onlineUser, error: onlineErr } = await supabase
+          .from('users')
+          .select('*')
+          .eq('username', username.trim().toLowerCase())
+          .single();
+
+        if (onlineErr) {
+          setError(`Online check failed: ${onlineErr.message} (Code: ${onlineErr.code})`);
+          return;
+        }
+
+        if (!onlineUser) {
+          setError('User profile not found on Supabase.');
+          return;
+        }
+
+        if (onlineUser.password === 'PENDING_PIN') {
+          setPinSetupMode(true);
+          setError('First time login. Please confirm your new PIN.');
+          return;
+        }
+
+        if (onlineUser.password !== pin) {
+          setError('Invalid username or passcode PIN (Online)');
+          return;
+        }
+
+        // Check role compatibility
+        if (!['waiter', 'kitchen', 'rider', 'cashier', 'admin'].includes(onlineUser.role)) {
+          setUnsupportedRoleInfo({ role: onlineUser.role, name: onlineUser.name || onlineUser.username });
+          return;
+        }
+
+        await AsyncStorage.setItem('LOGGED_IN_USER', JSON.stringify({
+          username: onlineUser.username,
+          role: onlineUser.role,
+          name: onlineUser.name,
+          permissions: typeof onlineUser.permissions === 'string' ? JSON.parse(onlineUser.permissions) : (onlineUser.permissions || [])
+        }));
+        
+        onLoginSuccess(
+          onlineUser.username,
+          onlineUser.role,
+          onlineUser.name,
+          typeof onlineUser.permissions === 'string' ? JSON.parse(onlineUser.permissions) : (onlineUser.permissions || [])
+        );
+      } catch (supabaseErr: any) {
+        console.warn('Supabase authentication failed:', supabaseErr);
+        setError(`Connection failed. Server offline & Online auth error: ${supabaseErr.message || supabaseErr}`);
+      }
     } finally {
-      setIsTestingConn(false);
+      setIsLoggingIn(false);
     }
   };
 
@@ -133,7 +185,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       return;
     }
     setError('');
-    setIsTestingConn(true);
+    setIsLoggingIn(true);
     try {
       const res = await fetch(`${API_BASE}/users/set-pin`, {
         method: 'POST',
@@ -151,11 +203,27 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           errorMsg = data.error || errorMsg;
         } catch (jsonErr) { }
         setError(errorMsg);
-        setIsTestingConn(false);
+        setIsLoggingIn(false);
       }
     } catch (err) {
-      setError('Network error');
-      setIsTestingConn(false);
+      console.warn('Network error during set-pin, trying Supabase direct...', err);
+      try {
+        const { error: updateErr } = await supabase
+          .from('users')
+          .update({ password: pin })
+          .eq('username', username.trim().toLowerCase());
+        
+        if (updateErr) {
+          setError('Failed to set PIN online: ' + updateErr.message);
+          setIsLoggingIn(false);
+        } else {
+          setPinSetupMode(false);
+          await handleLogin();
+        }
+      } catch (supabaseErr) {
+        setError('Network error during setup.');
+        setIsLoggingIn(false);
+      }
     }
   };
 
@@ -378,14 +446,34 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
             {/* Login Button */}
             {pinSetupMode ? (
-              <TouchableOpacity style={styles.loginBtn} onPress={handleSetPin}>
-                <Text style={styles.loginBtnText}>CONFIRM & LOGIN</Text>
-                <ChevronRight size={16} color="#ffffff" />
+              <TouchableOpacity 
+                style={[styles.loginBtn, isLoggingIn && styles.loginBtnDisabled]} 
+                onPress={handleSetPin}
+                disabled={isLoggingIn}
+              >
+                {isLoggingIn ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <>
+                    <Text style={styles.loginBtnText}>CONFIRM & LOGIN</Text>
+                    <ChevronRight size={16} color="#ffffff" />
+                  </>
+                )}
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity style={styles.loginBtn} onPress={handleLogin}>
-                <Text style={styles.loginBtnText}>PROCEED TO WORKSPACE</Text>
-                <ChevronRight size={16} color="#ffffff" />
+              <TouchableOpacity 
+                style={[styles.loginBtn, isLoggingIn && styles.loginBtnDisabled]} 
+                onPress={handleLogin}
+                disabled={isLoggingIn}
+              >
+                {isLoggingIn ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <>
+                    <Text style={styles.loginBtnText}>PROCEED TO WORKSPACE</Text>
+                    <ChevronRight size={16} color="#ffffff" />
+                  </>
+                )}
               </TouchableOpacity>
             )}
 
@@ -809,6 +897,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 8,
+  },
+  loginBtnDisabled: {
+    opacity: 0.6,
   },
   loginBtnText: {
     color: '#ffffff',

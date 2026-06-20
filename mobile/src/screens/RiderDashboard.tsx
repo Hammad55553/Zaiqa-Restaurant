@@ -23,6 +23,7 @@ import { Bike, LogOut, RefreshCw, Clock, MapPin, Phone, User, FileText, CheckCir
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE, serverIP, setServerIP } from '../config';
+import { supabase } from '../lib/supabase';
 import { useToast } from '../components/Toast';
 import { useServerStatus } from '../hooks/useServerStatus';
 import NetworkStatusBar from '../components/NetworkStatusBar';
@@ -268,9 +269,27 @@ export default function RiderDashboard({ username, name, permissions, onLogout }
       if (res.ok) {
         const data = await res.json();
         setCompletedOrders(data);
+      } else {
+        throw new Error('Local server error');
       }
     } catch (err) {
-      console.warn("Failed to fetch rider report:", err);
+      console.warn("Failed to fetch rider report locally, trying Supabase direct...", err);
+      try {
+        const { data: supabaseOrders, error: supabaseErr } = await supabase
+          .from('orders')
+          .select('*')
+          .is('deleted_at', null)
+          .eq('area', 'Delivery')
+          .eq('status', 'completed')
+          .eq('delivered_by', username);
+
+        if (supabaseErr) throw supabaseErr;
+        if (supabaseOrders) {
+          setCompletedOrders(supabaseOrders as DeliveryOrder[]);
+        }
+      } catch (subErr) {
+        console.error('Supabase fetch rider report failed:', subErr);
+      }
     } finally {
       setLoadingReport(false);
     }
@@ -300,8 +319,24 @@ export default function RiderDashboard({ username, name, permissions, onLogout }
       const deliveryOrders = data.filter(o => o.area === 'Delivery' && o.status === 'ready');
       setOrders(deliveryOrders);
     } catch (err) {
-      console.error(err);
-      if (isRefresh) toast.error('Refresh Failed', 'Could not reach server.');
+      console.warn('Local fetch active orders failed, trying Supabase direct...', err);
+      try {
+        const { data: supabaseOrders, error: supabaseErr } = await supabase
+          .from('orders')
+          .select('*')
+          .is('deleted_at', null)
+          .eq('area', 'Delivery')
+          .eq('status', 'ready');
+
+        if (supabaseErr) throw supabaseErr;
+
+        if (supabaseOrders) {
+          setOrders(supabaseOrders as DeliveryOrder[]);
+        }
+      } catch (subErr) {
+        console.error('Supabase fetch active orders failed:', subErr);
+        if (isRefresh) toast.error('Refresh Failed', 'Could not reach server or online database.');
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -351,10 +386,31 @@ export default function RiderDashboard({ username, name, permissions, onLogout }
       if (selectedOrder?.id === orderId) {
         setSelectedOrder(null);
       }
-      // Refresh the report dynamically
       fetchRiderReport();
     } catch (err) {
-      toast.error('Update Failed', 'Could not update delivery status.');
+      console.warn('Local update status failed, trying Supabase direct update...', err);
+      try {
+        const { error: supabaseErr } = await supabase
+          .from('orders')
+          .update({ 
+            status: newStatus, 
+            delivered_by: username,
+            has_new_updates: true 
+          })
+          .eq('id', orderId);
+
+        if (supabaseErr) throw supabaseErr;
+
+        toast.success('Delivered (Online)', `Order #${orderId} marked as delivered online.`);
+        setOrders(prev => prev.filter(o => o.id !== orderId));
+        if (selectedOrder?.id === orderId) {
+          setSelectedOrder(null);
+        }
+        fetchRiderReport();
+      } catch (subErr) {
+        console.error('Supabase update status failed:', subErr);
+        toast.error('Update Failed', 'Could not update delivery status.');
+      }
     } finally {
       setUpdatingId(null);
     }

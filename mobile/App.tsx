@@ -51,6 +51,7 @@ function WebSocketManager() {
           } else if (data.type === 'NOTIFICATION') {
             toast.info(data.title, data.desc);
             Vibration.vibrate([0, 400, 100, 400]);
+            DeviceEventEmitter.emit('NEW_NOTIFICATION', data);
           }
         } catch (e) {
           console.warn('Error processing WS msg:', e);

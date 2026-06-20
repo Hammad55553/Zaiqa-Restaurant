@@ -120,7 +120,7 @@ export default function TablesScreen({
 
         setTables(data);
         
-        const pref = ['Male', 'Family', 'Lawn'];
+        const pref = ['Male', 'Family', 'Male Lawn', 'Family Lawn'];
         const uniqueAreas = Array.from(new Set(data.map(t => t.area)));
         uniqueAreas.sort((a, b) => {
           let idxA = pref.indexOf(a);
@@ -146,7 +146,7 @@ export default function TablesScreen({
           const data: Table[] = JSON.parse(cached);
           setTables(data);
           
-          const pref = ['Male', 'Family', 'Lawn'];
+          const pref = ['Male', 'Family', 'Male Lawn', 'Family Lawn'];
           const uniqueAreas = Array.from(new Set(data.map(t => t.area)));
           uniqueAreas.sort((a, b) => {
             let idxA = pref.indexOf(a);
@@ -171,12 +171,12 @@ export default function TablesScreen({
         { id: 4, number: '4', area: 'Male', seats: 4, status: 'reserved' },
         { id: 5, number: '5', area: 'Family', seats: 4, status: 'dining', startTime: new Date(Date.now() - 28 * 60 * 1000).toISOString() },
         { id: 6, number: '6', area: 'Family', seats: 8, status: 'available' },
-        { id: 7, number: '7', area: 'Lawn', seats: 4, status: 'available' },
-        { id: 8, number: '8', area: 'Lawn', seats: 4, status: 'available' },
+        { id: 7, number: '7', area: 'Male Lawn', seats: 4, status: 'available' },
+        { id: 8, number: '8', area: 'Family Lawn', seats: 4, status: 'available' },
         { id: 9, number: '9', area: 'Delivery', seats: 2, status: 'available' }
       ];
       setTables(mockTables);
-      setAreas(['Male', 'Family', 'Lawn', 'Delivery']);
+      setAreas(['Male', 'Family', 'Male Lawn', 'Family Lawn', 'Delivery']);
       setSelectedArea('Male');
     } finally {
       setLoadingTables(false);

@@ -2976,7 +2976,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
       )}
       {/* Area / Tab Selector */}
       <div className="px-6 lg:px-10 pt-8 pb-4 shrink-0 overflow-x-auto custom-scrollbar flex gap-4">
-        {['Male', 'Family', 'Lawn'].map(area => (
+        {['Male', 'Family', 'Male Lawn', 'Family Lawn'].map(area => (
           <button
             key={area}
             onClick={() => setActiveArea(area)}
