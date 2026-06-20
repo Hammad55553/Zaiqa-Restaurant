@@ -5,7 +5,9 @@
 require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+const SUPABASE_URL = 'https://pbhfxcjdupukgdpbeusc.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_cqyt1JDiEdiZGLwkRfH2Vw_d4XaJ1Vv';
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const DUMMY_NAMES = [
   'Maryam Tariq', 'Sana Malik', 'Hamza Yousuf', 'Fatima Bilal',
