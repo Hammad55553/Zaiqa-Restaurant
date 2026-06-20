@@ -85,7 +85,7 @@ jobs:
 
       - name: Install Desktop Dependencies
         working-directory: desktop
-        run: yarn install
+        run: npm install
 
       - name: Build Windows Installer
         working-directory: desktop
