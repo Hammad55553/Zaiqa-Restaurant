@@ -636,7 +636,7 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
               {/* Logo / Header */}
               <View style={styles.slipCenter}>
-                <Image source={require('../../../assets/Logo.jpg')} style={styles.slipLogo as any} resizeMode="contain" />
+                <Image source={require('../../assets/Logo.jpg')} style={styles.slipLogo as any} resizeMode="contain" />
                 <Text style={styles.slipTitle}>ZAIQA MAHAL</Text>
                 <Text style={styles.slipSub}>
                   Chishtian Road, Near Ali Park{"\n"}
