@@ -273,7 +273,7 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
       <View style={[styles.header, { paddingTop: insets.top }]}>
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>ADMIN CONSOLE</Text>
-          <Text style={styles.headerSub}>{(name || username).toUpperCase()}</Text>
+          <Text style={styles.headerSub}>{(name || username || '').toUpperCase()}</Text>
         </View>
 
         {/* Online/Offline Toggle */}
@@ -372,7 +372,7 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
                   <View style={{ alignItems: 'flex-end' }}>
                     <Text style={styles.orderAmount}>Rs. {order.total_amount}</Text>
                     <Text style={[styles.orderStatus, { color: order.status === 'completed' ? '#16a34a' : '#f97316' }]}>
-                      {order.status.toUpperCase()}
+                      {(order.status || '').toUpperCase()}
                     </Text>
                   </View>
                 </View>
@@ -437,7 +437,7 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
                 expenses.map((exp) => (
                   <View key={exp.id} style={styles.expenseItemCard}>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.expenseCardTitle}>{exp.category.toUpperCase()}</Text>
+                      <Text style={styles.expenseCardTitle}>{(exp.category || '').toUpperCase()}</Text>
                       <Text style={styles.expenseCardSub}>{exp.remarks || 'No remarks provided'}</Text>
                     </View>
                     <View style={{ alignItems: 'flex-end' }}>
