@@ -8,11 +8,13 @@ import {
   StatusBar,
   Image,
   Modal,
-  FlatList,
   ActivityIndicator,
   BackHandler,
   RefreshControl,
   Share,
+  Animated,
+  Pressable,
+  Dimensions,
 } from 'react-native';
 import {
   TrendingUp,
@@ -21,7 +23,6 @@ import {
   DollarSign,
   Wifi,
   WifiOff,
-  Database,
   RefreshCw,
   LogOut,
   AlertCircle,
@@ -29,16 +30,19 @@ import {
   Printer,
   ChevronRight,
   TrendingDown,
-  Calendar,
-  AlertTriangle,
-  CheckCircle,
   Download,
+  Menu,
+  X,
+  User,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE } from '../config';
 import { useToast } from '../components/Toast';
 import { supabase } from '../lib/supabase';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const SIDEBAR_WIDTH = SCREEN_WIDTH * 0.78;
 
 interface AdminDashboardProps {
   username: string;
@@ -47,7 +51,6 @@ interface AdminDashboardProps {
   onLogout: () => void;
 }
 
-// Interfaces
 interface Table {
   id: number;
   table_number: string;
@@ -73,6 +76,7 @@ interface Order {
   status: string;
   total_amount: number;
   created_at: string;
+  items?: any;
 }
 
 interface Expense {
@@ -88,10 +92,14 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
   const toast = useToast();
 
   const [activeTab, setActiveTab] = useState<'overview' | 'tables' | 'stock' | 'expenses' | 'reports'>('overview');
-  const [onlineMode, setOnlineMode] = useState<boolean>(true); // Default to online (Supabase) mode
+  const [onlineMode, setOnlineMode] = useState<boolean>(true);
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [showExitModal, setShowExitModal] = useState<boolean>(false);
+
+  // Sidebar state & animation
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
+  const sidebarAnim = useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
 
   // Stock Sub-tab
   const [stockSubTab, setStockSubTab] = useState<'inventory' | 'history'>('inventory');
@@ -115,9 +123,31 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
     netProfit: 0,
   });
 
+  // Sidebar Controls
+  const openSidebar = () => {
+    setSidebarOpen(true);
+    Animated.timing(sidebarAnim, {
+      toValue: 0,
+      duration: 250,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const closeSidebar = () => {
+    Animated.timing(sidebarAnim, {
+      toValue: -SIDEBAR_WIDTH,
+      duration: 220,
+      useNativeDriver: true,
+    }).start(() => setSidebarOpen(false));
+  };
+
   // Handle Back Button
   useEffect(() => {
     const backAction = () => {
+      if (sidebarOpen) {
+        closeSidebar();
+        return true;
+      }
       if (activeTab !== 'overview') {
         setActiveTab('overview');
         return true;
@@ -128,7 +158,7 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
 
     const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
     return () => backHandler.remove();
-  }, [activeTab]);
+  }, [activeTab, sidebarOpen]);
 
   // Fetch Dashboard Data
   const fetchData = useCallback(async (isRefresh = false) => {
@@ -141,18 +171,15 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
 
       if (onlineMode) {
         // --- Cloud Supabase Mode ---
-        // Fetch Tables
         const { data: dbTables, error: tErr } = await supabase.from('tables').select('*');
         if (tErr) throw tErr;
         setTables(dbTables || []);
 
-        // Fetch Stock
         const { data: dbStock, error: sErr } = await supabase.from('stock_items').select('*');
         if (sErr) throw sErr;
         currentStock = dbStock || [];
         setStockItems(currentStock);
 
-        // Fetch Stock Logs
         const { data: dbLogs, error: lErr } = await supabase
           .from('stock_logs')
           .select('*')
@@ -160,7 +187,6 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
         if (lErr) throw lErr;
         currentLogs = dbLogs || [];
 
-        // Fetch Orders
         const { data: dbOrders, error: oErr } = await supabase
           .from('orders')
           .select('*')
@@ -169,45 +195,38 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
         if (oErr) throw oErr;
         setOrders(dbOrders || []);
 
-        // Fetch Expenses
         const { data: dbExpenses, error: eErr } = await supabase.from('expenses').select('*');
         if (eErr) throw eErr;
         setExpenses(dbExpenses || []);
       } else {
         // --- Local Server Mode ---
-        // Tables
         const resTables = await fetch(`${API_BASE}/tables`);
         if (!resTables.ok) throw new Error();
         const dataTables = await resTables.json();
         setTables(dataTables || []);
 
-        // Stock
         const resStock = await fetch(`${API_BASE}/stock`);
         if (!resStock.ok) throw new Error();
         currentStock = await resStock.json();
         setStockItems(currentStock || []);
 
-        // Stock Logs
         const resLogs = await fetch(`${API_BASE}/stock/history`);
         if (!resLogs.ok) throw new Error();
         currentLogs = await resLogs.json();
 
-        // Orders
         const resOrders = await fetch(`${API_BASE}/orders/all`);
         if (!resOrders.ok) throw new Error();
         const dataOrders = await resOrders.json();
         setOrders(dataOrders || []);
 
-        // Expenses
         const resExpenses = await fetch(`${API_BASE}/expenses`);
         if (!resExpenses.ok) throw new Error();
         const dataExpenses = await resExpenses.json();
         setExpenses(dataExpenses || []);
       }
 
-      // Map stock logs client-side to ensure item names and units are combined
       const mappedLogs = currentLogs.map((log: any) => {
-        if (log.item_name && log.item_unit) return log; // Local mode already joined them
+        if (log.item_name && log.item_unit) return log;
         const matchedItem = currentStock.find((si: any) => si.id === log.item_id);
         return {
           ...log,
@@ -227,21 +246,12 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
 
   // Recalculate statistics when datasets change
   useEffect(() => {
-    const today = new Date().toISOString().split('T')[0];
-    
-    // Total Sales (Today's orders status: completed)
-    const todayOrders = orders.filter(o => o.created_at?.startsWith(today) || !o.created_at);
     const totalSales = orders
       .filter(o => o.status === 'completed')
       .reduce((acc, curr) => acc + (curr.total_amount || 0), 0);
 
-    // Active Orders (pending, preparing, ready)
     const activeOrders = orders.filter(o => ['pending', 'preparing', 'ready'].includes(o.status)).length;
-
-    // Occupied Tables
     const occupiedTables = tables.filter(t => t.status === 'dining').length;
-
-    // Total Expenses
     const totalExpenses = expenses.reduce((acc, curr) => acc + (curr.amount || 0), 0);
 
     setStats({
@@ -304,44 +314,41 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
+      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top }]}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>ADMIN CONSOLE</Text>
+        <TouchableOpacity style={styles.hamburgerBtn} onPress={openSidebar} activeOpacity={0.7}>
+          <Menu size={22} color="#0f172a" />
+        </TouchableOpacity>
+
+        <View style={{ flex: 1, marginLeft: 12 }}>
+          <Text style={styles.headerTitle}>
+            {activeTab === 'overview' && 'DASHBOARD'}
+            {activeTab === 'tables' && 'TABLE MAP'}
+            {activeTab === 'stock' && 'INVENTORY'}
+            {activeTab === 'expenses' && 'EXPENSES'}
+            {activeTab === 'reports' && 'REPORTS'}
+          </Text>
           <Text style={styles.headerSub}>{(name || username || '').toUpperCase()}</Text>
         </View>
 
-        {/* Online/Offline Toggle */}
-        <TouchableOpacity
-          style={[styles.connectionToggle, { backgroundColor: onlineMode ? '#071526' : '#2a0a0a', borderColor: onlineMode ? '#1e3a8a' : '#ef4444' }]}
-          onPress={() => setOnlineMode(!onlineMode)}
-          activeOpacity={0.8}
-        >
-          {onlineMode ? <Wifi size={14} color="#3b82f6" /> : <WifiOff size={14} color="#ef4444" />}
-          <Text style={[styles.connectionToggleText, { color: onlineMode ? '#3b82f6' : '#ef4444' }]}>
-            {onlineMode ? 'CLOUD (SUPABASE)' : 'LOCAL SERVER'}
-          </Text>
-        </TouchableOpacity>
-
-        {/* Logout Button */}
-        <TouchableOpacity style={styles.logoutBtn} onPress={onLogout} activeOpacity={0.7}>
-          <LogOut size={16} color="#ef4444" />
+        <TouchableOpacity style={styles.refreshBtn} onPress={() => fetchData(true)} activeOpacity={0.7}>
+          <RefreshCw size={18} color="#0f172a" />
         </TouchableOpacity>
       </View>
 
       {/* Main Content Area */}
       {loading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#3b82f6" />
+          <ActivityIndicator size="large" color="#f97316" />
           <Text style={styles.loadingText}>Fetching live metrics...</Text>
         </View>
       ) : (
         <ScrollView
           style={styles.scrollArea}
-          contentContainerStyle={{ paddingBottom: 100 }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchData(true)} tintColor="#3b82f6" />}
+          contentContainerStyle={{ paddingBottom: 64 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchData(true)} tintColor="#f97316" />}
         >
           {/* TAB OVERVIEW */}
           {activeTab === 'overview' && (
@@ -349,16 +356,16 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
               {/* Stats Grid */}
               <View style={styles.gridContainer}>
                 <View style={styles.gridCard}>
-                  <View style={[styles.gridIconCircle, { backgroundColor: 'rgba(22, 163, 74, 0.1)' }]}>
-                    <TrendingUp size={20} color="#16a34a" />
+                  <View style={[styles.gridIconCircle, { backgroundColor: '#dcfce7' }]}>
+                    <TrendingUp size={20} color="#15803d" />
                   </View>
                   <Text style={styles.gridCardLabel}>Total Sales</Text>
                   <Text style={[styles.gridCardVal, { color: '#16a34a' }]}>Rs. {stats.totalSales}</Text>
                 </View>
 
                 <View style={styles.gridCard}>
-                  <View style={[styles.gridIconCircle, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}>
-                    <TrendingDown size={20} color="#ef4444" />
+                  <View style={[styles.gridIconCircle, { backgroundColor: '#fee2e2' }]}>
+                    <TrendingDown size={20} color="#dc2626" />
                   </View>
                   <Text style={styles.gridCardLabel}>Total Expenses</Text>
                   <Text style={[styles.gridCardVal, { color: '#ef4444' }]}>Rs. {stats.totalExpenses}</Text>
@@ -367,16 +374,16 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
 
               <View style={styles.gridContainer}>
                 <View style={styles.gridCard}>
-                  <View style={[styles.gridIconCircle, { backgroundColor: 'rgba(59, 130, 246, 0.1)' }]}>
-                    <DollarSign size={20} color="#3b82f6" />
+                  <View style={[styles.gridIconCircle, { backgroundColor: '#dbeafe' }]}>
+                    <DollarSign size={20} color="#1d4ed8" />
                   </View>
                   <Text style={styles.gridCardLabel}>Net Profit</Text>
                   <Text style={[styles.gridCardVal, { color: '#3b82f6' }]}>Rs. {stats.netProfit}</Text>
                 </View>
 
                 <View style={styles.gridCard}>
-                  <View style={[styles.gridIconCircle, { backgroundColor: 'rgba(249, 115, 22, 0.1)' }]}>
-                    <Layers size={20} color="#f97316" />
+                  <View style={[styles.gridIconCircle, { backgroundColor: '#ffedd5' }]}>
+                    <Layers size={20} color="#c2410c" />
                   </View>
                   <Text style={styles.gridCardLabel}>Tables Occupied</Text>
                   <Text style={[styles.gridCardVal, { color: '#f97316' }]}>{stats.occupiedTables} / {tables.length}</Text>
@@ -581,48 +588,106 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
         </ScrollView>
       )}
 
-      {/* Tab Navigation Menu */}
-      <View style={styles.bottomTabs}>
-        <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'overview' && styles.activeTabBtn]}
-          onPress={() => setActiveTab('overview')}
-        >
-          <TrendingUp size={18} color={activeTab === 'overview' ? '#3b82f6' : '#94a3b8'} />
-          <Text style={[styles.tabLabel, { color: activeTab === 'overview' ? '#3b82f6' : '#94a3b8' }]}>Overview</Text>
-        </TouchableOpacity>
+      {/* SIDEBAR NAVIGATION DRAWER */}
+      {sidebarOpen && (
+        <View style={styles.sidebarOverlay}>
+          <Pressable style={styles.sidebarBackdrop} onPress={closeSidebar} />
+          
+          <Animated.View style={[styles.sidebarContent, { transform: [{ translateX: sidebarAnim }] }]}>
+            <View style={[styles.sidebarHeader, { paddingTop: insets.top + 16 }]}>
+              <Image source={require('../../assets/Logo.jpg')} style={styles.sidebarLogo} />
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.sidebarTitle}>ZAIQA MAHAL</Text>
+                <Text style={styles.sidebarSubtitle}>Admin Dashboard</Text>
+              </View>
+              <TouchableOpacity onPress={closeSidebar} style={styles.closeBtn}>
+                <X size={20} color="#0f172a" />
+              </TouchableOpacity>
+            </View>
 
-        <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'tables' && styles.activeTabBtn]}
-          onPress={() => setActiveTab('tables')}
-        >
-          <Layers size={18} color={activeTab === 'tables' ? '#3b82f6' : '#94a3b8'} />
-          <Text style={[styles.tabLabel, { color: activeTab === 'tables' ? '#3b82f6' : '#94a3b8' }]}>Tables</Text>
-        </TouchableOpacity>
+            {/* Profile Section */}
+            <View style={styles.sidebarProfile}>
+              <View style={styles.profileAvatar}>
+                <User size={20} color="#f97316" />
+              </View>
+              <View style={{ marginLeft: 12 }}>
+                <Text style={styles.profileName}>{name || 'Admin'}</Text>
+                <Text style={styles.profileRole}>ROLE: ADMINISTRATOR</Text>
+              </View>
+            </View>
 
-        <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'stock' && styles.activeTabBtn]}
-          onPress={() => setActiveTab('stock')}
-        >
-          <Package size={18} color={activeTab === 'stock' ? '#3b82f6' : '#94a3b8'} />
-          <Text style={[styles.tabLabel, { color: activeTab === 'stock' ? '#3b82f6' : '#94a3b8' }]}>Stock</Text>
-        </TouchableOpacity>
+            {/* Navigation Options */}
+            <View style={styles.sidebarNav}>
+              <TouchableOpacity
+                style={[styles.navItem, activeTab === 'overview' && styles.navItemActive]}
+                onPress={() => { setActiveTab('overview'); closeSidebar(); }}
+              >
+                <TrendingUp size={20} color={activeTab === 'overview' ? '#f97316' : '#64748b'} />
+                <Text style={[styles.navItemText, activeTab === 'overview' && styles.navItemTextActive]}>Overview Dashboard</Text>
+              </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'expenses' && styles.activeTabBtn]}
-          onPress={() => setActiveTab('expenses')}
-        >
-          <TrendingDown size={18} color={activeTab === 'expenses' ? '#3b82f6' : '#94a3b8'} />
-          <Text style={[styles.tabLabel, { color: activeTab === 'expenses' ? '#3b82f6' : '#94a3b8' }]}>Expenses</Text>
-        </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.navItem, activeTab === 'tables' && styles.navItemActive]}
+                onPress={() => { setActiveTab('tables'); closeSidebar(); }}
+              >
+                <Layers size={20} color={activeTab === 'tables' ? '#f97316' : '#64748b'} />
+                <Text style={[styles.navItemText, activeTab === 'tables' && styles.navItemTextActive]}>Tables Floor Map</Text>
+              </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'reports' && styles.activeTabBtn]}
-          onPress={() => setActiveTab('reports')}
-        >
-          <FileText size={18} color={activeTab === 'reports' ? '#3b82f6' : '#94a3b8'} />
-          <Text style={[styles.tabLabel, { color: activeTab === 'reports' ? '#3b82f6' : '#94a3b8' }]}>Reports</Text>
-        </TouchableOpacity>
-      </View>
+              <TouchableOpacity
+                style={[styles.navItem, activeTab === 'stock' && styles.navItemActive]}
+                onPress={() => { setActiveTab('stock'); closeSidebar(); }}
+              >
+                <Package size={20} color={activeTab === 'stock' ? '#f97316' : '#64748b'} />
+                <Text style={[styles.navItemText, activeTab === 'stock' && styles.navItemTextActive]}>Kitchen Inventory</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.navItem, activeTab === 'expenses' && styles.navItemActive]}
+                onPress={() => { setActiveTab('expenses'); closeSidebar(); }}
+              >
+                <TrendingDown size={20} color={activeTab === 'expenses' ? '#f97316' : '#64748b'} />
+                <Text style={[styles.navItemText, activeTab === 'expenses' && styles.navItemTextActive]}>Restaurant Expenses</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.navItem, activeTab === 'reports' && styles.navItemActive]}
+                onPress={() => { setActiveTab('reports'); closeSidebar(); }}
+              >
+                <FileText size={20} color={activeTab === 'reports' ? '#f97316' : '#64748b'} />
+                <Text style={[styles.navItemText, activeTab === 'reports' && styles.navItemTextActive]}>Sales Reports</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Sidebar Footer with Status Switch & Logout */}
+            <View style={[styles.sidebarFooter, { paddingBottom: insets.bottom + 20 }]}>
+              {/* Online/Offline Toggle */}
+              <TouchableOpacity
+                style={[
+                  styles.connectionToggle,
+                  {
+                    backgroundColor: onlineMode ? '#e0f2fe' : '#fee2e2',
+                    borderColor: onlineMode ? '#bae6fd' : '#fecdd3',
+                    marginBottom: 16,
+                  }
+                ]}
+                onPress={() => { setOnlineMode(!onlineMode); closeSidebar(); }}
+                activeOpacity={0.8}
+              >
+                {onlineMode ? <Wifi size={14} color="#0284c7" /> : <WifiOff size={14} color="#dc2626" />}
+                <Text style={[styles.connectionToggleText, { color: onlineMode ? '#0284c7' : '#dc2626' }]}>
+                  {onlineMode ? 'CLOUD (SUPABASE)' : 'LOCAL SERVER'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.sidebarLogoutBtn} onPress={() => { closeSidebar(); onLogout(); }} activeOpacity={0.7}>
+                <LogOut size={18} color="#ef4444" />
+                <Text style={styles.logoutBtnText}>Logout Account</Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </View>
+      )}
 
       {/* RECEIPT SLIP MODAL */}
       <Modal
@@ -857,25 +922,41 @@ Thank you for dining with us!`;
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f172a' },
+  container: { flex: 1, backgroundColor: '#f8fafc' },
   header: {
-    height: 80,
+    height: 72,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
-    backgroundColor: '#0f172a',
+    backgroundColor: '#ffffff',
     borderBottomWidth: 1,
-    borderColor: '#1e293b',
+    borderColor: '#e2e8f0',
+  },
+  hamburgerBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  refreshBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '900',
-    color: '#ffffff',
-    letterSpacing: 1.5,
+    color: '#0f172a',
+    letterSpacing: 1,
   },
   headerSub: {
-    fontSize: 11,
-    color: '#94a3b8',
+    fontSize: 10,
+    color: '#64748b',
     fontWeight: '800',
     letterSpacing: 1,
     marginTop: 2,
@@ -883,27 +964,17 @@ const styles = StyleSheet.create({
   connectionToggle: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
     borderRadius: 20,
     borderWidth: 1,
     gap: 6,
-    marginRight: 10,
+    justifyContent: 'center',
   },
   connectionToggleText: {
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.5,
-  },
-  logoutBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: '#1e293b',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#334155',
   },
   loadingContainer: {
     flex: 1,
@@ -913,12 +984,12 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 13,
-    color: '#94a3b8',
+    color: '#64748b',
     fontWeight: '700',
   },
   scrollArea: {
     flex: 1,
-    backgroundColor: '#0f172a',
+    backgroundColor: '#f8fafc',
   },
   contentWrapper: {
     padding: 16,
@@ -930,11 +1001,16 @@ const styles = StyleSheet.create({
   },
   gridCard: {
     flex: 1,
-    backgroundColor: '#1e293b',
+    backgroundColor: '#ffffff',
     borderRadius: 18,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#e2e8f0',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 3,
   },
   gridIconCircle: {
     width: 38,
@@ -956,12 +1032,17 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   actionsCard: {
-    backgroundColor: '#1e293b',
+    backgroundColor: '#ffffff',
     borderRadius: 18,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#e2e8f0',
     marginVertical: 12,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 3,
   },
   sectionHeader: {
     fontSize: 11,
@@ -980,7 +1061,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#3b82f6',
+    backgroundColor: '#f97316',
     borderRadius: 12,
     paddingVertical: 12,
   },
@@ -992,7 +1073,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 15,
     fontWeight: '900',
-    color: '#ffffff',
+    color: '#0f172a',
     marginTop: 18,
     marginBottom: 12,
     letterSpacing: 0.5,
@@ -1000,27 +1081,32 @@ const styles = StyleSheet.create({
   orderItemCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1e293b',
+    backgroundColor: '#ffffff',
     borderRadius: 14,
     padding: 14,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#e2e8f0',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    elevation: 2,
   },
   orderCardTitle: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#ffffff',
+    color: '#0f172a',
   },
   orderCardSub: {
     fontSize: 11,
-    color: '#94a3b8',
+    color: '#64748b',
     marginTop: 2,
   },
   orderAmount: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#ffffff',
+    color: '#0f172a',
   },
   orderStatus: {
     fontSize: 9,
@@ -1028,7 +1114,7 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
   emptyText: {
-    color: '#64748b',
+    color: '#94a3b8',
     fontSize: 13,
     textAlign: 'center',
     marginVertical: 24,
@@ -1036,22 +1122,27 @@ const styles = StyleSheet.create({
   tableItemCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1e293b',
+    backgroundColor: '#ffffff',
     borderRadius: 14,
     padding: 14,
     marginBottom: 8,
     borderLeftWidth: 4,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#e2e8f0',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    elevation: 2,
   },
   tableCardTitle: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#ffffff',
+    color: '#0f172a',
   },
   tableCardSub: {
     fontSize: 11,
-    color: '#94a3b8',
+    color: '#64748b',
     marginTop: 2,
   },
   tableCardStatus: {
@@ -1064,27 +1155,32 @@ const styles = StyleSheet.create({
   stockItemCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1e293b',
+    backgroundColor: '#ffffff',
     borderRadius: 14,
     padding: 14,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#e2e8f0',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    elevation: 2,
   },
   stockCardTitle: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#ffffff',
+    color: '#0f172a',
   },
   stockCardSub: {
     fontSize: 11,
-    color: '#64748b',
+    color: '#94a3b8',
     marginTop: 2,
   },
   stockCardVal: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#ffffff',
+    color: '#0f172a',
   },
   statusBadge: {
     paddingHorizontal: 8,
@@ -1098,21 +1194,26 @@ const styles = StyleSheet.create({
   expenseItemCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1e293b',
+    backgroundColor: '#ffffff',
     borderRadius: 14,
     padding: 14,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#e2e8f0',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    elevation: 2,
   },
   expenseCardTitle: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#ffffff',
+    color: '#0f172a',
   },
   expenseCardSub: {
     fontSize: 11,
-    color: '#94a3b8',
+    color: '#64748b',
     marginTop: 2,
   },
   expenseAmount: {
@@ -1121,17 +1222,22 @@ const styles = StyleSheet.create({
     color: '#ef4444',
   },
   analyticsCard: {
-    backgroundColor: '#1e293b',
+    backgroundColor: '#ffffff',
     borderRadius: 18,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#e2e8f0',
     marginBottom: 16,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 3,
   },
   analyticsHeader: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#ffffff',
+    color: '#0f172a',
     marginBottom: 14,
   },
   paymentRow: {
@@ -1141,16 +1247,16 @@ const styles = StyleSheet.create({
   },
   paymentLabel: {
     fontSize: 12,
-    color: '#94a3b8',
+    color: '#64748b',
   },
   paymentValue: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#ffffff',
+    color: '#0f172a',
   },
   progressBarBg: {
     height: 6,
-    backgroundColor: '#0f172a',
+    backgroundColor: '#f1f5f9',
     borderRadius: 3,
     overflow: 'hidden',
   },
@@ -1162,7 +1268,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#3b82f6',
+    backgroundColor: '#f97316',
     borderRadius: 12,
     paddingVertical: 14,
   },
@@ -1171,49 +1277,24 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontSize: 14,
   },
-  bottomTabs: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 64,
-    backgroundColor: '#0f172a',
-    borderTopWidth: 1,
-    borderColor: '#1e293b',
-    flexDirection: 'row',
-  },
-  tabBtn: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  activeTabBtn: {
-    borderTopWidth: 2,
-    borderTopColor: '#3b82f6',
-  },
-  tabLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
   exitModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.8)',
+    backgroundColor: 'rgba(15, 23, 42, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
   },
   exitModalCard: {
     width: '90%',
-    backgroundColor: '#1e293b',
+    backgroundColor: '#ffffff',
     borderRadius: 24,
     padding: 24,
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#334155',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.15,
     shadowRadius: 20,
     elevation: 10,
   },
@@ -1221,7 +1302,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: 'rgba(249, 115, 22, 0.1)',
+    backgroundColor: '#fff7ed',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
@@ -1229,12 +1310,12 @@ const styles = StyleSheet.create({
   exitModalTitle: {
     fontSize: 20,
     fontWeight: '900',
-    color: '#ffffff',
+    color: '#0f172a',
     marginBottom: 8,
   },
   exitModalDesc: {
     fontSize: 14,
-    color: '#94a3b8',
+    color: '#64748b',
     textAlign: 'center',
     marginBottom: 24,
     lineHeight: 20,
@@ -1248,13 +1329,13 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 14,
     borderRadius: 12,
-    backgroundColor: '#334155',
+    backgroundColor: '#f1f5f9',
     alignItems: 'center',
   },
   exitCancelBtnText: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#e2e8f0',
+    color: '#475569',
   },
   exitConfirmBtn: {
     flex: 1,
@@ -1264,7 +1345,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     shadowColor: '#f97316',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 4,
   },
@@ -1275,12 +1356,12 @@ const styles = StyleSheet.create({
   },
   segmentedControl: {
     flexDirection: 'row',
-    backgroundColor: '#1e293b',
+    backgroundColor: '#f1f5f9',
     borderRadius: 12,
     padding: 4,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#e2e8f0',
   },
   segmentBtn: {
     flex: 1,
@@ -1289,12 +1370,12 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   segmentBtnActive: {
-    backgroundColor: '#3b82f6',
+    backgroundColor: '#f97316',
   },
   segmentText: {
     fontSize: 10,
     fontWeight: '800',
-    color: '#94a3b8',
+    color: '#64748b',
     letterSpacing: 0.5,
   },
   segmentTextActive: {
@@ -1460,5 +1541,141 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '800',
     fontSize: 13,
+  },
+  // Sidebar Styles
+  sidebarOverlay: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+    flexDirection: 'row',
+  },
+  sidebarBackdrop: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(15, 23, 42, 0.4)',
+  },
+  sidebarContent: {
+    width: SIDEBAR_WIDTH,
+    height: '100%',
+    backgroundColor: '#ffffff',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 6, height: 0 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 16,
+    paddingHorizontal: 20,
+  },
+  sidebarHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderColor: '#f1f5f9',
+    paddingBottom: 16,
+  },
+  sidebarLogo: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
+  sidebarTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#0f172a',
+    letterSpacing: 0.5,
+  },
+  sidebarSubtitle: {
+    fontSize: 10,
+    color: '#94a3b8',
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    marginTop: 1,
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sidebarProfile: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderRadius: 16,
+    padding: 12,
+    marginVertical: 18,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  profileAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#fff7ed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileName: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#0f172a',
+  },
+  profileRole: {
+    fontSize: 9,
+    color: '#f97316',
+    fontWeight: '800',
+    marginTop: 2,
+  },
+  sidebarNav: {
+    flex: 1,
+    gap: 8,
+  },
+  navItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    gap: 12,
+  },
+  navItemActive: {
+    backgroundColor: '#fff7ed',
+  },
+  navItemText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#64748b',
+  },
+  navItemTextActive: {
+    color: '#f97316',
+    fontWeight: '900',
+  },
+  sidebarFooter: {
+    borderTopWidth: 1,
+    borderColor: '#f1f5f9',
+    paddingTop: 16,
+  },
+  sidebarLogoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#fef2f2',
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#fee2e2',
+  },
+  logoutBtnText: {
+    color: '#ef4444',
+    fontSize: 13,
+    fontWeight: '800',
   },
 });
