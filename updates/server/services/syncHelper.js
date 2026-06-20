@@ -45,6 +45,8 @@ function queueOrderChange(orderId, action) {
         created_by: order.created_by,
         delivered_by: order.delivered_by,
         created_at: order.created_at,
+        invoice_number: order.invoice_number,
+        payment_status: order.payment_status,
         items: items || [] // Nested items array
       };
 
