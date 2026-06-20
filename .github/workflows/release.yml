@@ -85,7 +85,7 @@ jobs:
 
       - name: Install Desktop Dependencies
         working-directory: desktop
-        run: yarn install
+        run: npm install --ignore-scripts
 
       - name: Build Windows Installer
         working-directory: desktop
