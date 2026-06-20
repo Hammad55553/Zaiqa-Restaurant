@@ -7,6 +7,7 @@ import LoginScreen from './src/screens/LoginScreen';
 import WaiterDashboard from './src/screens/WaiterDashboard';
 import KitchenDashboard from './src/screens/kitchen/KitchenDashboard';
 import RiderDashboard from './src/screens/RiderDashboard';
+import AdminDashboard from './src/screens/AdminDashboard';
 import SplashScreen from './src/components/SplashScreen';
 import { ToastProvider } from './src/components/Toast';
 import { loadServerIP } from './src/config';
@@ -129,7 +130,7 @@ function FCMManager() {
 
 function App() {
   const [showSplash, setShowSplash] = useState(true);
-  const [user, setUser] = useState<{ username: string; role: 'waiter' | 'kitchen' | 'rider', name?: string, permissions?: string[] } | null>(null);
+  const [user, setUser] = useState<{ username: string; role: 'waiter' | 'kitchen' | 'rider' | 'admin', name?: string, permissions?: string[] } | null>(null);
   const [configLoaded, setConfigLoaded] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
@@ -146,7 +147,7 @@ function App() {
     });
   }, []);
 
-  const handleLoginSuccess = (username: string, role: 'waiter' | 'kitchen' | 'rider', name?: string, permissions?: string[]) => {
+  const handleLoginSuccess = (username: string, role: 'waiter' | 'kitchen' | 'rider' | 'admin', name?: string, permissions?: string[]) => {
     setUser({ username, role, name, permissions });
   };
 
@@ -185,6 +186,8 @@ function App() {
                 <KitchenDashboard username={user.username} name={user.name} permissions={user.permissions} onLogout={handleLogout} />
               ) : user.role === 'rider' ? (
                 <RiderDashboard username={user.username} name={user.name} permissions={user.permissions} onLogout={handleLogout} />
+              ) : user.role === 'admin' ? (
+                <AdminDashboard username={user.username} name={user.name} permissions={user.permissions} onLogout={handleLogout} />
               ) : (
                 <WaiterDashboard username={user.username} name={user.name} permissions={user.permissions} onLogout={handleLogout} />
               )

@@ -9,7 +9,7 @@ const { BundleUpdater } = NativeModules;
 const LOCAL_APP_VERSION = '1.0.0';
 
 interface LoginScreenProps {
-  onLoginSuccess: (username: string, role: 'waiter' | 'kitchen' | 'rider', name?: string, permissions?: string[]) => void;
+  onLoginSuccess: (username: string, role: 'waiter' | 'kitchen' | 'rider' | 'admin', name?: string, permissions?: string[]) => void;
 }
 
 export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
