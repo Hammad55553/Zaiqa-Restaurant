@@ -11,7 +11,8 @@ const Cart = ({
   activeOrderStatus = 'pending', 
   adminUnlockRemark, 
   onAdminUnlock,
-  currentUser
+  currentUser,
+  onPrintEstimate
 }) => {
   const [showUnlock, setShowUnlock] = useState(false);
   const [unlockReason, setUnlockReason] = useState('');
@@ -64,9 +65,20 @@ const Cart = ({
             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5 leading-none">{table ? `Table ${table.number}` : 'No Table'}</p>
           </div>
         </div>
-        <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-[10px] font-bold border border-gray-200">
-          {items.length} Items
-        </span>
+        <div className="flex items-center gap-2">
+          {table && items.length > 0 && onPrintEstimate && (
+            <button
+              onClick={onPrintEstimate}
+              title="Print Estimate Slip"
+              className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors flex items-center justify-center cursor-pointer"
+            >
+              <Printer size={15} />
+            </button>
+          )}
+          <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-[10px] font-bold border border-gray-200">
+            {items.length} Items
+          </span>
+        </div>
       </div>
 
       {/* Compact Cart Items List */}

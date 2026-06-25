@@ -64,7 +64,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
   const [orderCustomerAddress, setOrderCustomerAddress] = useState('');
   const [orderCustomerEmail, setOrderCustomerEmail] = useState('');
   const [orderRemarks, setOrderRemarks] = useState('');
-  const [activeOrderPaymentStatus, setActiveOrderPaymentStatus] = useState(null);
+  const [activeOrderPaymentStatus, setActiveOrderPaymentStatus] = useState('NONE');
   const [customPaymentStatus, setCustomPaymentStatus] = useState('');
   const [completedInvoices, setCompletedInvoices] = useState([]);
   const [isNameModalOpen, setIsNameModalOpen] = useState(false);
@@ -178,6 +178,62 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
                 t.startTime = order.created_at ? new Date(order.created_at + 'Z').toISOString() : new Date().toISOString();
               }
             });
+
+            // Auto-print KOT for newly synced/updated items from backend (e.g. mobile app/other device)
+            try {
+              const printedRegistry = JSON.parse(localStorage.getItem('zaiqa_printed_kot_items') || '{}');
+              let registryUpdated = false;
+
+              activeOrders.forEach(order => {
+                const orderId = order.id;
+                if (order.items && order.items.length > 0) {
+                  const existingPrinted = printedRegistry[orderId] || {};
+                  const newItemsToPrint = [];
+
+                  order.items.forEach(item => {
+                    const itemId = item.item_id || item.id;
+                    const itemName = item.item_name || item.name;
+                    const itemQty = item.quantity || item.qty || 0;
+                    const previouslyPrintedQty = existingPrinted[itemId] || 0;
+
+                    if (itemQty > previouslyPrintedQty) {
+                      const diffQty = itemQty - previouslyPrintedQty;
+                      newItemsToPrint.push({
+                        id: itemId,
+                        name: itemName,
+                        price: item.price || 0,
+                        qty: diffQty,
+                        notes: item.notes || item.item_notes || ''
+                      });
+                      existingPrinted[itemId] = itemQty;
+                    }
+                  });
+
+                  if (newItemsToPrint.length > 0) {
+                    const isDelivery = order.area === 'Delivery';
+                    const orderTable = isDelivery ? 'Delivery' : { area: order.area || 'Main', number: order.table_number };
+                    handlePrintKOT(orderId, newItemsToPrint, isDelivery, orderTable);
+                    printedRegistry[orderId] = existingPrinted;
+                    registryUpdated = true;
+                  }
+                }
+              });
+
+              // Clean up completed/inactive orders from printed registry
+              const activeOrderIds = new Set(activeOrders.map(o => String(o.id)));
+              Object.keys(printedRegistry).forEach(key => {
+                if (!activeOrderIds.has(String(key))) {
+                  delete printedRegistry[key];
+                  registryUpdated = true;
+                }
+              });
+
+              if (registryUpdated) {
+                localStorage.setItem('zaiqa_printed_kot_items', JSON.stringify(printedRegistry));
+              }
+            } catch (err) {
+              console.error("Error auto-printing KOT:", err);
+            }
 
             // Check if any active order has requested the bill
             const requested = activeOrders.find(o => o.remarks && o.remarks.includes('[BILL REQUESTED]'));
@@ -431,7 +487,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
   const createNewDeliveryFromCRM = async (cust, existingList = null) => {
     const existing = existingList || await getOfflineItem('zaiqa_mahal_active_delivery_orders', []);
     const newOrder = {
-      id: 'DEL-' + Date.now(),
+      id: 'DEL-' + String(Date.now()).slice(-5),
       phone: cust.phone || '',
       name: cust.name || '',
       address: cust.address || '',
@@ -576,7 +632,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
   // Start a blank delivery order immediately — no fields required
   const startBlankDeliveryOrder = async () => {
     const newOrder = {
-      id: 'DEL-' + Date.now(),
+      id: 'DEL-' + String(Date.now()).slice(-5),
       phone: '',
       name: '',
       address: '',
@@ -637,7 +693,15 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
     }
   };
 
-  const areaTables = tables.filter(t => t.area === activeArea);
+  const areaTables = tables.filter(t => {
+    if (activeArea === 'Male Lawn') {
+      return t.area === 'Male Lawn' || (t.area === 'Lawn' && t.number !== 'L-3');
+    }
+    if (activeArea === 'Family Lawn') {
+      return t.area === 'Family Lawn' || (t.area === 'Lawn' && t.number === 'L-3');
+    }
+    return t.area === activeArea;
+  });
 
   const handleTableClick = async (table) => {
     setSelectedTable(table);
@@ -681,7 +745,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
           setActiveOrderId(order.id);
           setActiveOrderStatus(order.status || 'pending');
           setActiveOrderInvoiceNumber(order.invoice_number || null);
-          setActiveOrderPaymentStatus(order.payment_status || null);
+          setActiveOrderPaymentStatus(order.payment_status || 'NONE');
           setOrderCustomerName(order.customer_name || '');
           setOrderRemarks(order.remarks || '');
           
@@ -736,14 +800,14 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
         const finalItems = await checkAndAppendPreparedWaste([]);
         setCartItems(finalItems);
         setActiveOrderInvoiceNumber(null);
-        setActiveOrderPaymentStatus(null);
+        setActiveOrderPaymentStatus('NONE');
       }
     } catch (err) {
       console.error("Failed to fetch active order:", err);
       const finalItems = await checkAndAppendPreparedWaste([]);
       setCartItems(finalItems);
       setActiveOrderInvoiceNumber(null);
-      setActiveOrderPaymentStatus(null);
+      setActiveOrderPaymentStatus('NONE');
     }
   };
 
@@ -765,7 +829,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
     setView('floor');
   };
 
-  const handlePrintBill = () => {
+  const handlePrintBill = (isEstimate = false) => {
     if (!selectedTable || cartItems.length === 0) return;
 
     const isServiceCharge = (i) => i.name === 'Service Charges' || i.item_name === 'Service Charges';
@@ -787,8 +851,9 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
       serviceCharges: applyServiceCharges ? Number(serviceCharges || 0) : 0,
       orderId: activeOrderId,
       invoiceNumber: activeOrderInvoiceNumber || (activeOrderId ? `INV-${activeOrderId}` : null),
-      paymentStatus: activeOrderPaymentStatus || 'PENDING',
+      paymentStatus: activeOrderPaymentStatus || 'NONE',
       date: new Date().toISOString(),
+      isEstimate: isEstimate,
     };
 
     setPrintData(data);
@@ -799,7 +864,45 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
       // Wait 1.2s after printing starts to clear printData, preventing blank captures in Safari/Chrome
       setTimeout(() => {
         setPrintData(null);
-      }, 1200);
+      }, 5000);
+    }, 300);
+  };
+
+  const handlePrintKOT = (orderId, itemsToPrint, isDelivery = false, tableInfo = null) => {
+    if (itemsToPrint.length === 0) return;
+
+    // Register printed quantities in localStorage to prevent double auto-printing
+    try {
+      const printedRegistry = JSON.parse(localStorage.getItem('zaiqa_printed_kot_items') || '{}');
+      const existingPrinted = printedRegistry[orderId] || {};
+      
+      itemsToPrint.forEach(item => {
+        const itemId = item.id || item.item_id;
+        const qty = item.qty || item.quantity || 0;
+        existingPrinted[itemId] = (existingPrinted[itemId] || 0) + qty;
+      });
+      
+      printedRegistry[orderId] = existingPrinted;
+      localStorage.setItem('zaiqa_printed_kot_items', JSON.stringify(printedRegistry));
+    } catch (e) {
+      console.error("Failed to update printed registry in handlePrintKOT:", e);
+    }
+
+    const data = {
+      isKOT: true,
+      orderId: orderId,
+      date: new Date().toISOString(),
+      table: tableInfo || (isDelivery ? 'Delivery' : selectedTable),
+      items: itemsToPrint
+    };
+
+    setPrintData(data);
+
+    setTimeout(() => {
+      window.print();
+      setTimeout(() => {
+        setPrintData(null);
+      }, 5000);
     }, 300);
   };
 
@@ -876,7 +979,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
         window.print();
         setTimeout(() => {
           setPrintData(null);
-        }, 1200);
+        }, 5000);
       }, 300);
 
       if (response.ok) {
@@ -906,7 +1009,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
         setSelectedTable(null);
         setCartItems([]);
         setActiveOrderId(null);
-        setActiveOrderPaymentStatus(null);
+        setActiveOrderPaymentStatus('NONE');
         setView('floor');
         // Do NOT call handleTableClick here — it re-fetches old order and restores startTime
         setIsCheckoutModalOpen(false);
@@ -924,7 +1027,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
         setSelectedTable(null);
         setCartItems([]);
         setActiveOrderId(null);
-        setActiveOrderPaymentStatus(null);
+        setActiveOrderPaymentStatus('NONE');
         setView('floor');
         setIsCheckoutModalOpen(false);
         showToast('Checkout completed (offline mode).', 'success');
@@ -944,7 +1047,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
       setSelectedTable(null);
       setCartItems([]);
       setActiveOrderId(null);
-      setActiveOrderPaymentStatus(null);
+      setActiveOrderPaymentStatus('NONE');
       setView('floor');
       setIsCheckoutModalOpen(false);
       showToast('Checkout completed successfully (Local Registry).', 'success');
@@ -1068,6 +1171,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
         );
         saveDeliveryOrders(updated);
         showToast('Order successfully sent to kitchen & saved!', 'success');
+        handlePrintKOT(bId, newItems, true);
       } catch (err) {
         console.error("Failed to sync delivery order with KDS:", err);
         showToast('Error sending order. Please check connection.', 'error');
@@ -1125,6 +1229,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
     }
 
     try {
+      let bId = activeOrderId;
       if (activeOrderId) {
         // Full Cart Sync (Add/Edit/Delete)
         const response = await fetch(`${API_BASE}/orders/${activeOrderId}/sync`, {
@@ -1162,12 +1267,14 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
         if (!response.ok) throw new Error('Failed to place order');
         const data = await response.json();
         setActiveOrderId(data.orderId);
+        bId = data.orderId;
       }
 
       // Mark all current cart items as sent so they stay on screen but can't be re-sent
       setCartItems(cartItems.map(item => ({ ...item, sent: true })));
       setOrderConfirmData(null); // Close modal on success
       setAdminUnlockRemark(''); // Reset admin unlock
+      handlePrintKOT(bId, newItems, false);
     } catch (err) {
       console.error(err);
       showToast('Error placing order. Please check backend connection.');
@@ -1366,7 +1473,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
       return sum + (item.price * item.qty) * (rate / 100);
     }, 0) : 0;
     const tot = sub + taxAmt + (applyServiceCharges ? Number(serviceCharges || 0) : 0);
-    const invoiceId = 'DEL-' + String(Date.now()).slice(-6);
+    const invoiceId = 'DEL-' + String(Date.now()).slice(-5);
 
     const newInvoice = {
       orderId: invoiceId,
@@ -1435,7 +1542,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
     showToast('Delivery bill completed!', 'success');
   };
 
-  const handleDeliveryPrint = () => {
+  const handleDeliveryPrint = (isEstimate = false) => {
     if (!selectedDelivery || cartItems.length === 0) return;
     const isServiceCharge = (i) => i.name === 'Service Charges' || i.item_name === 'Service Charges';
     const sub = cartItems.filter(i => !isServiceCharge(i)).reduce((sum, item) => sum + item.price * item.qty, 0);
@@ -1455,13 +1562,20 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
       total: tot,
       serviceCharges: applyServiceCharges ? Number(serviceCharges || 0) : 0,
       orderId: selectedDelivery.id,
+      customerName: selectedDelivery.name || 'Delivery Guest',
+      customerPhone: selectedDelivery.phone || 'N/A',
+      deliveryAddress: selectedDelivery.address || 'N/A',
+      paymentMethod: selectedDelivery.paymentMethod || 'cod',
+      remarks: selectedDelivery.remarks || '',
+      riderName: selectedDelivery.riderName || '',
       date: new Date().toISOString(),
+      isEstimate: isEstimate,
     });
     setTimeout(() => {
       window.print();
       setTimeout(() => {
         setPrintData(null);
-      }, 1200);
+      }, 5000);
     }, 300);
   };
 
@@ -1786,6 +1900,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
               adminUnlockRemark={adminUnlockRemark}
               onAdminUnlock={(remark) => setAdminUnlockRemark(remark)}
               currentUser={currentUser}
+              onPrintEstimate={() => handleDeliveryPrint(true)}
             />
           </div>
         </div>
@@ -2171,7 +2286,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
                 <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest block mb-1">Bill / Payment Status (Stamp)</label>
                 <div className="flex gap-2">
                   <select
-                    value={['PAID', 'PENDING', 'CASH ON DELIVERY', 'ONLINE PAID', 'IN QUEUE', 'NONE'].includes(activeOrderPaymentStatus) ? activeOrderPaymentStatus : (activeOrderPaymentStatus ? 'CUSTOM' : 'PENDING')}
+                    value={['PAID', 'PENDING', 'CASH ON DELIVERY', 'ONLINE PAID', 'IN QUEUE', 'NONE'].includes(activeOrderPaymentStatus) ? activeOrderPaymentStatus : (activeOrderPaymentStatus ? 'CUSTOM' : 'NONE')}
                     onChange={(e) => {
                       const val = e.target.value;
                       if (val === 'CUSTOM') {
@@ -2353,7 +2468,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
                   
                   {/* Print receipt triggers */}
                   <button
-                    onClick={isDelivery ? handleDeliveryPrint : handlePrintBill}
+                    onClick={isDelivery ? () => handleDeliveryPrint(false) : () => handlePrintBill(false)}
                     className="flex-1 py-3.5 bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 font-black rounded-xl transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider shadow-sm"
                   >
                     <Printer size={15} /> Print Bill
@@ -2697,6 +2812,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
               adminUnlockRemark={adminUnlockRemark}
               onAdminUnlock={(remark) => setAdminUnlockRemark(remark)}
               currentUser={currentUser}
+              onPrintEstimate={() => handlePrintBill(true)}
             />
           </div>
         </div>

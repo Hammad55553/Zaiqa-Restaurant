@@ -47,9 +47,9 @@ const getUrls = (ip) => {
 
   // Local IP or localhost
   return {
-    server: `http://${cleanIp}:5005`,
-    api: `http://${cleanIp}:5005/api`,
-    ws: `${typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${cleanIp}:5005`
+    server: `http://${cleanIp}:1573`,
+    api: `http://${cleanIp}:1573/api`,
+    ws: `${typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${cleanIp}:1573`
   };
 };
 

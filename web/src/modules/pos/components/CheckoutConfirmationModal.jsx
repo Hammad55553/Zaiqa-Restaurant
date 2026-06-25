@@ -8,7 +8,7 @@ const CheckoutConfirmationModal = ({
   selectedTable
 }) => {
   const [phone, setPhone] = useState('');
-  const [paymentStatus, setPaymentStatus] = useState('PAID');
+  const [paymentStatus, setPaymentStatus] = useState('NONE');
   const [customStatus, setCustomStatus] = useState('');
   const [releaseTable, setReleaseTable] = useState(true);
 
@@ -113,7 +113,7 @@ const CheckoutConfirmationModal = ({
               onClick={() => {
                 setIsCheckoutModalOpen(false);
                 setPhone('');
-                setPaymentStatus('PAID');
+                setPaymentStatus('NONE');
                 setCustomStatus('');
                 setReleaseTable(true);
               }}
@@ -127,7 +127,7 @@ const CheckoutConfirmationModal = ({
                 executeCheckout(phone, finalStatus, releaseTable);
                 setIsCheckoutModalOpen(false);
                 setPhone('');
-                setPaymentStatus('PAID');
+                setPaymentStatus('NONE');
                 setCustomStatus('');
                 setReleaseTable(true);
               }}

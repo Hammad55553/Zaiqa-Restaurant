@@ -43,6 +43,10 @@ function App() {
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
+  const [isIpModalOpen, setIsIpModalOpen] = useState(false);
+  const [tempServerIp, setTempServerIp] = useState(() => {
+    return localStorage.getItem('zaiqa_server_ip') || '';
+  });
 
   // Skip coin splash if already loaded this session (prevents re-show on refresh)
   const [isLoaded, setIsLoaded] = useState(() => {
@@ -141,6 +145,16 @@ function App() {
   const handleLogout = () => {
     setCurrentUser(null);
     localStorage.removeItem('pos_current_user');
+  };
+
+  const handleSaveIp = (ipValue) => {
+    const cleaned = ipValue.trim();
+    if (cleaned === '') {
+      localStorage.removeItem('zaiqa_server_ip');
+    } else {
+      localStorage.setItem('zaiqa_server_ip', cleaned);
+    }
+    window.location.reload();
   };
   
   // Global Search System
@@ -561,6 +575,15 @@ function App() {
         <div className="absolute top-[-20%] left-[-20%] w-[60%] h-[60%] rounded-full bg-orange-600/10 blur-[120px] pointer-events-none" />
         <div className="absolute bottom-[-20%] right-[-20%] w-[60%] h-[60%] rounded-full bg-amber-500/10 blur-[120px] pointer-events-none" />
 
+        {/* Floating Server IP Setup Button (Top Right) */}
+        <button
+          onClick={() => setIsIpModalOpen(true)}
+          className="absolute top-6 right-6 p-3 bg-white/5 border border-white/10 hover:border-orange-500/50 hover:bg-orange-500/10 text-slate-400 hover:text-orange-400 rounded-2xl transition-all duration-300 shadow-lg cursor-pointer backdrop-blur-md"
+          title="Configure Local Server IP"
+        >
+          <Settings size={20} className="hover:rotate-45 transition-transform duration-300" />
+        </button>
+
         <div className="w-full max-w-md bg-white/[0.02] border border-white/10 backdrop-blur-2xl rounded-3xl shadow-2xl p-8 space-y-8 relative z-10">
           <div className="text-center space-y-3">
             <div className="w-20 h-20 mx-auto rounded-2xl overflow-hidden border border-orange-500/30 shadow-lg shadow-orange-500/10">
@@ -619,6 +642,41 @@ function App() {
             </button>
           </form>
         </div>
+
+        {/* Dynamic Server Connection IP Setup Modal */}
+        {isIpModalOpen && (
+          <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-zinc-950/70 backdrop-blur-md">
+            <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden p-6 text-center border border-gray-100">
+              <h3 className="text-lg font-black text-gray-900 mb-2">Configure Server IP</h3>
+              <p className="text-xs text-gray-500 mb-4">
+                Enter the IP address of the main server machine (e.g. 192.168.100.57) to connect this device.
+              </p>
+              <input 
+                type="text"
+                placeholder="e.g. 192.168.100.57"
+                value={tempServerIp}
+                onChange={(e) => setTempServerIp(e.target.value.trim())}
+                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-800 placeholder-gray-400 focus:outline-none focus:border-orange-500 transition-all mb-4"
+              />
+              <div className="flex gap-3">
+                <button 
+                  type="button"
+                  onClick={() => setIsIpModalOpen(false)}
+                  className="flex-1 py-2.5 bg-gray-100 text-gray-600 font-bold rounded-xl hover:bg-gray-200 transition-all text-xs"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => handleSaveIp(tempServerIp)}
+                  className="flex-1 py-2.5 bg-orange-500 text-white font-bold rounded-xl hover:bg-orange-600 transition-all text-xs"
+                >
+                  Save & Connect
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -871,21 +929,25 @@ function App() {
             </div>
 
             {/* System Connection Status Badge */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '6px 14px',
-              borderRadius: '14px',
-              border: '1.5px solid',
-              fontSize: '0.75rem',
-              fontWeight: 800,
-              backgroundColor: sysStatus === 'online' ? '#f0fdf4' : sysStatus === 'local' ? '#fffbeb' : '#fef2f2',
-              color: sysStatus === 'online' ? '#16a34a' : sysStatus === 'local' ? '#d97706' : '#ef4444',
-              borderColor: sysStatus === 'online' ? '#bbf7d0' : sysStatus === 'local' ? '#fde68a' : '#fca5a5',
-              transition: 'all 0.3s ease',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-            }}>
+            <button 
+              onClick={() => setIsIpModalOpen(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '6px 14px',
+                borderRadius: '14px',
+                border: '1.5px solid',
+                fontSize: '0.75rem',
+                fontWeight: 800,
+                backgroundColor: sysStatus === 'online' ? '#f0fdf4' : sysStatus === 'local' ? '#fffbeb' : '#fef2f2',
+                color: sysStatus === 'online' ? '#16a34a' : sysStatus === 'local' ? '#d97706' : '#ef4444',
+                borderColor: sysStatus === 'online' ? '#bbf7d0' : sysStatus === 'local' ? '#fde68a' : '#fca5a5',
+                transition: 'all 0.3s ease',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                cursor: 'pointer'
+              }}
+            >
               {sysStatus === 'online' && (
                 <>
                   <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#16a34a', boxShadow: '0 0 8px #16a34a' }} className="animate-pulse" />
@@ -907,7 +969,7 @@ function App() {
                   Offline
                 </>
               )}
-            </div>
+            </button>
 
             <div className="relative">
               <button 
@@ -1466,6 +1528,39 @@ function App() {
         <MobileNavItem icon={<Settings size={22} />} label="Stock" active={currentView === 'stock'} onClick={() => navigateTo('stock')} />
         <MobileNavItem icon={<FileText size={22} />} label="Reports" active={currentView === 'reports'} onClick={() => navigateTo('reports')} />
       </div>
+
+      {/* Dynamic Server Connection IP Setup Modal */}
+      {isIpModalOpen && (
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-zinc-950/70 backdrop-blur-md">
+          <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden p-6 text-center border border-gray-100">
+            <h3 className="text-lg font-black text-gray-900 mb-2">Configure Server IP</h3>
+            <p className="text-xs text-gray-500 mb-4">
+              Enter the IP address of the main server machine (e.g. 192.168.100.57) to connect this device.
+            </p>
+            <input 
+              type="text"
+              placeholder="e.g. 192.168.100.57"
+              value={tempServerIp}
+              onChange={(e) => setTempServerIp(e.target.value.trim())}
+              className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-800 placeholder-gray-400 focus:outline-none focus:border-orange-500 transition-all mb-4"
+            />
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setIsIpModalOpen(false)}
+                className="flex-1 py-2.5 bg-gray-100 text-gray-600 font-bold rounded-xl hover:bg-gray-200 transition-all text-xs"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => handleSaveIp(tempServerIp)}
+                className="flex-1 py-2.5 bg-orange-500 text-white font-bold rounded-xl hover:bg-orange-600 transition-all text-xs"
+              >
+                Save & Connect
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

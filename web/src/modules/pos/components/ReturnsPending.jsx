@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AlertCircle, AlertTriangle, Trash2, ShieldAlert, Archive, CheckCircle2, ShoppingBag, Clock, FileText, Ban, ExternalLink, RefreshCw, Send, Check, XCircle, User } from 'lucide-react';
 
-const API_BASE = 'http://localhost:5005/api';
+import { API_BASE } from '../../../config';
 
 const ReturnsPending = ({ onBack }) => {
   const [activeTab, setActiveTab] = useState(() => {

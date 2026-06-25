@@ -110,7 +110,7 @@ const Settings = () => {
         try {
             const controller = new AbortController();
             const id = setTimeout(() => controller.abort(), 4000);
-            const res = await fetch(`http://${targetIp.trim()}:5005/api/health`, { signal: controller.signal });
+            const res = await fetch(`http://${targetIp.trim()}:1573/api/health`, { signal: controller.signal });
             clearTimeout(id);
             if (!res.ok) throw new Error('Unhealthy status');
             const data = await res.json();
