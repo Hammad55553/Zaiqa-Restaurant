@@ -97,9 +97,43 @@ jobs:
           name: windows-installer
           path: desktop/dist-electron/*.exe
 
+  build-mac:
+    name: Build macOS Installer (.dmg)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Web Dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Build Web Assets
+        working-directory: web
+        run: npm run build
+
+      - name: Install Desktop Dependencies
+        working-directory: desktop
+        run: npm install --ignore-scripts
+
+      - name: Build macOS Installer
+        working-directory: desktop
+        run: npm run dist -- --mac --arm64
+
+      - name: Upload macOS Installer Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-installer
+          path: desktop/dist-electron/*.dmg
+
   create-release:
     name: Create GitHub Release
-    needs: [build-payload, build-windows]
+    needs: [build-payload, build-windows, build-mac]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -114,6 +148,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: windows-installer
+          path: release-installers
+
+      - name: Download macOS Installer
+        uses: actions/download-artifact@v4
+        with:
+          name: mac-installer
           path: release-installers
 
       - name: Clean Tag and Push
