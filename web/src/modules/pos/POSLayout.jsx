@@ -978,9 +978,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
       window.print();
       setTimeout(() => {
         setPrintData(null);
-        setPrintConfirmStatus('success');
-        setPrintConfirmReason('paper_roll_empty');
-        setShowPrintConfirm(true);
+        updateKOTStatus(orderId, 'success', null, true);
       }, 1000);
     }, 300);
   };

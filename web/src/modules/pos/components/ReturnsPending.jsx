@@ -87,9 +87,7 @@ const ReturnsPending = ({ onBack }) => {
       window.print();
       setTimeout(() => {
         setPrintData(null);
-        setPrintConfirmStatus('success');
-        setPrintConfirmReason('paper_roll_empty');
-        setShowPrintConfirm(true);
+        updateKOTStatus(order.id, 'success', null, true);
       }, 1000);
     }, 300);
   };
