@@ -6,7 +6,8 @@
   "scripts": {
     "start": "electron .",
     "pack": "node build-prep.js && electron-builder --dir",
-    "dist": "node build-prep.js && electron-builder"
+    "dist": "node build-prep.js && electron-builder",
+    "dist:win": "node build-prep.js && electron-builder --win"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
