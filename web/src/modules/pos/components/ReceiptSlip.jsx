@@ -148,10 +148,7 @@ const ReceiptSlip = ({ printData }) => {
     );
   }
 
-  const stampColor =
-    currentPaymentStatus.toUpperCase() === 'PAID' ? '#16a34a' :
-      currentPaymentStatus.toUpperCase() === 'ONLINE PAID' ? '#2563eb' :
-        currentPaymentStatus.toUpperCase() === 'PENDING' ? '#dc2626' : '#d97706';
+  const stampColor = '#000000'; // Pure black for crisp thermal printing
 
   return (
     <div style={wrap}>
