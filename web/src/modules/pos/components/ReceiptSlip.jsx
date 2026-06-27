@@ -73,7 +73,7 @@ const ReceiptSlip = ({ printData }) => {
     fontFamily: 'Arial, Helvetica, sans-serif',
     fontSize: '12px',
     lineHeight: '1.3',
-    padding: '1mm 4mm 3mm 4mm',
+    padding: '1mm 4mm 3mm 1.5mm',
     boxSizing: 'border-box',
     position: 'relative',
   };
@@ -87,7 +87,7 @@ const ReceiptSlip = ({ printData }) => {
     const kotDash = { borderTop: '1px dashed #000', margin: '1mm 0' };
     const kotSolid = { borderTop: '1px solid #000', margin: '0.5mm 0' };
     return (
-      <div style={{ ...wrap, padding: '1mm 4mm 3mm 4mm' }}>
+      <div style={{ ...wrap, padding: '1mm 4mm 3mm 1.5mm' }}>
         <div style={{
           textAlign: 'center',
           fontWeight: 'black',
