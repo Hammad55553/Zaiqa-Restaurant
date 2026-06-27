@@ -8,7 +8,7 @@ import TableTimer from './components/TableTimer';
 import OrderConfirmationModal from './components/OrderConfirmationModal';
 import CheckoutConfirmationModal from './components/CheckoutConfirmationModal';
 import ReceiptSlip from './components/ReceiptSlip';
-import Logo from '../../assets/Logo.jpg';
+import Logo from '../../assets/Zaiqalogo.jpg';
 // import { INITIAL_TABLES } from './data/mockTables';
 import { API_BASE, WS_URL } from '../../config';
 import { syncService } from '../../services/syncService';
