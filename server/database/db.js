@@ -199,6 +199,9 @@ const initDb = () => {
       db.run(`ALTER TABLE orders ADD COLUMN delivered_by TEXT`, (err) => {});
       db.run(`ALTER TABLE orders ADD COLUMN invoice_number TEXT`, (err) => {});
       db.run(`ALTER TABLE orders ADD COLUMN payment_status TEXT`, (err) => {});
+      db.run(`ALTER TABLE orders ADD COLUMN kot_print_count INTEGER DEFAULT 0`, (err) => {});
+      db.run(`ALTER TABLE orders ADD COLUMN kot_print_status TEXT DEFAULT 'pending'`, (err) => {});
+      db.run(`ALTER TABLE orders ADD COLUMN kot_print_error_reason TEXT`, (err) => {});
     });
 
     // Order Items (KOT)

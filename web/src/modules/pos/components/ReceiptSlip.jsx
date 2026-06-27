@@ -25,7 +25,10 @@ const ReceiptSlip = ({ printData }) => {
     paymentStatus,
     payment_status,
     isEstimate,
-    isKOT
+    isKOT,
+    printCount,
+    kotStatus,
+    kotReason
   } = printData;
 
   const currentPaymentStatus = paymentStatus || payment_status || 'NONE';
@@ -70,7 +73,7 @@ const ReceiptSlip = ({ printData }) => {
     fontFamily: 'Arial, Helvetica, sans-serif',
     fontSize: '12px',
     lineHeight: '1.3',
-    padding: '0.5mm 1mm 2mm 1mm',
+    padding: '1mm 4mm 3mm 4mm',
     boxSizing: 'border-box',
     position: 'relative',
   };
@@ -84,7 +87,7 @@ const ReceiptSlip = ({ printData }) => {
     const kotDash = { borderTop: '1px dashed #000', margin: '1mm 0' };
     const kotSolid = { borderTop: '1px solid #000', margin: '0.5mm 0' };
     return (
-      <div style={{ ...wrap, padding: '0.2mm 0.5mm' }}>
+      <div style={{ ...wrap, padding: '1mm 4mm 3mm 4mm' }}>
         <div style={{
           textAlign: 'center',
           fontWeight: 'black',
@@ -107,6 +110,15 @@ const ReceiptSlip = ({ printData }) => {
           <span>TABLE: <strong>{table ? (typeof table === 'object' ? `${table.area} - ${table.number}` : table) : 'N/A'}</strong></span>
           <span>{formatDate(date)}</span>
         </div>
+
+        {printCount && (
+          <div style={{ ...row, marginBottom: '0.5mm', fontSize: '11px', color: '#000', fontWeight: 'bold' }}>
+            <span>PRINT COPY: <strong>{printCount > 1 ? `REPRINT #${printCount}` : `ORIGINAL #${printCount}`}</strong></span>
+            {kotStatus && kotStatus === 'failed' && (
+              <span style={{ color: '#dc2626' }}>⚠️ PREVIOUS FAILED ({kotReason || 'Unknown'})</span>
+            )}
+          </div>
+        )}
 
         <div style={kotDash} />
 

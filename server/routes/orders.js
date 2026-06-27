@@ -1110,4 +1110,37 @@ router.post('/:id/serve-all', (req, res) => {
   });
 });
 
+// @route   PATCH /api/orders/:id/kot-print-status
+// @desc    Update KOT print status, reason and count
+router.patch('/:id/kot-print-status', (req, res) => {
+  const { id } = req.params;
+  const { status, error_reason, increment_count } = req.body;
+
+  let query = `UPDATE orders SET kot_print_status = ?`;
+  let params = [status];
+
+  if (error_reason !== undefined) {
+    query += `, kot_print_error_reason = ?`;
+    params.push(error_reason);
+  } else {
+    query += `, kot_print_error_reason = NULL`;
+  }
+
+  if (increment_count) {
+    query += `, kot_print_count = COALESCE(kot_print_count, 0) + 1`;
+  }
+
+  query += ` WHERE id = ?`;
+  params.push(id);
+
+  db.run(query, params, function(err) {
+    if (err) {
+      console.error("Failed to update KOT print status:", err);
+      return res.status(500).json({ error: err.message });
+    }
+    queueOrderChange(id, 'update');
+    res.json({ success: true });
+  });
+});
+
 module.exports = router;

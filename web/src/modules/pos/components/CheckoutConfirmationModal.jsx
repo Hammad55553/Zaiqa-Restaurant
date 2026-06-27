@@ -11,6 +11,7 @@ const CheckoutConfirmationModal = ({
   const [paymentStatus, setPaymentStatus] = useState('NONE');
   const [customStatus, setCustomStatus] = useState('');
   const [releaseTable, setReleaseTable] = useState(true);
+  const [printMode, setPrintMode] = useState('single');
 
   if (!isCheckoutModalOpen) return null;
 
@@ -87,6 +88,36 @@ const CheckoutConfirmationModal = ({
             )}
           </div>
 
+          {/* Print Mode Selection */}
+          <div className="mb-4 text-left">
+            <label className="block text-[10px] font-extrabold uppercase tracking-widest text-zinc-400 mb-1.5 pl-1">
+              Select Print Mode
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { label: '🚫 No Print', value: 'none' },
+                { label: '📄 Single', value: 'single' },
+                { label: '📄📄 Double', value: 'double' }
+              ].map(opt => {
+                const isSelected = printMode === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setPrintMode(opt.value)}
+                    className={`py-2 px-1 text-[10px] font-black uppercase tracking-wider rounded-xl border text-center transition-all ${
+                      isSelected
+                        ? 'bg-orange-500 text-white border-orange-500 shadow-md shadow-orange-500/20'
+                        : 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:border-orange-300'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Release Table Animated Toggle Switch */}
           <div className="mb-6 flex items-center justify-between bg-zinc-50 p-4 rounded-2xl border border-zinc-150">
             <div className="text-left">
@@ -116,6 +147,7 @@ const CheckoutConfirmationModal = ({
                 setPaymentStatus('NONE');
                 setCustomStatus('');
                 setReleaseTable(true);
+                setPrintMode('single');
               }}
               className="flex-1 py-3 bg-zinc-100 text-zinc-600 font-bold rounded-xl hover:bg-zinc-200 transition-colors"
             >
@@ -124,12 +156,13 @@ const CheckoutConfirmationModal = ({
             <button 
               onClick={() => {
                 const finalStatus = paymentStatus === 'CUSTOM' ? (customStatus.trim() || 'PAID') : paymentStatus;
-                executeCheckout(phone, finalStatus, releaseTable);
+                executeCheckout(phone, finalStatus, releaseTable, printMode);
                 setIsCheckoutModalOpen(false);
                 setPhone('');
                 setPaymentStatus('NONE');
                 setCustomStatus('');
                 setReleaseTable(true);
+                setPrintMode('single');
               }}
               className="flex-1 py-3 bg-emerald-500 text-white font-bold rounded-xl hover:bg-emerald-600 shadow-lg shadow-emerald-500/30 transition-colors"
             >

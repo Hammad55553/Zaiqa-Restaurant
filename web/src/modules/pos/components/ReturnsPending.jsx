@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, AlertTriangle, Trash2, ShieldAlert, Archive, CheckCircle2, ShoppingBag, Clock, FileText, Ban, ExternalLink, RefreshCw, Send, Check, XCircle, User } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Trash2, ShieldAlert, Archive, CheckCircle2, ShoppingBag, Clock, FileText, Ban, ExternalLink, RefreshCw, Send, Check, XCircle, User, Printer } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import ReceiptSlip from './ReceiptSlip';
 
 import { API_BASE } from '../../../config';
 
@@ -17,6 +19,80 @@ const ReturnsPending = ({ onBack }) => {
   const [tablesList, setTablesList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
+
+  // KOT Print States
+  const [selectedKOTOrder, setSelectedKOTOrder] = useState(null);
+  const [showPrintConfirm, setShowPrintConfirm] = useState(false);
+  const [lastPrintedOrderId, setLastPrintedOrderId] = useState(null);
+  const [printConfirmStatus, setPrintConfirmStatus] = useState('success');
+  const [printConfirmReason, setPrintConfirmReason] = useState('paper_roll_empty');
+  const [printData, setPrintData] = useState(null);
+  const receiptRef = React.useRef(null);
+
+  // KOT Print Status Updater
+  const updateKOTStatus = async (orderId, status, reason = null, incrementCount = false) => {
+    try {
+      const res = await fetch(`${API_BASE}/orders/${orderId}/kot-print-status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: status,
+          error_reason: reason,
+          increment_count: incrementCount
+        })
+      });
+      if (res.ok) {
+        fetchData();
+        if (selectedKOTOrder && selectedKOTOrder.id === orderId) {
+          setSelectedKOTOrder(prev => ({
+            ...prev,
+            kot_print_status: status,
+            kot_print_error_reason: reason,
+            kot_print_count: incrementCount ? (prev.kot_print_count || 0) + 1 : prev.kot_print_count
+          }));
+        }
+      } else {
+        console.error("Failed to update KOT print status on server");
+      }
+    } catch (err) {
+      console.error("Error updating KOT status:", err);
+    }
+  };
+
+  // Trigger Reprint KOT
+  const triggerKOTReprint = (order) => {
+    const nextCount = (order.kot_print_count || 0) + 1;
+    const displayItems = (order.items || []).map(item => ({
+      qty: item.quantity,
+      name: item.item_name,
+      price: item.price || 0,
+      notes: item.notes || ''
+    }));
+
+    const data = {
+      isKOT: true,
+      orderId: order.id,
+      date: order.created_at || new Date().toISOString(),
+      table: order.table_number ? `Table ${order.table_number}` : 'Delivery / Walk-in',
+      items: displayItems,
+      printCount: nextCount,
+      kotStatus: order.kot_print_status,
+      kotReason: order.kot_print_error_reason
+    };
+
+    setPrintData(data);
+    setLastPrintedOrderId(order.id);
+
+    setTimeout(() => {
+      window.print();
+      setTimeout(() => {
+        setPrintData(null);
+        setPrintConfirmStatus('success');
+        setPrintConfirmReason('paper_roll_empty');
+        setShowPrintConfirm(true);
+      }, 1000);
+    }, 300);
+  };
 
   // Cancellation Modal State
   const [cancelModalOrder, setCancelModalOrder] = useState(null);
@@ -466,8 +542,26 @@ const ReturnsPending = ({ onBack }) => {
                     </div>
                   </div>
 
-                  <div className="mt-2">
-                    <div className="flex justify-between items-center text-xs mb-4">
+                  <div className="mt-2 space-y-3">
+                    {/* KOT Print Status Badge */}
+                    <div className="flex items-center justify-between text-[11px] bg-zinc-950/40 p-2 rounded-xl border border-zinc-850">
+                      <span className="text-zinc-400 font-bold">KOT Print Status:</span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${
+                        order.kot_print_status === 'success' 
+                          ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-500/20' 
+                          : order.kot_print_status === 'failed' 
+                            ? 'bg-rose-950/60 text-rose-400 border border-rose-500/20' 
+                            : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
+                      }`}>
+                        {order.kot_print_status === 'success' 
+                          ? `Printed (${order.kot_print_count || 1}x)` 
+                          : order.kot_print_status === 'failed' 
+                            ? `Failed: ${order.kot_print_error_reason || 'Unknown'}` 
+                            : 'Not Printed'}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between items-center text-xs">
                       <span className="text-zinc-400 font-black uppercase tracking-wider">TOTAL AMOUNT</span>
                       <span className="text-base font-black text-orange-500 drop-shadow-[0_0_10px_rgba(249,115,22,0.2)]">Rs. {order.total_amount}</span>
                     </div>
@@ -476,6 +570,7 @@ const ReturnsPending = ({ onBack }) => {
                       <button
                         onClick={() => {
                           const orderStatus = order.status;
+                          const isPreparing = orderStatus === 'preparing';
                           const isReady = orderStatus === 'ready';
                           const isCompleted = orderStatus === 'completed';
                           const canCancel = !(isReady || isCompleted) || isAdmin;
@@ -496,6 +591,13 @@ const ReturnsPending = ({ onBack }) => {
                         }`}
                       >
                         Cancel Order
+                      </button>
+
+                      <button
+                        onClick={() => setSelectedKOTOrder(order)}
+                        className="flex-1 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-700 hover:brightness-110 text-white rounded-xl font-black text-[11px] uppercase tracking-wider text-center cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                      >
+                        <Printer size={13} /> Kitchen Slip
                       </button>
                     </div>
                   </div>
@@ -1223,6 +1325,201 @@ const ReturnsPending = ({ onBack }) => {
             </div>
           </div>
         </div>
+      )}
+
+      {selectedKOTOrder && (
+        <div className="fixed inset-0 z-50 bg-zinc-950/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-zinc-900 border border-zinc-850 rounded-3xl w-full max-w-md shadow-2xl p-6 relative flex flex-col max-h-[90vh]">
+            <div className="flex justify-between items-center mb-4 border-b border-zinc-800 pb-3 shrink-0">
+              <h3 className="text-lg font-black text-white uppercase tracking-wider flex items-center gap-2">
+                <Printer className="text-orange-500" size={20} /> Kitchen Slip (KOT)
+              </h3>
+              <button 
+                onClick={() => setSelectedKOTOrder(null)} 
+                className="text-zinc-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <XCircle size={22} />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 mb-6 flex flex-col w-full">
+              {/* Clean Dark Details Container instead of white receipt preview */}
+              <div className="bg-zinc-950/60 p-5 rounded-2xl border border-zinc-800 w-full space-y-4">
+                <div className="flex justify-between items-center text-xs font-bold text-zinc-300">
+                  <span>ORDER: #{selectedKOTOrder.id}</span>
+                  <span>TABLE: {selectedKOTOrder.table_number ? `Table ${selectedKOTOrder.table_number}` : 'Delivery / Walk-in'}</span>
+                </div>
+                
+                <div className="flex justify-between items-center text-xs text-zinc-400">
+                  <span>{new Date(selectedKOTOrder.created_at).toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
+                  {selectedKOTOrder.kot_print_count > 0 && (
+                    <span className="text-orange-500 font-extrabold uppercase tracking-wider text-[10px]">
+                      {selectedKOTOrder.kot_print_count > 1 ? `REPRINT #${selectedKOTOrder.kot_print_count}` : `ORIGINAL #${selectedKOTOrder.kot_print_count}`}
+                    </span>
+                  )}
+                </div>
+                
+                <div className="border-t border-zinc-850 my-3" />
+                
+                <div className="space-y-3">
+                  <div className="flex justify-between text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+                    <span>Item Name</span>
+                    <span>Qty</span>
+                  </div>
+                  
+                  {(selectedKOTOrder.items || []).filter(item => item.item_name !== 'Service Charges').map((item, index) => (
+                    <div key={index} className="space-y-1">
+                      <div className="flex justify-between items-center text-xs font-bold text-white">
+                        <span>{item.item_name}</span>
+                        <span className="text-orange-500 text-sm font-black">{item.quantity}x</span>
+                      </div>
+                      {item.notes && (
+                        <div className="text-[10px] text-zinc-400 italic font-medium pl-2 border-l border-orange-500/40">
+                          Note: {item.notes}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+              {/* Status Update / Reprint Config */}
+              <div className="w-full mt-6 space-y-4">
+                <div className="bg-zinc-950/60 p-4 rounded-2xl border border-zinc-800 space-y-3">
+                  <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block">Update Print Status</span>
+                  
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={async () => {
+                        await updateKOTStatus(selectedKOTOrder.id, 'success', null, false);
+                        showToast("KOT status updated to Success", "success");
+                      }}
+                      className={`flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                        selectedKOTOrder.kot_print_status === 'success' 
+                          ? 'bg-emerald-500 text-white font-extrabold shadow-lg shadow-emerald-500/20' 
+                          : 'bg-zinc-800 text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      Success
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setPrintConfirmStatus('failed');
+                        setShowPrintConfirm(true);
+                        setLastPrintedOrderId(selectedKOTOrder.id);
+                      }}
+                      className={`flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                        selectedKOTOrder.kot_print_status === 'failed' 
+                          ? 'bg-rose-500 text-white font-extrabold shadow-lg shadow-rose-500/20' 
+                          : 'bg-zinc-800 text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      Failed
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex gap-3 mt-4 border-t border-zinc-800 pt-4 shrink-0">
+              <button 
+                onClick={() => setSelectedKOTOrder(null)} 
+                className="flex-1 py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-xs uppercase tracking-wider rounded-xl transition-all active:scale-95 cursor-pointer border border-zinc-750"
+              >
+                Close
+              </button>
+              
+              <button 
+                onClick={() => {
+                  triggerKOTReprint(selectedKOTOrder);
+                }}
+                className="flex-[2] py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:brightness-110 text-black font-black text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-orange-500/20 flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer border-0"
+              >
+                <Printer size={15} /> Reprint KOT
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPrintConfirm && (
+        <div className="fixed inset-0 z-[60] bg-zinc-950/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-850 rounded-3xl w-full max-w-sm shadow-2xl p-6 animate-slideUp">
+            <h4 className="text-base font-black text-white uppercase tracking-wider mb-2 flex items-center gap-2">
+              ⚠️ Verify KOT Print Status
+            </h4>
+            <p className="text-xs text-zinc-400 mb-4">Did the kitchen slip print successfully for Order #{lastPrintedOrderId}?</p>
+            
+            <div className="space-y-4">
+              <div className="flex gap-2">
+                <button 
+                  onClick={async () => {
+                    await updateKOTStatus(lastPrintedOrderId, 'success', null, true);
+                    setShowPrintConfirm(false);
+                    showToast("Print success recorded!", "success");
+                  }}
+                  className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-emerald-500/20 transition-all active:scale-95 cursor-pointer"
+                >
+                  Yes, Printed
+                </button>
+                <button 
+                  onClick={() => setPrintConfirmStatus('failed')}
+                  className={`flex-1 py-3 border font-black text-xs uppercase tracking-wider rounded-xl transition-all active:scale-95 cursor-pointer ${
+                    printConfirmStatus === 'failed' 
+                      ? 'bg-rose-500 border-rose-400 text-white shadow-lg shadow-rose-500/20' 
+                      : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  No, Failed
+                </button>
+              </div>
+              
+              {printConfirmStatus === 'failed' && (
+                <div className="space-y-3 bg-zinc-950/60 p-4.5 rounded-2xl border border-zinc-800/80 animate-fadeIn">
+                  <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block mb-1">Select Failure Reason:</label>
+                  <select 
+                    value={printConfirmReason} 
+                    onChange={e => setPrintConfirmReason(e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-850 rounded-xl px-3.5 py-2.5 text-xs font-bold text-zinc-200 focus:outline-none focus:border-orange-500 cursor-pointer"
+                  >
+                    <option value="paper_roll_empty">🧻 Paper Roll Empty / Finished</option>
+                    <option value="printer_offline">🔌 Printer Offline / Disconnected</option>
+                    <option value="printer_jammed">💥 Printer Jammed</option>
+                    <option value="other_reason">❓ Other Hardware Error</option>
+                  </select>
+                  
+                  <button 
+                    onClick={async () => {
+                      const reasonMap = {
+                        paper_roll_empty: 'Paper Roll Empty',
+                        printer_offline: 'Printer Offline',
+                        printer_jammed: 'Printer Jammed',
+                        other_reason: 'Other Error'
+                      };
+                      await updateKOTStatus(lastPrintedOrderId, 'failed', reasonMap[printConfirmReason] || 'Unknown Error', false);
+                      setShowPrintConfirm(false);
+                      showToast("Print failure recorded.", "error");
+                    }}
+                    className="w-full py-3 bg-zinc-850 hover:bg-zinc-800 border border-zinc-750 text-rose-500 font-black text-xs uppercase tracking-wider rounded-xl transition-all active:scale-95 mt-2 cursor-pointer"
+                  >
+                    Confirm Failed Status
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {printData && createPortal(
+        <div
+          ref={receiptRef}
+          className="receipt-print-wrapper"
+          style={{ position: 'fixed', top: '-9999px', left: '-9999px', zIndex: -1 }}
+        >
+          <ReceiptSlip printData={printData} />
+        </div>,
+        document.body
       )}
 
       {toast && (

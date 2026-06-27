@@ -105,9 +105,10 @@ h1, h2, h3, h4, h5, h6, .font-display {
   }
   .receipt-print-wrapper > div {
     margin: 0 !important;
-    width: 72mm !important;
-    max-width: 100% !important;
-    padding: 0.5mm 1mm 2mm 1mm !important;
+    width: 100% !important;
+    max-width: 72mm !important;
+    padding: 1mm 4mm 3mm 4mm !important;
+    box-sizing: border-box !important;
   }
   @page {
     margin: 0;
@@ -144,27 +145,11 @@ h1, h2, h3, h4, h5, h6, .font-display {
   transform-origin: 170px 59px;
 }
 
-/* Screen Preview for Receipt Slip (Visible on screen as a floating card) */
-.receipt-print-wrapper {
-  position: fixed !important;
-  top: 80px !important;
-  right: 20px !important;
-  left: auto !important;
-  width: 290px !important;
-  max-height: 80vh !important;
-  overflow-y: auto !important;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.3) !important;
-  border: 2px solid #ea580c !important; /* orange boundary to stand out */
-  border-radius: 16px !important;
-  padding: 12px 6px !important;
-  background: #ffffff !important;
-  z-index: 999999 !important;
-  animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
-}
-
-@keyframes slideInRight {
-  from { transform: translateX(120%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
+/* Hide receipt wrapper on screen to avoid floating card preview, but keep active for print media */
+@media screen {
+  .receipt-print-wrapper {
+    display: none !important;
+  }
 }
 
 /* Ensure KOT also stands out as kitchen copy */

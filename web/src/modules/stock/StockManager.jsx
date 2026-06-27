@@ -52,6 +52,8 @@ const StockManager = () => {
   const [form, setForm] = useState({ name: '', unit: 'Kg', quantity: '', unit_price: '', min_alert: '' });
   const [adjustForm, setAdjustForm] = useState({ action: 'add', qty: '', remarks: '' });
   const [logs, setLogs] = useState([]);
+  const [customUnit, setCustomUnit] = useState('');
+  const [showCustomUnitInput, setShowCustomUnitInput] = useState(false);
 
   const fetchStock = useCallback(async () => {
     setLoading(true);
@@ -71,23 +73,30 @@ const StockManager = () => {
   // Setup Add/Edit Modal
   const openAdd = () => {
     setForm({ name: '', unit: 'Kg', quantity: '', unit_price: '', min_alert: '' });
+    setCustomUnit('');
+    setShowCustomUnitInput(false);
     setTargetItem(null);
     setModal('addItem');
   };
 
   const openEdit = (item) => {
-    setForm({ name: item.name, unit: item.unit, quantity: item.quantity, unit_price: item.unit_price, min_alert: item.min_alert });
+    const predefinedUnits = ['Kg', 'Ltr', 'Dozen', 'Pack', 'Pcs'];
+    const isCustom = !predefinedUnits.includes(item.unit);
+    setForm({ name: item.name, unit: isCustom ? 'Other' : item.unit, quantity: item.quantity, unit_price: item.unit_price, min_alert: item.min_alert });
+    setCustomUnit(isCustom ? item.unit : '');
+    setShowCustomUnitInput(isCustom);
     setTargetItem(item);
     setModal('editItem');
   };
 
   const saveItem = async () => {
-    if (!form.name || !form.unit) return;
+    const finalUnit = form.unit === 'Other' ? customUnit : form.unit;
+    if (!form.name || !finalUnit) return;
     setSaving(true);
     
     const body = {
       name: form.name,
-      unit: form.unit,
+      unit: finalUnit,
       quantity: parseFloat(form.quantity) || 0,
       unit_price: parseFloat(form.unit_price) || 0,
       min_alert: parseFloat(form.min_alert) || 0
@@ -274,21 +283,45 @@ const StockManager = () => {
         <Modal title={modal === 'editItem' ? 'Edit Item' : 'Add New Item'} onClose={() => setModal(null)}>
           <Input label="Item Name" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Meat, Ghee, Eggs" />
           
-          <div style={{ display: 'flex', gap: 12 }}>
-            <div style={{ flex: 1, marginBottom: 16 }}>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#71717a', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>Unit</label>
-              <select value={form.unit} onChange={e => setForm(p => ({ ...p, unit: e.target.value }))} style={{ width: '100%', padding: '10px 14px', borderRadius: 12, border: '1.5px solid #e4e4e7', fontSize: 14, fontWeight: 600, background: '#fafafa', outline: 'none', boxSizing: 'border-box' }}>
-                <option value="Kg">Kg (Kilogram)</option>
-                <option value="Ltr">Liters</option>
-                <option value="Dozen">Dozens</option>
-                <option value="Pack">Packets / Box</option>
-                <option value="Pcs">Pieces</option>
-              </select>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#71717a', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>Unit</label>
+                <select 
+                  value={form.unit} 
+                  onChange={e => {
+                    const val = e.target.value;
+                    setForm(p => ({ ...p, unit: val }));
+                    setShowCustomUnitInput(val === 'Other');
+                  }} 
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: 12, border: '1.5px solid #e4e4e7', fontSize: 14, fontWeight: 600, background: '#fafafa', outline: 'none', boxSizing: 'border-box' }}
+                >
+                  <option value="Kg">Kg (Kilogram)</option>
+                  <option value="Ltr">Liters</option>
+                  <option value="Dozen">Dozens</option>
+                  <option value="Pack">Packets / Box</option>
+                  <option value="Pcs">Pieces</option>
+                  <option value="Other">Other (Custom Unit)</option>
+                </select>
+              </div>
+              {modal === 'addItem' && (
+                 <div style={{ flex: 1 }}>
+                   <Input label={`Initial Qty (${form.unit === 'Other' ? (customUnit || 'Unit') : form.unit})`} type="number" value={form.quantity} onChange={e => setForm(p => ({ ...p, quantity: e.target.value }))} placeholder="0" />
+                 </div>
+              )}
             </div>
-            {modal === 'addItem' && (
-               <div style={{ flex: 1 }}>
-                 <Input label={`Initial Qty (${form.unit})`} type="number" value={form.quantity} onChange={e => setForm(p => ({ ...p, quantity: e.target.value }))} placeholder="0" />
-               </div>
+            
+            {showCustomUnitInput && (
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#71717a', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>Enter Custom Unit Name</label>
+                <input
+                  type="text"
+                  value={customUnit}
+                  onChange={e => setCustomUnit(e.target.value)}
+                  placeholder="e.g. Gram, Cup, Plate"
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: 12, border: '1.5px solid #e4e4e7', fontSize: 14, fontWeight: 600, color: '#09090b', background: '#fafafa', outline: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
             )}
           </div>
 

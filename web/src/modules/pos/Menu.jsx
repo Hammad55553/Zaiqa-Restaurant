@@ -2,9 +2,29 @@ import React, { useState, useEffect } from 'react';
 import { Search, Plus, UtensilsCrossed, AlertCircle, Loader2 } from 'lucide-react';
 import { API_BASE } from '../../config';
 
-const Menu = ({ onAddToCart, disabled }) => {
+const Menu = ({ onAddToCart, disabled, showToast, cartItems = [] }) => {
   const [activeCategory, setActiveCategory] = useState('All');
   const [search, setSearch] = useState('');
+  
+  const getAvailableStockQty = (item) => {
+    if (!item.ingredients || item.ingredients.length === 0) {
+      return null;
+    }
+    
+    let minPortions = Infinity;
+    item.ingredients.forEach(ing => {
+      const required = ing.quantity_required;
+      const stockQty = ing.stock_item_quantity !== undefined ? ing.stock_item_quantity : 0;
+      if (required > 0) {
+        const portions = Math.floor(stockQty / required);
+        if (portions < minPortions) {
+          minPortions = portions;
+        }
+      }
+    });
+    
+    return minPortions === Infinity ? null : minPortions;
+  };
   
   // Data from DB
   const [items, setItems] = useState([]);
@@ -277,41 +297,66 @@ const Menu = ({ onAddToCart, disabled }) => {
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 lg:gap-4">
-            {filteredItems.map(item => (
-              <div 
-                key={item.id} 
-                onClick={() => onAddToCart(item)}
-                className="bg-white rounded-xl shadow-sm hover:shadow-md cursor-pointer transform hover:-translate-y-0.5 transition-all duration-200 flex flex-col h-40 md:h-44 active:scale-95 overflow-hidden group border border-gray-200 relative"
-              >
-                {/* Item Image */}
-                <div className="h-20 md:h-24 w-full bg-orange-50 relative overflow-hidden flex items-center justify-center">
-                  {item.image ? (
-                    <img 
-                      src={item.image} 
-                      alt={item.name} 
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
-                    />
-                  ) : (
-                    <UtensilsCrossed size={32} className="text-orange-200 group-hover:scale-110 transition-transform duration-500" />
-                  )}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
-                  <div className="absolute top-2 left-2">
-                    <span className="text-[8px] px-2 py-0.5 rounded font-bold uppercase tracking-widest shadow-sm border bg-white/90 text-zinc-900 border-white backdrop-blur-md">
-                      {item.category_name || 'Uncategorized'}
-                    </span>
-                  </div>
-                </div>
+            {filteredItems.map(item => {
+              const availableStockQty = getAvailableStockQty(item);
+              const inCartQty = (cartItems || []).filter(i => (i.id === item.id || i.item_id === item.id) && !i.sent).reduce((sum, i) => sum + i.qty, 0);
+              const remainingStockQty = availableStockQty !== null ? Math.max(0, availableStockQty - inCartQty) : null;
+              const isOutOfStock = remainingStockQty !== null && remainingStockQty === 0;
 
-                {/* Item Details */}
-                <div className="p-2 md:p-3 flex flex-col justify-between flex-1 bg-white relative">
-                  <div className="absolute -top-4 right-2 bg-white px-2 py-1 rounded-lg shadow border border-gray-100 font-display font-black text-orange-600 text-sm">
-                    <span className="text-[8px] text-gray-400 mr-0.5 font-sans">RS</span>
-                    {item.price}
+              return (
+                <div 
+                  key={item.id} 
+                  onClick={() => {
+                    if (isOutOfStock) {
+                      if (showToast) showToast(`Warning: "${item.name}" is Out of Stock in ingredients!`, 'error');
+                    }
+                    onAddToCart(item);
+                  }}
+                  className={`bg-white rounded-xl shadow-sm hover:shadow-md cursor-pointer transform hover:-translate-y-0.5 transition-all duration-200 flex flex-col h-40 md:h-44 active:scale-95 overflow-hidden group border relative ${
+                    isOutOfStock ? 'border-red-500 shadow-lg shadow-red-500/5' : 'border-gray-200'
+                  }`}
+                >
+                  {/* Item Image */}
+                  <div className="h-20 md:h-24 w-full bg-orange-50 relative overflow-hidden flex items-center justify-center">
+                    {item.image ? (
+                      <img 
+                        src={item.image} 
+                        alt={item.name} 
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                      />
+                    ) : (
+                      <UtensilsCrossed size={32} className="text-orange-200 group-hover:scale-110 transition-transform duration-500" />
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
+                    <div className="absolute top-2 left-2 flex flex-col gap-1">
+                      <span className="text-[8px] px-2 py-0.5 rounded font-bold uppercase tracking-widest shadow-sm border bg-white/90 text-zinc-900 border-white backdrop-blur-md">
+                        {item.category_name || 'Uncategorized'}
+                      </span>
+                      {availableStockQty !== null && (
+                        <span className={`text-[8px] px-2 py-0.5 rounded font-extrabold uppercase tracking-wider shadow-sm border ${
+                          isOutOfStock 
+                            ? 'bg-red-600 border-red-500 text-white shadow-red-500/30' 
+                            : remainingStockQty <= 10 
+                              ? 'bg-amber-500 border-amber-500 text-black shadow-amber-500/25' 
+                              : 'bg-emerald-500 border-emerald-500 text-white shadow-emerald-500/25'
+                        }`}>
+                          {isOutOfStock ? '⚠️ 0 Left' : `🛒 ${remainingStockQty} Left`}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <h3 className="font-bold text-gray-800 text-[12px] md:text-[13px] leading-tight line-clamp-2 pr-10 mt-1">{item.name}</h3>
+
+                  {/* Item Details */}
+                  <div className="p-2 md:p-3 flex flex-col justify-between flex-1 bg-white relative">
+                    <div className="absolute -top-4 right-2 bg-white px-2 py-1 rounded-lg shadow border border-gray-100 font-display font-black text-orange-600 text-sm">
+                      <span className="text-[8px] text-gray-400 mr-0.5 font-sans">RS</span>
+                      {item.price}
+                    </div>
+                    <h3 className="font-bold text-gray-800 text-[12px] md:text-[13px] leading-tight line-clamp-2 pr-10 mt-1">{item.name}</h3>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

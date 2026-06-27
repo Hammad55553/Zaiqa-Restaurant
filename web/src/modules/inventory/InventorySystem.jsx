@@ -85,6 +85,33 @@ const InventorySystem = () => {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteCatTarget, setDeleteCatTarget] = useState(null);
+  const [errorToast, setErrorToast] = useState(null);
+
+  const showErrorToast = (msg) => {
+    setErrorToast(msg);
+    setTimeout(() => setErrorToast(null), 4000);
+  };
+
+  const [converterModal, setConverterModal] = useState(null); // { index, unit, name }
+  const [converterSourceUnit, setConverterSourceUnit] = useState('gram');
+  const [converterValue, setConverterValue] = useState('');
+
+  const getCalculatedConversion = () => {
+    const val = parseFloat(converterValue) || 0;
+    if (val <= 0) return 0;
+    
+    if (converterModal?.unit === 'Ltr') {
+      if (converterSourceUnit === 'ml') return parseFloat((val / 1000).toFixed(4));
+      if (converterSourceUnit === 'spoon') return parseFloat((val * 0.015).toFixed(4));
+      if (converterSourceUnit === 'cup') return parseFloat((val * 0.25).toFixed(4));
+    } else {
+      if (converterSourceUnit === 'gram') return parseFloat((val / 1000).toFixed(4));
+      if (converterSourceUnit === 'spoon') return parseFloat((val * 0.01).toFixed(4));
+      if (converterSourceUnit === 'cup') return parseFloat((val * 0.2).toFixed(4));
+      if (converterSourceUnit === 'piece') return parseFloat((val * 0.1).toFixed(4));
+    }
+    return val;
+  };
 
   const [stockItems, setStockItems] = useState([]);
 
@@ -182,14 +209,26 @@ const InventorySystem = () => {
   };
 
   const saveItem = async () => {
-    if (!form.name || form.price === '') return;
+    if (!form.name) {
+      showErrorToast("Item Name is required!");
+      return;
+    }
+    if (form.price === '' || form.price === null || form.price === undefined) {
+      showErrorToast("Price is required!");
+      return;
+    }
+    const validIngredients = (form.ingredients || []).filter(ing => ing.stock_item_id && parseFloat(ing.quantity_required) > 0);
+    if (validIngredients.length === 0) {
+      showErrorToast("Recipe ingredients are required! Please add at least one material.");
+      return;
+    }
     setSaving(true);
     const body = { 
       name: form.name, 
       price: parseFloat(form.price), 
       category_id: form.category_id || null, 
       image: form.image || null,
-      ingredients: form.ingredients,
+      ingredients: validIngredients,
       taxRateOverride: form.taxRateOverride !== '' ? parseFloat(form.taxRateOverride) : null
     };
     if (editTarget) {
@@ -461,7 +500,7 @@ const InventorySystem = () => {
             {/* Ingredients / Recipe Selection */}
             <div style={{ marginBottom: 24, padding: 16, background: '#f8f9fc', borderRadius: 16, border: '1px solid #e4e4e7' }}>
               <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, fontWeight: 700, color: '#71717a', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 }}>
-                <span>Recipe / Ingredients (Optional)</span>
+                <span>Recipe / Ingredients (Required) *</span>
                 <button 
                   onClick={() => setForm(p => ({ ...p, ingredients: [...p.ingredients, { stock_item_id: '', quantity_required: '' }] }))}
                   style={{ background: 'none', border: 'none', color: '#f97316', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 800 }}
@@ -496,6 +535,25 @@ const InventorySystem = () => {
                     }}
                     style={{ flex: 1, padding: '8px 12px', borderRadius: 10, border: '1.5px solid #e4e4e7', fontSize: 13, outline: 'none' }}
                   />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const selectedStockItem = stockItems.find(si => String(si.id) === String(ing.stock_item_id));
+                      const targetUnit = selectedStockItem ? selectedStockItem.unit : 'Kg';
+                      setConverterModal({
+                        index: idx,
+                        unit: targetUnit,
+                        name: selectedStockItem ? selectedStockItem.name : 'Ingredient'
+                      });
+                      setConverterSourceUnit(targetUnit === 'Ltr' ? 'ml' : 'gram');
+                      setConverterValue('');
+                    }}
+                    style={{ background: '#f0f9ff', border: '1.5px solid #bae6fd', color: '#0284c7', padding: '0 10px', borderRadius: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}
+                    title="Convert spoons, grams, cups etc."
+                    disabled={!ing.stock_item_id}
+                  >
+                    ⚖️
+                  </button>
                   <button 
                     onClick={() => {
                       const newIngs = form.ingredients.filter((_, i) => i !== idx);
@@ -664,6 +722,87 @@ const InventorySystem = () => {
             </button>
           </div>
         </Modal>
+      )}
+
+      {converterModal && (
+        <Modal title={`Unit Converter Tool: ${converterModal.name}`} onClose={() => setConverterModal(null)}>
+          <div style={{ background: '#f0f9ff', padding: '12px 16px', borderRadius: 12, marginBottom: 16, border: '1px solid #bae6fd' }}>
+            <span style={{ fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px', color: '#0369a1' }}>Target Recipe Unit</span>
+            <div style={{ fontSize: '15px', fontWeight: '900', color: '#0c4a6e', marginTop: '2px' }}>{converterModal.unit}</div>
+          </div>
+          
+          <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+            <div style={{ flex: 1.2 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#71717a', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>Convert From</label>
+              <select 
+                value={converterSourceUnit} 
+                onChange={e => setConverterSourceUnit(e.target.value)}
+                style={{ width: '100%', padding: '10px 14px', borderRadius: 12, border: '1.5px solid #e4e4e7', fontSize: 14, fontWeight: 600, background: '#fafafa', outline: 'none', boxSizing: 'border-box', height: '42px' }}
+              >
+                {converterModal.unit === 'Ltr' ? (
+                  <>
+                    <option value="ml">Milliliters (ml)</option>
+                    <option value="spoon">Spoons (🥄)</option>
+                    <option value="cup">Cups (🥛)</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="gram">Grams (g)</option>
+                    <option value="spoon">Spoons (🥄)</option>
+                    <option value="cup">Cups (🥛)</option>
+                    <option value="piece">Pieces (🧅/🧄)</option>
+                  </>
+                )}
+              </select>
+            </div>
+            <div style={{ flex: 1 }}>
+              <Input 
+                label="Enter Quantity" 
+                type="number" 
+                step="any"
+                value={converterValue} 
+                onChange={e => setConverterValue(e.target.value)} 
+                placeholder="e.g. 2 or 150" 
+              />
+            </div>
+          </div>
+          
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8f9fc', border: '1.5px dashed #e2e8f0', borderRadius: 16, padding: '16px 20px', marginBottom: 20 }}>
+            <div>
+              <div style={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px', color: '#64748b' }}>Calculated Decimal Value</div>
+              <div style={{ fontSize: '24px', fontWeight: '900', color: '#0f172a', marginTop: '2px' }}>{getCalculatedConversion()} <span style={{ fontSize: '14px', fontWeight: '700', color: '#475569' }}>{converterModal.unit}</span></div>
+            </div>
+            <div style={{ fontSize: '20px' }}>⚖️</div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={() => setConverterModal(null)} style={{ flex: 1, padding: '12px', borderRadius: 12, border: '1.5px solid #e4e4e7', background: '#fff', fontSize: 14, fontWeight: 700, color: '#71717a', cursor: 'pointer' }}>Cancel</button>
+            <button 
+              onClick={() => {
+                const calculated = getCalculatedConversion();
+                const newIngs = [...form.ingredients];
+                newIngs[converterModal.index].quantity_required = calculated;
+                setForm(p => ({ ...p, ingredients: newIngs }));
+                setConverterModal(null);
+              }} 
+              style={{ flex: 2, padding: '12px', borderRadius: 12, border: 'none', background: 'linear-gradient(135deg, #0284c7, #0369a1)', fontSize: 14, fontWeight: 700, color: '#fff', cursor: 'pointer', boxShadow: '0 4px 16px rgba(2,132,199,0.3)' }}
+            >
+              Apply Value
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {errorToast && (
+        <div style={{
+          position: 'fixed', bottom: 24, right: 24, zIndex: 10000,
+          background: '#ef4444', color: '#fff', padding: '12px 24px',
+          borderRadius: 12, fontWeight: 800, fontSize: 13, textTransform: 'uppercase',
+          boxShadow: '0 10px 25px rgba(239,68,68,0.3)', display: 'flex', alignItems: 'center', gap: 8,
+          animation: 'slideUp 0.25s ease'
+        }}>
+          <AlertCircle size={16} /> {errorToast}
+        </div>
       )}
 
     </div>

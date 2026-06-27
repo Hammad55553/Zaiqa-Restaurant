@@ -75,6 +75,64 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
   const [serviceCharges, setServiceCharges] = useState(0);
   const [applyServiceCharges, setApplyServiceCharges] = useState(true);
   const [applyTax, setApplyTax] = useState(false);
+  const [menuItems, setMenuItems] = useState([]);
+  const [showPrintConfirm, setShowPrintConfirm] = useState(false);
+  const [lastPrintedOrderId, setLastPrintedOrderId] = useState(null);
+  const [printConfirmStatus, setPrintConfirmStatus] = useState('success');
+  const [printConfirmReason, setPrintConfirmReason] = useState('paper_roll_empty');
+
+  const getAvailableStockQty = (item) => {
+    const menuItem = menuItems.find(i => i.id === item.id || i.id === item.item_id);
+    if (!menuItem || !menuItem.ingredients || menuItem.ingredients.length === 0) {
+      return null;
+    }
+    
+    let minPortions = Infinity;
+    menuItem.ingredients.forEach(ing => {
+      const required = ing.quantity_required;
+      const stockQty = ing.stock_item_quantity !== undefined ? ing.stock_item_quantity : 0;
+      if (required > 0) {
+        const portions = Math.floor(stockQty / required);
+        if (portions < minPortions) {
+          minPortions = portions;
+        }
+      }
+    });
+    
+    return minPortions === Infinity ? null : minPortions;
+  };
+
+  const updateKOTStatus = async (orderId, status, reason = null, incrementCount = false) => {
+    try {
+      await fetch(`${API_BASE}/orders/${orderId}/kot-print-status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: status,
+          error_reason: reason,
+          increment_count: incrementCount
+        })
+      });
+      // Trigger a reload of active orders or data if needed, nodemon will restart server
+    } catch (err) {
+      console.error("Error updating KOT status:", err);
+    }
+  };
+
+  useEffect(() => {
+    const fetchInventory = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/inventory`);
+        if (res.ok) {
+          const data = await res.json();
+          setMenuItems(data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch inventory in POSLayout:", err);
+      }
+    };
+    fetchInventory();
+  }, [refreshKey]);
 
   useEffect(() => {
     const loadGlobalSettings = async () => {
@@ -897,12 +955,16 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
     };
 
     setPrintData(data);
+    setLastPrintedOrderId(orderId);
 
     setTimeout(() => {
       window.print();
       setTimeout(() => {
         setPrintData(null);
-      }, 5000);
+        setPrintConfirmStatus('success');
+        setPrintConfirmReason('paper_roll_empty');
+        setShowPrintConfirm(true);
+      }, 1000);
     }, 300);
   };
 
@@ -911,7 +973,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
     setIsCheckoutModalOpen(true);
   };
 
-  const executeCheckout = async (customerPhone = '', paymentStatus = 'PAID', shouldClearTable = true) => {
+  const executeCheckout = async (customerPhone = '', paymentStatus = 'PAID', shouldClearTable = true, printMode = 'single') => {
     try {
 
       // Calculate totals for invoice record
@@ -974,13 +1036,25 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
         paymentStatus: paymentStatus,
         date: new Date().toISOString(),
       };
-      setPrintData(printDataObj);
-      setTimeout(() => {
-        window.print();
+
+      if (printMode !== 'none') {
+        setPrintData(printDataObj);
         setTimeout(() => {
-          setPrintData(null);
-        }, 5000);
-      }, 300);
+          window.print();
+          if (printMode === 'double') {
+            setTimeout(() => {
+              window.print();
+              setTimeout(() => {
+                setPrintData(null);
+              }, 5000);
+            }, 1000);
+          } else {
+            setTimeout(() => {
+              setPrintData(null);
+            }, 5000);
+          }
+        }, 300);
+      }
 
       if (response.ok) {
         // Clear local table state conditionally
@@ -1282,6 +1356,13 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
   };
 
   const addToCart = (item, qty = 1) => {
+    const available = getAvailableStockQty(item);
+    if (available !== null) {
+      const existingInCart = cartItems.filter(i => (i.id === item.id || i.item_id === item.id) && !i.sent).reduce((sum, i) => sum + i.qty, 0);
+      if (existingInCart + qty > available) {
+        showToast(`Warning: "${item.name}" quantity exceeds available stock (${available} portions)!`, 'error');
+      }
+    }
     setCartItems(prev => {
       const existingUnsent = prev.find(i => i.id === item.id && !i.sent);
       if (existingUnsent) {
@@ -1324,6 +1405,16 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
   }, [view, tables]);
 
   const updateQty = (id, delta) => {
+    const itemToUpdate = cartItems.find(i => i.cartId === id || i.id === id);
+    if (itemToUpdate && delta > 0) {
+      const available = getAvailableStockQty(itemToUpdate);
+      if (available !== null) {
+        const existingInCart = cartItems.filter(i => (i.id === itemToUpdate.id || i.item_id === itemToUpdate.id) && !i.sent).reduce((sum, i) => sum + i.qty, 0);
+        if (existingInCart + delta > available) {
+          showToast(`Warning: "${itemToUpdate.name}" quantity exceeds available stock (${available} portions)!`, 'error');
+        }
+      }
+    }
     setCartItems(prev => prev.map(item => {
       if (item.cartId === id || item.id === id) {
         const newQty = item.qty + delta;
@@ -1886,7 +1977,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
         {/* Menu & Cart */}
         <div className="flex-1 flex flex-col lg:flex-row gap-3 lg:gap-4 min-h-0 overflow-hidden z-10">
           <div className="flex-[2.5] bg-white rounded-2xl shadow-sm border border-gray-200/60 flex flex-col min-h-[50vh] lg:min-h-0 overflow-hidden relative">
-            <Menu onAddToCart={addToCart} disabled={false} showToast={showToast} />
+            <Menu onAddToCart={addToCart} disabled={false} showToast={showToast} cartItems={cartItems} />
           </div>
           <div className="w-full lg:w-[380px] shrink-0 bg-white rounded-2xl shadow-sm border border-gray-200/60 flex flex-col min-h-[50vh] lg:min-h-0 overflow-hidden relative">
             <Cart
@@ -2796,7 +2887,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
         <div className="flex-1 flex flex-col lg:flex-row gap-3 lg:gap-4 min-h-0 overflow-hidden z-10">
           {/* Menu Section */}
           <div className="flex-[2.5] bg-white rounded-2xl shadow-sm border border-gray-200/60 flex flex-col min-h-[50vh] lg:min-h-0 overflow-hidden relative">
-            <Menu onAddToCart={addToCart} disabled={false} showToast={showToast} />
+            <Menu onAddToCart={addToCart} disabled={false} showToast={showToast} cartItems={cartItems} />
           </div>
 
           {/* Cart Section */}
@@ -3053,6 +3144,75 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
             <button onClick={() => setToastMessage(null)} className="ml-2 text-zinc-500 hover:text-white transition-colors">
               <X size={16} />
             </button>
+          </div>
+        )}
+
+        {showPrintConfirm && (
+          <div className="fixed inset-0 z-[60] bg-zinc-950/80 backdrop-blur-md flex items-center justify-center p-4">
+            <div className="bg-zinc-900 border border-zinc-850 rounded-3xl w-full max-w-sm shadow-2xl p-6">
+              <h4 className="text-base font-black text-white uppercase tracking-wider mb-2 flex items-center gap-2">
+                ⚠️ Verify KOT Print Status
+              </h4>
+              <p className="text-xs text-zinc-400 mb-4">Did the kitchen slip print successfully for Order #{lastPrintedOrderId}?</p>
+              
+              <div className="space-y-4">
+                <div className="flex gap-2">
+                  <button 
+                    onClick={async () => {
+                      await updateKOTStatus(lastPrintedOrderId, 'success', null, true);
+                      setShowPrintConfirm(false);
+                      showToast("Print success recorded!", "success");
+                    }}
+                    className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-emerald-500/20 transition-all active:scale-95 cursor-pointer"
+                  >
+                    Yes, Printed
+                  </button>
+                  <button 
+                    onClick={() => setPrintConfirmStatus('failed')}
+                    className={`flex-1 py-3 border font-black text-xs uppercase tracking-wider rounded-xl transition-all active:scale-95 cursor-pointer ${
+                      printConfirmStatus === 'failed' 
+                        ? 'bg-rose-500 border-rose-400 text-white shadow-lg shadow-rose-500/20' 
+                        : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    No, Failed
+                  </button>
+                </div>
+                
+                {printConfirmStatus === 'failed' && (
+                  <div className="space-y-3 bg-zinc-950/60 p-4.5 rounded-2xl border border-zinc-800/80 animate-fadeIn">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block mb-1">Select Failure Reason:</label>
+                    <select 
+                      value={printConfirmReason} 
+                      onChange={e => setPrintConfirmReason(e.target.value)}
+                      className="w-full bg-zinc-900 border border-zinc-850 rounded-xl px-3.5 py-2.5 text-xs font-bold text-zinc-200 focus:outline-none focus:border-orange-500 cursor-pointer"
+                    >
+                      <option value="paper_roll_empty">🧻 Paper Roll Empty / Finished</option>
+                      <option value="printer_offline">🔌 Printer Offline / Disconnected</option>
+                      <option value="printer_jammed">💥 Printer Jammed</option>
+                      <option value="other_reason">❓ Other Hardware Error</option>
+                    </select>
+                    
+                    <button 
+                      onClick={async () => {
+                        const reasonMap = {
+                          paper_roll_empty: 'Paper Roll Empty',
+                          printer_offline: 'Printer Offline',
+                          printer_jammed: 'Printer Jammed',
+                          other_reason: 'Other Error'
+                        };
+                        await updateKOTStatus(lastPrintedOrderId, 'failed', reasonMap[printConfirmReason] || 'Unknown Error', false);
+                        setShowPrintConfirm(false);
+                        showToast("Print failure recorded.", "error");
+                      }}
+                      className="w-full py-3 bg-zinc-850 hover:bg-zinc-800 border border-zinc-750 text-rose-500 font-black text-xs uppercase tracking-wider rounded-xl transition-all active:scale-95 mt-2 cursor-pointer"
+                    >
+                      Confirm Failed Status
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
