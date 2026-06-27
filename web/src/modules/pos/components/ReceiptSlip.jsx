@@ -1,5 +1,5 @@
 import React from 'react';
-import Logo from '../../../assets/Logo.jpg';
+import Logo from '../../../assets/ziqahh.png';
 
 const ReceiptSlip = ({ printData }) => {
   if (!printData) return null;

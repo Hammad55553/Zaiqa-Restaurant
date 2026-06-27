@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import Logo from '../../../assets/Logo.jpg';
+import Logo from '../../../assets/ziqahh.png';
 import { Printer, X, ZoomIn, ZoomOut, Search, FileText, Smartphone, Calendar, Hash, Trash2 } from 'lucide-react';
 import { getOfflineItem, setOfflineItem } from '../../../utils/offlineDB';
 
