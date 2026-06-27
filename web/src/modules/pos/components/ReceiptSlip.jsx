@@ -171,7 +171,7 @@ const ReceiptSlip = ({ printData }) => {
       )}
 
       {/* LOGO */}
-      <div style={{ ...center, marginTop: '-2.5mm', marginBottom: '1mm' }}>
+      <div style={{ ...center, marginTop: '2mm', marginBottom: '2mm' }}>
         <img
           src={Logo}
           alt="Zaiqa Mahal Logo"
