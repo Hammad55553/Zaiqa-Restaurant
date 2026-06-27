@@ -1,5 +1,5 @@
 import React from 'react';
-import Logo from '../../../assets/Zaiqalogo.jpg';
+import Logo from '../../../assets/Logo.jpg';
 
 const ReceiptSlip = ({ printData }) => {
   if (!printData) return null;
@@ -178,7 +178,7 @@ const ReceiptSlip = ({ printData }) => {
         <img
           src={Logo}
           alt="Zaiqa Mahal Logo"
-          style={{ width: '30mm', height: '30mm', objectFit: 'contain', display: 'block', margin: '0 auto', filter: 'grayscale(100%) contrast(150%)' }}
+          style={{ width: '30mm', height: '30mm', objectFit: 'contain', display: 'block', margin: '0 auto', filter: 'grayscale(100%) contrast(400%) brightness(85%)' }}
         />
       </div>
 

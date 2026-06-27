@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import Logo from '../../../assets/Zaiqalogo.jpg';
+import Logo from '../../../assets/Logo.jpg';
 import { Printer, X, ZoomIn, ZoomOut, Search, FileText, Smartphone, Calendar, Hash, Trash2 } from 'lucide-react';
 import { getOfflineItem, setOfflineItem } from '../../../utils/offlineDB';
 
@@ -33,7 +33,7 @@ const Slip = ({ data, isPrintMode }) => {
     }}>
       {/* Logo */}
       <div style={{ textAlign: 'center', marginBottom: '2mm' }}>
-        <img src={Logo} alt="Logo" style={{ width: '18mm', height: '18mm', objectFit: 'contain', display: 'block', margin: '0 auto' }} />
+        <img src={Logo} alt="Logo" style={{ width: '18mm', height: '18mm', objectFit: 'contain', display: 'block', margin: '0 auto', filter: 'grayscale(100%) contrast(400%) brightness(85%)' }} />
       </div>
 
       {/* Restaurant Header */}
