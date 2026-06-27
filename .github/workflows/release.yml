@@ -125,7 +125,7 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           allowUpdates: true
-          overwrite: true
+          replacesArtifacts: true
           tag: latest
           name: "Latest POS Build"
           body: "This release contains the latest automated builds of Zaiqah POS for Windows and macOS. Push code to main to update these packages automatically."
