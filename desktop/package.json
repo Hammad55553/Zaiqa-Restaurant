@@ -27,6 +27,7 @@
   "build": {
     "appId": "com.zaiqah.pos",
     "productName": "Zaiqah POS",
+    "npmRebuild": false,
     "directories": {
       "output": "dist-electron"
     },
