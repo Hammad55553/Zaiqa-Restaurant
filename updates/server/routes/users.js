@@ -78,11 +78,15 @@ router.post('/login', async (req, res) => {
   // 2. Try to authenticate via Supabase
   try {
     console.log(`🌐 Internet is ON. Checking Supabase for credentials of user: ${username}`);
-    const { data: onlineUser, error: onlineErr } = await supabase
-      .from('users')
-      .select('*')
-      .eq('username', username)
-      .single();
+    
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Supabase fetch timed out')), 5000)
+    );
+
+    const fetchPromise = supabase.from('users').select('*').eq('username', username).single();
+    
+    const { data: onlineUser, error: onlineErr } = await Promise.race([fetchPromise, timeoutPromise]);
+
 
     if (onlineErr || !onlineUser) {
       console.log(`⚠️ User not found on Supabase (or invalid query). Returning invalid credentials directly.`);
@@ -145,9 +149,14 @@ router.get('/', async (req, res) => {
   if (isOnline) {
     try {
       console.log('🌐 Fetching all users from Supabase to sync local users DB...');
-      const { data: onlineUsers, error: onlineErr } = await supabase
-        .from('users')
-        .select('*');
+      
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Supabase fetch timed out')), 5000)
+      );
+
+      const fetchPromise = supabase.from('users').select('*');
+      
+      const { data: onlineUsers, error: onlineErr } = await Promise.race([fetchPromise, timeoutPromise]);
 
       if (!onlineErr && onlineUsers) {
         // Upsert all online users into local SQLite DB
@@ -198,9 +207,13 @@ router.get('/', async (req, res) => {
 
 // Create new user
 router.post('/', (req, res) => {
-  const { username, password, role, name, permissions } = req.body;
-  if (!username || !password || !role) {
-    return res.status(400).json({ error: 'Username, password, and role are required' });
+  let { username, password, role, name, permissions } = req.body;
+  if (!username || !role) {
+    return res.status(400).json({ error: 'Username and role are required' });
+  }
+  
+  if (!password) {
+    password = 'PENDING_PIN';
   }
 
   const permsStr = JSON.stringify(permissions || []);
@@ -226,7 +239,7 @@ router.post('/', (req, res) => {
 // Update user details & permissions
 router.put('/:id', (req, res) => {
   const { id } = req.params;
-  const { username, password, role, name, permissions } = req.body;
+  const { username, password, role, name, permissions, reset_pin } = req.body;
 
   if (!username || !role) {
     return res.status(400).json({ error: 'Username and role are required' });
@@ -234,8 +247,19 @@ router.put('/:id', (req, res) => {
 
   const permsStr = JSON.stringify(permissions || []);
 
-  if (password) {
-    // Update with password change
+  if (reset_pin) {
+    // Reset PIN scenario
+    db.run(
+      'UPDATE users SET username = ?, password = ?, role = ?, name = ?, permissions = ? WHERE id = ?',
+      [username, 'PENDING_PIN', role, name, permsStr, id],
+      function (err) {
+        if (err) return res.status(500).json({ error: err.message });
+        queueUserChange(id, 'update');
+        res.json({ message: 'User updated and PIN reset successfully' });
+      }
+    );
+  } else if (password) {
+    // Update with explicit password change
     db.run(
       'UPDATE users SET username = ?, password = ?, role = ?, name = ?, permissions = ? WHERE id = ?',
       [username, password, role, name, permsStr, id],
@@ -278,6 +302,30 @@ router.delete('/:id', (req, res) => {
     queueUserChange(id, 'delete');
 
     res.json({ message: 'User deleted successfully' });
+  });
+});
+
+// Set PIN for first-time login
+router.post('/set-pin', (req, res) => {
+  const { username, pin } = req.body;
+  if (!username || !pin) {
+    return res.status(400).json({ error: 'Username and PIN are required' });
+  }
+
+  db.get('SELECT id, username, name, password, role FROM users WHERE username = ?', [username], (err, user) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    
+    if (user.password !== 'PENDING_PIN') {
+      return res.status(400).json({ error: 'PIN is already set. Request Admin to reset it.' });
+    }
+
+    db.run('UPDATE users SET password = ? WHERE id = ?', [pin, user.id], function(updateErr) {
+      if (updateErr) return res.status(500).json({ error: updateErr.message });
+      
+      queueUserChange(user.id, 'update');
+      res.json({ message: 'PIN set successfully' });
+    });
   });
 });
 

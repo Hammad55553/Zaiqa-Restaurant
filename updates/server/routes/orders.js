@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../database/db');
-const { queueOrderChange, queueTableChange } = require('../services/syncHelper');
+const { queueOrderChange, queueTableChange, queueCancelRequestChange } = require('../services/syncHelper');
 
 // @route   POST /api/orders
 // @desc    Create a new order (from POS)
@@ -121,7 +121,12 @@ router.patch('/:id/status', (req, res) => {
       return res.status(404).json({ error: 'Order not found' });
     }
 
-    const targetStatus = status || orderRow.status;
+    let targetStatus = status || orderRow.status;
+    // Dine-in table orders can only be marked 'completed' from the POS checkout (which sends checkout: true)
+    if (orderRow.table_number && orderRow.area !== 'Delivery' && status === 'completed' && !req.body.checkout) {
+      targetStatus = 'ready';
+    }
+
     const wasPending = orderRow.status === 'pending';
     const becameActive = ['preparing', 'ready', 'completed'].includes(targetStatus);
 
@@ -204,7 +209,7 @@ router.patch('/:id/status', (req, res) => {
         res.json({ 
           success: true, 
           id, 
-          status,
+          status: targetStatus,
           invoice_number: orderRowFinal ? orderRowFinal.invoice_number : null,
           payment_status: orderRowFinal ? orderRowFinal.payment_status : null
         });
@@ -344,7 +349,7 @@ router.put('/:id/sync', (req, res) => {
         const existingMap = {};
         existingItems.forEach(item => {
           if (!existingMap[item.item_id]) {
-            existingMap[item.item_id] = { qty: 0, ids: [] };
+            existingMap[item.item_id] = { qty: 0, name: item.item_name, price: item.price, ids: [] };
           }
           existingMap[item.item_id].qty += item.quantity;
           existingMap[item.item_id].ids.push(item.id);
@@ -370,16 +375,20 @@ router.put('/:id/sync', (req, res) => {
 
         // 1. Process Updates & Deletions
         const isPreparingOrLater = order && ['preparing', 'ready', 'completed'].includes(order.status);
+        const batchTimestamp = new Date().toISOString();
 
-        // 1. Process Updates & Deletions
         Object.keys(existingMap).forEach(itemIdStr => {
+          const existing = existingMap[itemIdStr];
+          const incoming = incomingMap[itemIdStr];
           const itemId = parseInt(itemIdStr, 10);
-          const existing = existingMap[itemId];
-          const incoming = incomingMap[itemId];
+          const isCustom = isNaN(itemId);
           
           if (!incoming) {
             // Item was DELETED completely
-            if (isPreparingOrLater) {
+            db.run(`INSERT INTO voided_items (order_id, item_name, price, quantity, admin_remark) VALUES (?, ?, ?, ?, ?)`,
+              [id, existing.name, existing.price, existing.qty, admin_edit_remark || 'Removed from Order']);
+
+            if (isPreparingOrLater && !isCustom) {
               db.all(`SELECT stock_item_id, quantity_required FROM item_ingredients WHERE menu_item_id = ?`, [itemId], (err, ingredients) => {
                 if (!err && ingredients) {
                   ingredients.forEach(ing => {
@@ -397,43 +406,67 @@ router.put('/:id/sync', (req, res) => {
             // Item exists in both, check for qty changes
             const diff = incoming.qty - existing.qty;
             
-            if (diff !== 0 && isPreparingOrLater) {
-              db.all(`SELECT stock_item_id, quantity_required FROM item_ingredients WHERE menu_item_id = ?`, [itemId], (err, ingredients) => {
-                if (!err && ingredients) {
-                  ingredients.forEach(ing => {
-                    const totalDiff = ing.quantity_required * Math.abs(diff);
-                    if (diff > 0) {
-                      db.run(`UPDATE stock_items SET quantity = quantity - ? WHERE id = ?`, [totalDiff, ing.stock_item_id]);
-                      db.run(`INSERT INTO stock_logs (item_id, action, qty_changed, remarks) VALUES (?, 'remove', ?, ?)`, [ing.stock_item_id, totalDiff, `Increased qty in Order #${id}`]);
-                    } else {
-                      db.run(`UPDATE stock_items SET quantity = quantity + ? WHERE id = ?`, [totalDiff, ing.stock_item_id]);
-                      db.run(`INSERT INTO stock_logs (item_id, action, qty_changed, remarks) VALUES (?, 'add', ?, ?)`, [ing.stock_item_id, totalDiff, `Decreased qty in Order #${id}`]);
-                    }
-                  });
-                }
-              });
-            }
+            if (diff !== 0) {
+              if (diff < 0) {
+                // Quantity was decreased
+                db.run(`INSERT INTO voided_items (order_id, item_name, price, quantity, admin_remark) VALUES (?, ?, ?, ?, ?)`,
+                  [id, incoming.name, incoming.price, Math.abs(diff), admin_edit_remark || 'Quantity Reduced']);
 
-            // Consolidate into a single row in order_items
-            const primaryId = existing.ids[0];
-            db.run(`UPDATE order_items SET quantity = ?, price = ?, notes = ? WHERE id = ?`, [incoming.qty, incoming.price, incoming.notes, primaryId]);
-            
-            // Delete any duplicate rows for this item
-            for (let i = 1; i < existing.ids.length; i++) {
-              db.run(`DELETE FROM order_items WHERE id = ?`, [existing.ids[i]]);
+                // Reduce starting from newest rows
+                db.all(`SELECT id, quantity FROM order_items WHERE order_id = ? AND item_id = ? ORDER BY id DESC`, [id, itemIdStr], (errRows, rows) => {
+                  if (!errRows && rows) {
+                    let toRemove = Math.abs(diff);
+                    for (const row of rows) {
+                      if (toRemove <= 0) break;
+                      if (row.quantity <= toRemove) {
+                        toRemove -= row.quantity;
+                        db.run(`DELETE FROM order_items WHERE id = ?`, [row.id]);
+                      } else {
+                        db.run(`UPDATE order_items SET quantity = quantity - ? WHERE id = ?`, [toRemove, row.id]);
+                        toRemove = 0;
+                      }
+                    }
+                  }
+                });
+              } else {
+                // Quantity was increased! Insert a new row for the delta.
+                db.run(`INSERT INTO order_items (order_id, item_id, item_name, price, quantity, notes, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                  [id, itemIdStr, incoming.name, incoming.price, diff, incoming.notes, 'preparing', batchTimestamp]);
+              }
+
+              if (isPreparingOrLater && !isCustom) {
+                db.all(`SELECT stock_item_id, quantity_required FROM item_ingredients WHERE menu_item_id = ?`, [itemId], (err, ingredients) => {
+                  if (!err && ingredients) {
+                    ingredients.forEach(ing => {
+                      const totalDiff = ing.quantity_required * Math.abs(diff);
+                      if (diff > 0) {
+                        db.run(`UPDATE stock_items SET quantity = quantity - ? WHERE id = ?`, [totalDiff, ing.stock_item_id]);
+                        db.run(`INSERT INTO stock_logs (item_id, action, qty_changed, remarks) VALUES (?, 'remove', ?, ?)`, [ing.stock_item_id, totalDiff, `Increased qty in Order #${id}`]);
+                      } else {
+                        db.run(`UPDATE stock_items SET quantity = quantity + ? WHERE id = ?`, [totalDiff, ing.stock_item_id]);
+                        db.run(`INSERT INTO stock_logs (item_id, action, qty_changed, remarks) VALUES (?, 'add', ?, ?)`, [ing.stock_item_id, totalDiff, `Decreased qty in Order #${id}`]);
+                      }
+                    });
+                  }
+                });
+              }
+            } else {
+              // No qty change, update notes on the primary/first item row
+              db.run(`UPDATE order_items SET notes = ? WHERE id = ?`, [incoming.notes, existing.ids[0]]);
             }
           }
         });
 
         // 2. Process Additions (Brand New Items)
         Object.keys(incomingMap).forEach(itemIdStr => {
+          const incoming = incomingMap[itemIdStr];
           const itemId = parseInt(itemIdStr, 10);
-          const incoming = incomingMap[itemId];
+          const isCustom = isNaN(itemId);
           
-          if (!existingMap[itemId]) {
+          if (!existingMap[itemIdStr]) {
             // NEW ITEM
             if (!incoming.isFromPreparedWaste) {
-              if (isPreparingOrLater) {
+              if (isPreparingOrLater && !isCustom) {
                 db.all(`SELECT stock_item_id, quantity_required FROM item_ingredients WHERE menu_item_id = ?`, [itemId], (err, ingredients) => {
                   if (!err && ingredients) {
                     ingredients.forEach(ing => {
@@ -457,8 +490,8 @@ router.put('/:id/sync', (req, res) => {
                 }
               });
             }
-            db.run(`INSERT INTO order_items (order_id, item_id, item_name, price, quantity, notes, status) VALUES (?, ?, ?, ?, ?, ?, ?)`, 
-              [id, itemId, incoming.name, incoming.price, incoming.qty, incoming.notes, 'preparing']);
+            db.run(`INSERT INTO order_items (order_id, item_id, item_name, price, quantity, notes, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, 
+              [id, itemIdStr, incoming.name, incoming.price, incoming.qty, incoming.notes, 'preparing', batchTimestamp]);
           }
         });
 
@@ -523,37 +556,284 @@ function runWithRetry(sql, params, retries, delay, callback) {
   });
 }
 
+// @route   GET /api/orders/all
+// @desc    Get ALL orders (active + completed + trashed) — admin only
+router.get('/all', (req, res) => {
+  const { include_trash, status } = req.query;
+  let sql = `SELECT * FROM orders WHERE 1=1`;
+  const params = [];
+
+  if (include_trash !== 'true') {
+    sql += ` AND deleted_at IS NULL`;
+  }
+  if (status) {
+    sql += ` AND status = ?`;
+    params.push(status);
+  }
+  sql += ` ORDER BY created_at DESC`;
+
+  db.all(sql, params, (err, orders) => {
+    if (err) return res.status(500).json({ error: 'Failed to fetch orders' });
+    if (!orders.length) return res.json([]);
+
+    const orderIds = orders.map(o => o.id);
+    const placeholders = orderIds.map(() => '?').join(',');
+    db.all(`SELECT * FROM order_items WHERE order_id IN (${placeholders})`, orderIds, (err2, items) => {
+      if (err2) return res.status(500).json({ error: 'Failed to fetch order items' });
+      res.json(orders.map(o => ({ ...o, items: (items || []).filter(i => i.order_id === o.id) })));
+    });
+  });
+});
+
+// @route   PATCH /api/orders/:id/trash
+// @desc    Soft-delete (move to trash)
+router.patch('/:id/trash', (req, res) => {
+  const { id } = req.params;
+  db.run(`UPDATE orders SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL`, [id], function(err) {
+    if (err) return res.status(500).json({ error: 'Failed to trash order' });
+    if (this.changes === 0) return res.status(404).json({ error: 'Order not found or already trashed' });
+    res.json({ success: true, id, trashed: true });
+  });
+});
+
+// @route   PATCH /api/orders/:id/restore
+// @desc    Restore from trash
+router.patch('/:id/restore', (req, res) => {
+  const { id } = req.params;
+  db.run(`UPDATE orders SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL`, [id], function(err) {
+    if (err) return res.status(500).json({ error: 'Failed to restore order' });
+    if (this.changes === 0) return res.status(404).json({ error: 'Order not found or not in trash' });
+    res.json({ success: true, id, restored: true });
+  });
+});
+
 // @route   DELETE /api/orders/:id
-// @desc    Delete an order and all its items (cascade safe, BUSY-retry)
+// @desc    Permanently delete an order (admin only — must be in trash first)
 router.delete('/:id', (req, res) => {
   const { id } = req.params;
-
-  // Step 1: Delete child items first (avoids FK constraint error)
-  runWithRetry(`DELETE FROM order_items WHERE order_id = ?`, [id], 5, 300, (err) => {
+  // Permanently delete (cascade handles order_items)
+  runWithRetry(`DELETE FROM orders WHERE id = ?`, [id], 5, 300, function(err) {
     if (err) {
-      console.error('Error deleting order items:', err.message);
-      return res.status(500).json({ error: 'Failed to delete order items: ' + err.message });
+      console.error('Error deleting order:', err.message);
+      return res.status(500).json({ error: 'Failed to delete order: ' + err.message });
+    }
+    if (this.changes === 0) return res.status(404).json({ error: 'Order not found' });
+    queueOrderChange(id, 'delete');
+    res.json({ success: true, deletedId: id });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CANCEL REQUEST WORKFLOW — Role-based approval system
+// ─────────────────────────────────────────────────────────────────────────────
+
+// @route   POST /api/orders/:id/cancel-request
+// @desc    Waiter submits a cancel request for a preparing/ready order
+router.post('/:id/cancel-request', (req, res) => {
+  const { id } = req.params;
+  const { requested_by, requested_role, reason } = req.body;
+  if (!requested_by || !requested_role) {
+    return res.status(400).json({ error: 'requested_by and requested_role are required' });
+  }
+  // Check order exists and is cancellable via request
+  db.get(`SELECT * FROM orders WHERE id = ?`, [id], (err, order) => {
+    if (err || !order) return res.status(404).json({ error: 'Order not found' });
+    if (['cancelled', 'completed'].includes(order.status)) {
+      return res.status(400).json({ error: `Cannot request cancel for a ${order.status} order` });
+    }
+    if (!reason || reason.trim() === '') {
+      return res.status(400).json({ error: 'Remarks (Reason) is required to request cancellation' });
+    }
+    // Check no duplicate pending request
+    db.get(`SELECT id FROM cancel_requests WHERE order_id = ? AND status = 'pending'`, [id], (err2, existing) => {
+      if (existing) return res.status(409).json({ error: 'A cancel request is already pending for this order' });
+      db.run(
+        `INSERT INTO cancel_requests (order_id, requested_by, requested_role, reason) VALUES (?, ?, ?, ?)`,
+        [id, requested_by, requested_role, reason],
+        function(err3) {
+          if (err3) return res.status(500).json({ error: 'Failed to create cancel request' });
+          queueOrderChange(id, 'update');
+          queueCancelRequestChange(this.lastID, 'insert');
+          res.json({ success: true, requestId: this.lastID, message: 'Cancel request submitted successfully' });
+        }
+      );
+    });
+  });
+});
+
+// @route   GET /api/orders/cancel-requests
+// @desc    Get all cancel requests (optionally filter by status)
+router.get('/cancel-requests', (req, res) => {
+  const { status } = req.query; // 'pending', 'approved', 'rejected', or omit for all
+  const sql = status
+    ? `SELECT cr.*, o.table_number, o.area, o.status as order_status, o.total_amount, u.name as requester_name, ru.name as resolver_name
+       FROM cancel_requests cr
+       JOIN orders o ON cr.order_id = o.id
+       LEFT JOIN users u ON cr.requested_by = u.username
+       LEFT JOIN users ru ON cr.resolved_by = ru.username
+       WHERE cr.status = ?
+       ORDER BY cr.created_at DESC`
+    : `SELECT cr.*, o.table_number, o.area, o.status as order_status, o.total_amount, u.name as requester_name, ru.name as resolver_name
+       FROM cancel_requests cr
+       JOIN orders o ON cr.order_id = o.id
+       LEFT JOIN users u ON cr.requested_by = u.username
+       LEFT JOIN users ru ON cr.resolved_by = ru.username
+       ORDER BY cr.created_at DESC`;
+  const params = status ? [status] : [];
+  db.all(sql, params, (err, rows) => {
+    if (err) return res.status(500).json({ error: 'Failed to fetch cancel requests' });
+    // Attach order items to each request
+    if (!rows || rows.length === 0) return res.json([]);
+    const orderIds = [...new Set(rows.map(r => r.order_id))];
+    const placeholders = orderIds.map(() => '?').join(',');
+    db.all(`SELECT * FROM order_items WHERE order_id IN (${placeholders})`, orderIds, (err2, items) => {
+      const itemsMap = {};
+      (items || []).forEach(item => {
+        if (!itemsMap[item.order_id]) itemsMap[item.order_id] = [];
+        itemsMap[item.order_id].push(item);
+      });
+      const result = rows.map(r => ({ ...r, items: itemsMap[r.order_id] || [] }));
+      res.json(result);
+    });
+  });
+});
+
+// @route   PATCH /api/orders/cancel-requests/:reqId/approve
+// @desc    Cashier or Admin approves a cancel request — triggers actual cancellation
+router.patch('/cancel-requests/:reqId/approve', (req, res) => {
+  const { reqId } = req.params;
+  const { resolved_by, resolved_role, refund_raw, log_waste, resolve_remark } = req.body;
+  if (!resolved_by || !resolved_role) {
+    return res.status(400).json({ error: 'resolved_by and resolved_role are required' });
+  }
+  if (!resolve_remark || resolve_remark.trim() === '') {
+    return res.status(400).json({ error: 'Remarks (Reason) is required to approve cancellation' });
+  }
+  db.get(`SELECT * FROM cancel_requests WHERE id = ?`, [reqId], (err, cancelReq) => {
+    if (err || !cancelReq) return res.status(404).json({ error: 'Cancel request not found' });
+    if (cancelReq.status !== 'pending') {
+      if (cancelReq.status === 'rejected' && resolved_role === 'admin') {
+        // Admin can override rejected requests
+      } else {
+        return res.status(400).json({ error: `Request already ${cancelReq.status}` });
+      }
     }
 
-    // Step 2: Delete the parent order
-    runWithRetry(`DELETE FROM orders WHERE id = ?`, [id], 5, 300, function(err) {
-      if (err) {
-        console.error('Error deleting order:', err.message);
-        return res.status(500).json({ error: 'Failed to delete order: ' + err.message });
+    // Role permission check
+    db.get(`SELECT * FROM orders WHERE id = ?`, [cancelReq.order_id], (err2, order) => {
+      if (err2 || !order) return res.status(404).json({ error: 'Order not found' });
+
+      const isPreparing = order.status === 'preparing';
+      const isReady = order.status === 'ready';
+      const isCompleted = order.status === 'completed';
+
+      // Only admin can cancel ready or completed orders
+      if ((isReady || isCompleted) && resolved_role !== 'admin') {
+        return res.status(403).json({ error: 'Only admin can approve cancellation of ready or completed orders' });
       }
-      if (this.changes === 0) {
-        return res.status(404).json({ error: 'Order not found' });
+
+      // 24-hour restriction for completed orders
+      if (isCompleted) {
+        const completedAt = new Date(order.created_at);
+        const hoursSince = (Date.now() - completedAt.getTime()) / (1000 * 60 * 60);
+        if (hoursSince > 24) {
+          return res.status(403).json({ error: 'Cannot cancel completed orders older than 24 hours' });
+        }
       }
-      // Sync deleted order from Supabase
-      queueOrderChange(id, 'delete');
-      res.json({ success: true, deletedId: id });
+
+      // Mark request approved
+      db.run(
+        `UPDATE cancel_requests SET status = 'approved', resolved_by = ?, resolved_role = ?, resolve_remark = ?, resolved_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        [resolved_by, resolved_role, resolve_remark, reqId],
+        (err3) => {
+          if (err3) return res.status(500).json({ error: 'Failed to approve request' });
+
+          // Fetch items and execute cancellation
+          db.all(`SELECT * FROM order_items WHERE order_id = ?`, [cancelReq.order_id], (err4, orderItems) => {
+            db.run(`UPDATE orders SET status = 'cancelled' WHERE id = ?`, [cancelReq.order_id], (err5) => {
+              if (err5) return res.status(500).json({ error: 'Failed to cancel order' });
+
+              // Free the table
+              if (order.table_number && order.area !== 'Delivery') {
+                db.run(`UPDATE tables SET status = 'available' WHERE table_number = ?`, [order.table_number], () => {
+                  db.get(`SELECT id FROM tables WHERE table_number = ?`, [order.table_number], (e, row) => {
+                    if (!e && row) queueTableChange(row.id, 'update');
+                  });
+                });
+              }
+
+              const wasDeducted = ['preparing', 'ready', 'completed'].includes(order.status);
+              const doRefund = refund_raw !== false && wasDeducted;
+              const doWaste = log_waste !== false && wasDeducted;
+
+              // Refund raw stock
+              if (doRefund && orderItems && orderItems.length > 0) {
+                orderItems.forEach(item => {
+                  if (item.item_id) {
+                    db.all(`SELECT stock_item_id, quantity_required FROM item_ingredients WHERE menu_item_id = ?`, [item.item_id], (e2, ingredients) => {
+                      if (!e2 && ingredients) {
+                        ingredients.forEach(ing => {
+                          const total = ing.quantity_required * item.quantity;
+                          db.run(`UPDATE stock_items SET quantity = quantity + ? WHERE id = ?`, [total, ing.stock_item_id]);
+                          db.run(`INSERT INTO stock_logs (item_id, action, qty_changed, remarks) VALUES (?, 'add', ?, ?)`,
+                            [ing.stock_item_id, total, `Refund — Approved Cancel Request #${reqId} Order #${cancelReq.order_id} (${item.item_name} x${item.quantity})`]);
+                        });
+                      }
+                    });
+                  }
+                });
+              }
+
+              // Log prepared waste
+              if (doWaste && orderItems && orderItems.length > 0) {
+                orderItems.forEach(item => {
+                  if (item.item_name !== 'Service Charges') {
+                    db.run(`INSERT INTO prepared_waste (item_name, quantity, reason) VALUES (?, ?, ?)`,
+                      [item.item_name, item.quantity, `Approved Cancel Request #${reqId} — Order #${cancelReq.order_id} (by ${resolved_by})`]);
+                  }
+                });
+              }
+
+              queueOrderChange(cancelReq.order_id, 'update');
+              queueCancelRequestChange(reqId, 'update');
+              res.json({ success: true, message: 'Cancel request approved and order cancelled' });
+            });
+          });
+        }
+      );
     });
+  });
+});
+
+// @route   PATCH /api/orders/cancel-requests/:reqId/reject
+// @desc    Cashier or Admin rejects a cancel request
+router.patch('/cancel-requests/:reqId/reject', (req, res) => {
+  const { reqId } = req.params;
+  const { resolved_by, reject_reason } = req.body;
+  if (!resolved_by) return res.status(400).json({ error: 'resolved_by is required' });
+  if (!reject_reason || reject_reason.trim() === '') {
+    return res.status(400).json({ error: 'Remarks (Rejection Reason) is required to reject' });
+  }
+  db.get(`SELECT * FROM cancel_requests WHERE id = ?`, [reqId], (err, cancelReq) => {
+    if (err || !cancelReq) return res.status(404).json({ error: 'Cancel request not found' });
+    if (cancelReq.status !== 'pending') return res.status(400).json({ error: `Request already ${cancelReq.status}` });
+    db.run(
+      `UPDATE cancel_requests SET status = 'rejected', resolved_by = ?, reject_reason = ?, resolved_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      [resolved_by, reject_reason, reqId],
+      (err2) => {
+        if (err2) return res.status(500).json({ error: 'Failed to reject request' });
+        queueOrderChange(cancelReq.order_id, 'update');
+        queueCancelRequestChange(reqId, 'update');
+        res.json({ success: true, message: 'Cancel request rejected' });
+      }
+    );
   });
 });
 
 // @route   PATCH /api/orders/:id/cancel
 // @desc    Cancel an order, refund stock if selected, and log waste if selected
 router.patch('/:id/cancel', (req, res) => {
+
   const { id } = req.params;
   const { refund_raw, log_waste, reason = 'Customer Cancelled' } = req.body;
 
@@ -756,6 +1036,110 @@ router.get('/rider/:username', (req, res) => {
 
       res.json(ordersWithItems);
     });
+  });
+});
+
+// @route   GET /api/orders/voided-items
+// @desc    Get all voided items (removed from orders after being sent)
+router.get('/voided-items', (req, res) => {
+  db.all(`SELECT * FROM voided_items ORDER BY voided_at DESC`, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: 'Failed to fetch voided items: ' + err.message });
+    res.json(rows || []);
+  });
+});
+
+// @route   DELETE /api/orders/voided-items/:id
+// @desc    Delete a voided item log entry
+router.delete('/voided-items/:id', (req, res) => {
+  const { id } = req.params;
+  db.run(`DELETE FROM voided_items WHERE id = ?`, [id], function(err) {
+    if (err) return res.status(500).json({ error: 'Failed to delete voided item log' });
+    res.json({ success: true, id });
+  });
+});
+
+// @route   PATCH /api/orders/items/:itemId/status
+// @desc    Update status of a specific order item (e.g. mark ready or served)
+router.patch('/items/:itemId/status', (req, res) => {
+  const { itemId } = req.params;
+  const { status } = req.body; // 'preparing', 'ready', 'served'
+
+  if (!['preparing', 'ready', 'served'].includes(status)) {
+    return res.status(400).json({ error: 'Invalid status' });
+  }
+
+  // Get order_id first
+  db.get(`SELECT order_id FROM order_items WHERE id = ?`, [itemId], (err, row) => {
+    if (err || !row) return res.status(404).json({ error: 'Order item not found' });
+    const orderId = row.order_id;
+
+    db.run(`UPDATE order_items SET status = ? WHERE id = ?`, [status, itemId], function(err2) {
+      if (err2) return res.status(500).json({ error: 'Failed to update item status' });
+
+      // Check overall order status: if all items are now served, we could leave it or let cashier finish.
+      // But if all items are at least 'ready' (or 'served'), we can automatically update the order status to 'ready'!
+      db.all(`SELECT status FROM order_items WHERE order_id = ?`, [orderId], (err3, items) => {
+        if (!err3 && items) {
+          const allReadyOrServed = items.every(item => ['ready', 'served'].includes(item.status));
+          if (allReadyOrServed) {
+            db.run(`UPDATE orders SET status = 'ready', has_new_updates = 1 WHERE id = ?`, [orderId]);
+          } else {
+            // If at least one is cooking/preparing, make sure order is marked 'preparing'
+            const hasCooking = items.some(item => item.status === 'preparing');
+            if (hasCooking) {
+              db.run(`UPDATE orders SET status = 'preparing', has_new_updates = 1 WHERE id = ?`, [orderId]);
+            }
+          }
+        }
+        queueOrderChange(orderId, 'update');
+        res.json({ success: true, itemId, status });
+      });
+    });
+  });
+});
+
+// @route   POST /api/orders/:id/serve-all
+// @desc    Mark all ready items in the order as served
+router.post('/:id/serve-all', (req, res) => {
+  const { id } = req.params;
+
+  db.run(`UPDATE order_items SET status = 'served' WHERE order_id = ? AND status = 'ready'`, [id], function(err) {
+    if (err) return res.status(500).json({ error: 'Failed to serve all ready items' });
+    queueOrderChange(id, 'update');
+    res.json({ success: true, orderId: id, changes: this.changes });
+  });
+});
+
+// @route   PATCH /api/orders/:id/kot-print-status
+// @desc    Update KOT print status, reason and count
+router.patch('/:id/kot-print-status', (req, res) => {
+  const { id } = req.params;
+  const { status, error_reason, increment_count } = req.body;
+
+  let query = `UPDATE orders SET kot_print_status = ?`;
+  let params = [status];
+
+  if (error_reason !== undefined) {
+    query += `, kot_print_error_reason = ?`;
+    params.push(error_reason);
+  } else {
+    query += `, kot_print_error_reason = NULL`;
+  }
+
+  if (increment_count) {
+    query += `, kot_print_count = COALESCE(kot_print_count, 0) + 1`;
+  }
+
+  query += ` WHERE id = ?`;
+  params.push(id);
+
+  db.run(query, params, function(err) {
+    if (err) {
+      console.error("Failed to update KOT print status:", err);
+      return res.status(500).json({ error: err.message });
+    }
+    queueOrderChange(id, 'update');
+    res.json({ success: true });
   });
 });
 

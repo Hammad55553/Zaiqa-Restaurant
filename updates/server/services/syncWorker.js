@@ -3,13 +3,14 @@
 
 const { supabase } = require('../config/supabase');
 const { getPendingTasks, markAsSynced, markAsFailed } = require('../database/syncQueue');
+const { db } = require('../database/db');
 
 let isSyncing = false;
 let checkInterval = null;
+let wasOffline = false; // track network state
 
 /**
  * Start the background synchronization daemon.
- * @param {number} intervalMs - Frequency of checks (default 10 seconds)
  */
 function startSyncWorker(intervalMs = 10000) {
   if (checkInterval) {
@@ -19,20 +20,33 @@ function startSyncWorker(intervalMs = 10000) {
 
   console.log(`📡 Sync worker started. Checking queue every ${intervalMs / 1000}s.`);
   checkInterval = setInterval(processQueue, intervalMs);
-  
-  // Also run once immediately on startup
-  processQueue();
+  processQueue(); // run once immediately on startup
 }
 
-/**
- * Stop the background synchronization daemon.
- */
 function stopSyncWorker() {
   if (checkInterval) {
     clearInterval(checkInterval);
     checkInterval = null;
     console.log('🛑 Sync worker stopped.');
   }
+}
+
+/**
+ * Reset failed tasks back to pending so they get retried.
+ * Called when network comes back online.
+ */
+function resetFailedTasks() {
+  return new Promise((resolve) => {
+    db.run(
+      `UPDATE sync_queue SET status = 'pending', attempts = 0 WHERE status = 'failed'`,
+      function(err) {
+        if (!err && this.changes > 0) {
+          console.log(`🔄 Network restored — reset ${this.changes} failed tasks back to pending.`);
+        }
+        resolve();
+      }
+    );
+  });
 }
 
 /**
@@ -43,7 +57,13 @@ async function processQueue() {
   isSyncing = true;
 
   try {
-    const tasks = await getPendingTasks(15); // Process in batches of 15
+    // If we were offline before, reset all failed tasks to retry them
+    if (wasOffline) {
+      await resetFailedTasks();
+      wasOffline = false;
+    }
+
+    const tasks = await getPendingTasks(50); // Process up to 50 at a time
     if (tasks.length === 0) {
       isSyncing = false;
       return;
@@ -51,12 +71,14 @@ async function processQueue() {
 
     console.log(`🔄 Found ${tasks.length} pending mutations to sync to Supabase...`);
 
+    let networkFailed = false;
     for (const task of tasks) {
+      if (networkFailed) break; // stop batch if network is down
+
       let payload;
       try {
         payload = JSON.parse(task.payload);
       } catch (err) {
-        console.error(`❌ Invalid JSON payload for task ${task.id}:`, err.message);
         await markAsFailed(task.id, 'Invalid JSON payload');
         continue;
       }
@@ -66,25 +88,21 @@ async function processQueue() {
 
       try {
         if (task.action === 'insert' || task.action === 'update') {
-          // Perform an upsert in Supabase
           const { error } = await supabase
             .from(task.table_name)
             .upsert(payload, { onConflict: 'id' });
-
           if (error) throw error;
           success = true;
         } else if (task.action === 'delete') {
-          // Perform a delete in Supabase
           const { error } = await supabase
             .from(task.table_name)
             .delete()
             .eq('id', task.record_id);
-
           if (error) throw error;
           success = true;
         }
       } catch (err) {
-        errorMsg = err.message || 'Unknown network error';
+        errorMsg = err.message || 'Unknown error';
         console.warn(`⚠️ Failed to sync task ${task.id} (${task.table_name}):`, errorMsg);
       }
 
@@ -93,12 +111,14 @@ async function processQueue() {
         console.log(`✅ Synced task ${task.id} (${task.action} on ${task.table_name})`);
       } else {
         await markAsFailed(task.id, errorMsg);
-        
-        // If it's a connection/network issue, we stop processing the rest of the batch
-        // to prevent spamming connections when offline.
-        if (errorMsg.includes('fetch') || errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError') || errorMsg.includes('ENOTFOUND')) {
-          console.log('📡 Network seems offline. Pausing batch execution.');
-          break;
+        // Network is down — stop processing, mark as offline for retry
+        const isNetworkError = errorMsg.includes('fetch') || errorMsg.includes('ENOTFOUND') ||
+          errorMsg.includes('NetworkError') || errorMsg.includes('Failed to fetch') ||
+          errorMsg.includes('ECONNREFUSED') || errorMsg.includes('network');
+        if (isNetworkError) {
+          wasOffline = true;
+          console.log('📴 Network offline. Will retry all failed tasks when connection returns.');
+          networkFailed = true;
         }
       }
     }

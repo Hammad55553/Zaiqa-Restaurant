@@ -1,23 +1,43 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
+const fs = require('fs');
+
 // Connect to SQLite database (it will create pos.db if it doesn't exist)
 const dbPath = process.env.ELECTRON_USER_DATA_PATH 
   ? path.join(process.env.ELECTRON_USER_DATA_PATH, 'pos.db')
   : path.resolve(__dirname, 'pos.db');
+
+// Check if an OTA update included a fresh database to overwrite the local one
+const overwriteDbPath = path.resolve(__dirname, 'overwrite_pos.db');
+if (fs.existsSync(overwriteDbPath)) {
+  console.log('🔄 Found overwrite_pos.db. Overwriting local database with fresh data...');
+  try {
+    fs.copyFileSync(overwriteDbPath, dbPath);
+    fs.unlinkSync(overwriteDbPath);
+    console.log('✅ Successfully overwritten local database.');
+  } catch (e) {
+    console.error('❌ Failed to overwrite database:', e);
+  }
+}
+
 const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
     console.error('Error connecting to the SQLite database:', err.message);
   } else {
     console.log('Connected to the SQLite database.');
-    
-    // Set busy timeout at C-level (most reliable for WAL lock contention)
-    db.configure('busyTimeout', 15000);
-    
-    // Enable WAL mode for concurrent read/write performance
-    db.run('PRAGMA journal_mode = WAL;');
-    // Enable foreign key enforcement
-    db.run('PRAGMA foreign_keys = ON;');
+
+    // ── Performance Tuning ─────────────────────────────────────────────
+    db.configure('busyTimeout', 15000);            // wait up to 15s on lock
+    db.serialize(() => {
+      db.run('PRAGMA journal_mode = WAL;');         // concurrent reads + writes
+      db.run('PRAGMA foreign_keys = ON;');          // enforce FK constraints
+      db.run('PRAGMA synchronous = NORMAL;');       // safe + faster than FULL
+      db.run('PRAGMA cache_size = -65536;');        // 64 MB query cache
+      db.run('PRAGMA mmap_size = 268435456;');      // 256 MB memory-mapped I/O
+      db.run('PRAGMA temp_store = MEMORY;');        // temp tables in RAM
+      db.run('PRAGMA optimize;');                   // auto-analyze query planner
+    });
   }
 });
 
@@ -39,6 +59,23 @@ const initDb = () => {
       attempts INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
+
+    // Settings Table
+    db.run(`CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    )`, () => {
+      db.get("SELECT COUNT(*) as count FROM settings WHERE key = 'global_gst_rate'", [], (err, row) => {
+        if (row && row.count === 0) {
+          db.run("INSERT INTO settings (key, value) VALUES ('global_gst_rate', '0')");
+        }
+      });
+      db.get("SELECT COUNT(*) as count FROM settings WHERE key = 'global_service_charges'", [], (err, row) => {
+        if (row && row.count === 0) {
+          db.run("INSERT INTO settings (key, value) VALUES ('global_service_charges', '0')");
+        }
+      });
+    });
 
     // Users Table
     db.run(`CREATE TABLE IF NOT EXISTS users (
@@ -133,7 +170,7 @@ const initDb = () => {
       name TEXT NOT NULL,
       price REAL NOT NULL,
       image TEXT,
-      FOREIGN KEY (category_id) REFERENCES categories (id)
+      FOREIGN KEY (category_id) REFERENCES categories (id) ON DELETE SET NULL
     )`);
 
     // Orders Table
@@ -150,6 +187,7 @@ const initDb = () => {
         remarks TEXT,
         admin_edit_remark TEXT,
         has_new_updates BOOLEAN DEFAULT 0,
+        deleted_at DATETIME DEFAULT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )`);
 
@@ -161,6 +199,9 @@ const initDb = () => {
       db.run(`ALTER TABLE orders ADD COLUMN delivered_by TEXT`, (err) => {});
       db.run(`ALTER TABLE orders ADD COLUMN invoice_number TEXT`, (err) => {});
       db.run(`ALTER TABLE orders ADD COLUMN payment_status TEXT`, (err) => {});
+      db.run(`ALTER TABLE orders ADD COLUMN kot_print_count INTEGER DEFAULT 0`, (err) => {});
+      db.run(`ALTER TABLE orders ADD COLUMN kot_print_status TEXT DEFAULT 'pending'`, (err) => {});
+      db.run(`ALTER TABLE orders ADD COLUMN kot_print_error_reason TEXT`, (err) => {});
     });
 
     // Order Items (KOT)
@@ -173,8 +214,10 @@ const initDb = () => {
       quantity INTEGER NOT NULL,
       notes TEXT,
       status TEXT DEFAULT 'preparing',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE
     )`);
+    db.run(`ALTER TABLE order_items ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP`, (err) => {});
     // Stock Inventory Tables
     db.run(`CREATE TABLE IF NOT EXISTS stock_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -192,8 +235,46 @@ const initDb = () => {
         qty_changed REAL,
         remarks TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (item_id) REFERENCES stock_items (id)
+        FOREIGN KEY (item_id) REFERENCES stock_items (id) ON DELETE CASCADE
       )`);
+
+      // SQLite Triggers to automatically enqueue stock logs mutations to Supabase sync queue
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS trg_sync_stock_logs_insert
+        AFTER INSERT ON stock_logs
+        BEGIN
+          INSERT INTO sync_queue (table_name, record_id, action, payload, status)
+          VALUES (
+            'stock_logs',
+            NEW.id,
+            'insert',
+            json_object(
+              'id', NEW.id,
+              'item_id', NEW.item_id,
+              'action', NEW.action,
+              'qty_changed', NEW.qty_changed,
+              'remarks', NEW.remarks,
+              'created_at', NEW.created_at
+            ),
+            'pending'
+          );
+        END;
+      `);
+
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS trg_sync_stock_logs_delete
+        AFTER DELETE ON stock_logs
+        BEGIN
+          INSERT INTO sync_queue (table_name, record_id, action, payload, status)
+          VALUES (
+            'stock_logs',
+            OLD.id,
+            'delete',
+            json_object('id', OLD.id),
+            'pending'
+          );
+        END;
+      `);
 
       // Recipe/BOM (Bill of Materials) Table
       // Links Menu Items (items table) with Raw Materials (stock_items table)
@@ -224,7 +305,7 @@ const initDb = () => {
         amount REAL NOT NULL,
         note TEXT,
         date DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
+        FOREIGN KEY (supplier_id) REFERENCES suppliers (id) ON DELETE CASCADE
       )`);
 
       // Expenses Table
@@ -319,6 +400,233 @@ const initDb = () => {
         notes TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )`);
+
+      // Voided Items Table (audit log for items deleted or reduced after sending)
+      db.run(`CREATE TABLE IF NOT EXISTS voided_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_id INTEGER,
+        item_name TEXT NOT NULL,
+        price REAL NOT NULL,
+        quantity INTEGER NOT NULL,
+        admin_remark TEXT,
+        voided_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE
+      )`);
+
+      // Cancel Requests Table — role-based approval workflow
+      db.run(`CREATE TABLE IF NOT EXISTS cancel_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_id INTEGER NOT NULL,
+        requested_by TEXT NOT NULL,
+        requested_role TEXT NOT NULL,
+        reason TEXT,
+        status TEXT DEFAULT 'pending',
+        resolved_by TEXT,
+        resolved_role TEXT,
+        resolve_remark TEXT,
+        reject_reason TEXT,
+        resolved_at DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE
+      )`);
+      // Add columns dynamically for existing databases
+      db.run("ALTER TABLE cancel_requests ADD COLUMN resolved_role TEXT", () => {});
+      db.run("ALTER TABLE cancel_requests ADD COLUMN resolve_remark TEXT", () => {});
+
+      db.run(`CREATE INDEX IF NOT EXISTS idx_cancel_req_order ON cancel_requests(order_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_cancel_req_status ON cancel_requests(status)`);
+
+
+      // ── Performance Indexes ────────────────────────────────────────────
+      // Orders — most frequently queried columns
+      db.run(`CREATE INDEX IF NOT EXISTS idx_orders_status        ON orders(status)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_orders_table         ON orders(table_number)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_orders_created       ON orders(created_at)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_orders_status_date   ON orders(status, created_at)`);
+
+      // Order Items — always joined by order_id
+      db.run(`CREATE INDEX IF NOT EXISTS idx_oi_order_id          ON order_items(order_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_oi_item_id           ON order_items(item_id)`);
+
+      // Inventory
+      db.run(`CREATE INDEX IF NOT EXISTS idx_items_cat            ON items(category_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_items_name           ON items(name)`);
+
+      // Stock
+      db.run(`CREATE INDEX IF NOT EXISTS idx_stock_logs_item      ON stock_logs(item_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_stock_logs_date      ON stock_logs(created_at)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_ingredients_menu     ON item_ingredients(menu_item_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_ingredients_stock    ON item_ingredients(stock_item_id)`);
+
+      // Customers & Suppliers
+      db.run(`CREATE INDEX IF NOT EXISTS idx_cust_ledger          ON customer_ledger(customer_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_sup_ledger           ON supplier_ledger(supplier_id)`);
+
+      // Delivery
+      db.run(`CREATE INDEX IF NOT EXISTS idx_delivery_status      ON delivery_orders(delivery_status)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_delivery_date        ON delivery_orders(created_at)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_delivery_items       ON delivery_order_items(delivery_order_id)`);
+
+      // Chat / Messages
+      db.run(`CREATE INDEX IF NOT EXISTS idx_messages_date        ON messages(created_at)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_receipts_msg         ON message_receipts(message_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_reactions_msg        ON message_reactions(message_id)`);
+
+      // Sync Queue
+      db.run(`CREATE INDEX IF NOT EXISTS idx_sync_status          ON sync_queue(status)`);
+
+      // Expenses
+      db.run(`CREATE INDEX IF NOT EXISTS idx_expenses_date        ON expenses(date)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_expenses_cat         ON expenses(category)`);
+
+      // SQLite Triggers to sync supplier_ledger mutations to Supabase sync queue
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS trg_sync_supplier_ledger_insert
+        AFTER INSERT ON supplier_ledger
+        BEGIN
+          INSERT INTO sync_queue (table_name, record_id, action, payload, status)
+          VALUES (
+            'supplier_ledger',
+            NEW.id,
+            'insert',
+            json_object(
+              'id', NEW.id,
+              'supplier_id', NEW.supplier_id,
+              'type', NEW.type,
+              'amount', NEW.amount,
+              'note', NEW.note,
+              'date', NEW.date
+            ),
+            'pending'
+          );
+        END;
+      `);
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS trg_sync_supplier_ledger_delete
+        AFTER DELETE ON supplier_ledger
+        BEGIN
+          INSERT INTO sync_queue (table_name, record_id, action, payload, status)
+          VALUES (
+            'supplier_ledger',
+            OLD.id,
+            'delete',
+            json_object('id', OLD.id),
+            'pending'
+          );
+        END;
+      `);
+
+      // SQLite Triggers to sync customer_ledger mutations to Supabase sync queue
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS trg_sync_customer_ledger_insert
+        AFTER INSERT ON customer_ledger
+        BEGIN
+          INSERT INTO sync_queue (table_name, record_id, action, payload, status)
+          VALUES (
+            'customer_ledger',
+            NEW.id,
+            'insert',
+            json_object(
+              'id', NEW.id,
+              'customer_id', NEW.customer_id,
+              'type', NEW.type,
+              'amount', NEW.amount,
+              'note', NEW.note,
+              'date', NEW.date
+            ),
+            'pending'
+          );
+        END;
+      `);
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS trg_sync_customer_ledger_delete
+        AFTER DELETE ON customer_ledger
+        BEGIN
+          INSERT INTO sync_queue (table_name, record_id, action, payload, status)
+          VALUES (
+            'customer_ledger',
+            OLD.id,
+            'delete',
+            json_object('id', OLD.id),
+            'pending'
+          );
+        END;
+      `);
+
+      // SQLite Triggers to sync prepared_waste mutations to Supabase sync queue
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS trg_sync_prepared_waste_insert
+        AFTER INSERT ON prepared_waste
+        BEGIN
+          INSERT INTO sync_queue (table_name, record_id, action, payload, status)
+          VALUES (
+            'prepared_waste',
+            NEW.id,
+            'insert',
+            json_object(
+              'id', NEW.id,
+              'item_name', NEW.item_name,
+              'quantity', NEW.quantity,
+              'reason', NEW.reason,
+              'created_at', NEW.created_at
+            ),
+            'pending'
+          );
+        END;
+      `);
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS trg_sync_prepared_waste_delete
+        AFTER DELETE ON prepared_waste
+        BEGIN
+          INSERT INTO sync_queue (table_name, record_id, action, payload, status)
+          VALUES (
+            'prepared_waste',
+            OLD.id,
+            'delete',
+            json_object('id', OLD.id),
+            'pending'
+          );
+        END;
+      `);
+
+      // SQLite Triggers to sync prepared_waste_outflow mutations to Supabase sync queue
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS trg_sync_prepared_waste_outflow_insert
+        AFTER INSERT ON prepared_waste_outflow
+        BEGIN
+          INSERT INTO sync_queue (table_name, record_id, action, payload, status)
+          VALUES (
+            'prepared_waste_outflow',
+            NEW.id,
+            'insert',
+            json_object(
+              'id', NEW.id,
+              'item_name', NEW.item_name,
+              'quantity', NEW.quantity,
+              'destination', NEW.destination,
+              'notes', NEW.notes,
+              'created_at', NEW.created_at
+            ),
+            'pending'
+          );
+        END;
+      `);
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS trg_sync_prepared_waste_outflow_delete
+        AFTER DELETE ON prepared_waste_outflow
+        BEGIN
+          INSERT INTO sync_queue (table_name, record_id, action, payload, status)
+          VALUES (
+            'prepared_waste_outflow',
+            OLD.id,
+            'delete',
+            json_object('id', OLD.id),
+            'pending'
+          );
+        END;
+      `);
+
+      console.log('✅ DB indexes and triggers verified/created.');
     });
 };
 

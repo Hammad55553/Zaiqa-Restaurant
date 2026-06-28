@@ -205,6 +205,20 @@ function queueDeliveryChange(deliveryId, action) {
   });
 }
 
+/**
+ * Queue a cancel request change.
+ */
+function queueCancelRequestChange(reqId, action) {
+  if (action === 'delete') {
+    addToQueue('cancel_requests', reqId, 'delete', { id: reqId });
+    return;
+  }
+  db.get('SELECT * FROM cancel_requests WHERE id = ?', [reqId], (err, req) => {
+    if (err || !req) return;
+    addToQueue('cancel_requests', req.id, action, req);
+  });
+}
+
 module.exports = {
   queueOrderChange,
   queueExpenseChange,
@@ -214,5 +228,6 @@ module.exports = {
   queueStockChange,
   queueTableChange,
   queueCustomerChange,
-  queueDeliveryChange
+  queueDeliveryChange,
+  queueCancelRequestChange
 };

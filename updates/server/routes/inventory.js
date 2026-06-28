@@ -41,7 +41,7 @@ router.get('/', (req, res) => {
       if (err) return res.status(500).json({ error: err.message });
       
       db.all(
-        `SELECT ii.*, si.name as stock_item_name, si.unit as stock_item_unit
+        `SELECT ii.*, si.name as stock_item_name, si.unit as stock_item_unit, si.quantity as stock_item_quantity
          FROM item_ingredients ii
          JOIN stock_items si ON ii.stock_item_id = si.id`,
         [],
