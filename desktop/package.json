@@ -17,7 +17,7 @@
     "express": "^5.2.1",
     "firebase-admin": "^13.0.0",
     "sqlite": "^5.1.1",
-    "sqlite3": "npm:@vscode/sqlite3@^5.1.12-vscode",
+    "sqlite3": "^5.1.7",
     "ws": "^8.21.0"
   },
   "devDependencies": {
@@ -27,7 +27,6 @@
   "build": {
     "appId": "com.zaiqah.pos",
     "productName": "Zaiqah POS",
-    "npmRebuild": false,
     "directories": {
       "output": "dist-electron"
     },

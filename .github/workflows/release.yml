@@ -85,7 +85,7 @@ jobs:
 
       - name: Install Desktop Dependencies
         working-directory: desktop
-        run: npm install --ignore-scripts
+        run: npm install
 
       - name: Build Windows Installer
         working-directory: desktop
@@ -119,7 +119,7 @@ jobs:
 
       - name: Install Desktop Dependencies
         working-directory: desktop
-        run: npm install --ignore-scripts
+        run: npm install
 
       - name: Build macOS Installer
         working-directory: desktop
