@@ -340,7 +340,7 @@ const ReceiptPreview = ({ onClose, initialInvoiceId }) => {
 
                 {/* Visual screen representation only */}
                 <div style={{ width: '100%', background: '#fff' }}>
-                  <ReceiptSlip printData={selectedInvoice} />
+                  <ReceiptSlip printData={selectedInvoice} isPreview={true} />
                 </div>
 
                 <div style={{

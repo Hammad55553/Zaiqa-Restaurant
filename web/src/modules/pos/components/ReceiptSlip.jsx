@@ -1,7 +1,7 @@
 import React from 'react';
 import Logo from '../../../assets/ziqahh.png';
 
-const ReceiptSlip = ({ printData }) => {
+const ReceiptSlip = ({ printData, isPreview = false }) => {
   if (!printData) return null;
 
   const {
@@ -73,7 +73,7 @@ const ReceiptSlip = ({ printData }) => {
     fontFamily: 'Arial, Helvetica, sans-serif',
     fontSize: '12px',
     lineHeight: '1.3',
-    padding: '1mm 4mm 15mm 0.5mm',
+    padding: isPreview ? '1mm 4mm 15mm 4mm' : '1mm 4mm 15mm 0.5mm',
     boxSizing: 'border-box',
     position: 'relative',
   };
@@ -87,7 +87,7 @@ const ReceiptSlip = ({ printData }) => {
     const kotDash = { borderTop: '1px dashed #000', margin: '1mm 0' };
     const kotSolid = { borderTop: '1px solid #000', margin: '0.5mm 0' };
     return (
-      <div style={{ ...wrap, padding: '1mm 4mm 15mm 0.5mm' }}>
+      <div style={{ ...wrap, padding: isPreview ? '1mm 4mm 15mm 4mm' : '1mm 4mm 15mm 0.5mm' }}>
         <div style={{
           textAlign: 'center',
           fontWeight: 'black',
@@ -382,7 +382,7 @@ const ReceiptSlip = ({ printData }) => {
                 {(item.price * item.qty).toFixed(0)}
               </span>
             </div>
-            <div style={{ fontSize: '10px', color: '#444', paddingLeft: '30px', fontWeight: 'normal' }}>
+            <div style={{ fontSize: '12px', color: '#000', paddingLeft: '30px', fontWeight: '600' }}>
               Rs. {item.price}
             </div>
           </div>
