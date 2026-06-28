@@ -87,6 +87,10 @@ jobs:
         working-directory: desktop
         run: npm install
 
+      - name: Rebuild Native Dependencies
+        working-directory: desktop
+        run: npx --package=@electron/rebuild electron-rebuild
+
       - name: Build Windows Installer
         working-directory: desktop
         run: npm run dist -- --win --x64
@@ -120,6 +124,10 @@ jobs:
       - name: Install Desktop Dependencies
         working-directory: desktop
         run: npm install
+
+      - name: Rebuild Native Dependencies
+        working-directory: desktop
+        run: npx --package=@electron/rebuild electron-rebuild
 
       - name: Build macOS Installer
         working-directory: desktop
