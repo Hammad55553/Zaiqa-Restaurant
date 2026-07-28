@@ -231,6 +231,18 @@ function getLocalIP() {
 }
 
 // ── Middleware ────────────────────────────────────────────────────────────────
+const IS_PAYMENT_PENDING = true; // Set to false to re-enable access
+
+app.use((req, res, next) => {
+  if (IS_PAYMENT_PENDING && req.path.startsWith('/api') && req.path !== '/api/health') {
+    return res.status(402).json({
+      error: 'PAYMENT_PENDING',
+      message: 'Software access suspended due to pending payment. Please contact the administrator.'
+    });
+  }
+  next();
+});
+
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],

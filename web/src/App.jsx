@@ -562,6 +562,39 @@ function App() {
     };
   }, [isLoaded, currentUser]);
 
+  const IS_PAYMENT_PENDING = true; // Set to false to re-enable
+
+  if (IS_PAYMENT_PENDING) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans text-white">
+        <div className="absolute top-[-20%] left-[-20%] w-[60%] h-[60%] rounded-full bg-red-600/10 blur-[120px] pointer-events-none" />
+        <div className="absolute bottom-[-20%] right-[-20%] w-[60%] h-[60%] rounded-full bg-orange-500/10 blur-[120px] pointer-events-none" />
+        
+        <div className="w-full max-w-lg bg-white/[0.02] border border-red-500/20 backdrop-blur-2xl rounded-3xl shadow-2xl p-8 space-y-6 text-center relative z-10">
+          <div className="w-20 h-20 mx-auto rounded-full bg-red-500/10 flex items-center justify-center border border-red-500/30 text-red-500 animate-pulse">
+            <Ban size={48} />
+          </div>
+          
+          <div className="space-y-2">
+            <h1 className="text-3xl font-extrabold tracking-tight text-red-500">Service Suspended</h1>
+            <p className="text-zinc-400 text-sm">
+              Your software license or payment is currently pending. Access has been temporarily restricted.
+            </p>
+          </div>
+          
+          <div className="p-4 bg-red-500/5 rounded-2xl border border-red-500/10 text-xs text-red-400 space-y-1">
+            <p className="font-bold">Reason: Pending Payment</p>
+            <p>Please contact the system administrator or developer to restore full access.</p>
+          </div>
+          
+          <div className="pt-2 text-zinc-600 text-xs font-mono">
+            Error Code: 402_PAYMENT_REQUIRED
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!isLoaded) {
     return <SplashScreen onComplete={() => {
       try { sessionStorage.setItem('pos_session_loaded', 'true'); } catch {}

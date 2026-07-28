@@ -163,6 +163,30 @@ function App() {
     });
   };
 
+  const IS_PAYMENT_PENDING = true; // Set to false to re-enable
+
+  if (IS_PAYMENT_PENDING) {
+    return (
+      <SafeAreaProvider>
+        <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
+        <View style={{ flex: 1, backgroundColor: '#0f172a', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+          <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(239, 68, 68, 0.1)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.3)', marginBottom: 24 }}>
+            <Text style={{ fontSize: 40, color: '#ef4444' }}>⚠️</Text>
+          </View>
+          <Text style={{ fontSize: 26, fontWeight: 'bold', color: '#ef4444', marginBottom: 12, textAlign: 'center' }}>Service Suspended</Text>
+          <Text style={{ fontSize: 15, color: '#94a3b8', textAlign: 'center', marginBottom: 24, lineHeight: 22 }}>
+            Your software license or payment is currently pending. Access has been temporarily restricted.
+          </Text>
+          <View style={{ width: '100%', padding: 16, backgroundColor: 'rgba(239, 68, 68, 0.05)', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.1)', alignItems: 'center' }}>
+            <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#f87171', marginBottom: 4 }}>Reason: Pending Payment</Text>
+            <Text style={{ fontSize: 12, color: '#f87171', textAlign: 'center' }}>Please contact the system administrator to restore access.</Text>
+          </View>
+          <Text style={{ marginTop: 32, fontSize: 11, color: '#475569' }}>Error Code: 402_PAYMENT_REQUIRED</Text>
+        </View>
+      </SafeAreaProvider>
+    );
+  }
+
   if (showSplash || !configLoaded) {
     return (
       <ToastProvider>
