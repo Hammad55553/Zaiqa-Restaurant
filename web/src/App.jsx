@@ -562,7 +562,7 @@ function App() {
     };
   }, [isLoaded, currentUser]);
 
-  const IS_PAYMENT_PENDING = true; // Set to false to re-enable
+  const IS_PAYMENT_PENDING = false; // Set to false to re-enable
 
   if (IS_PAYMENT_PENDING) {
     return (

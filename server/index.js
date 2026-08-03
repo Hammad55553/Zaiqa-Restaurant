@@ -231,7 +231,7 @@ function getLocalIP() {
 }
 
 // ── Middleware ────────────────────────────────────────────────────────────────
-const IS_PAYMENT_PENDING = true; // Set to false to re-enable access
+const IS_PAYMENT_PENDING = false; // Set to false to re-enable access
 
 app.use((req, res, next) => {
   if (IS_PAYMENT_PENDING && req.path.startsWith('/api') && req.path !== '/api/health') {

@@ -119,10 +119,13 @@ export default function OrderingScreen({
   }, []);
 
   const handleReleaseTable = () => {
+    // Payment check bypassed
+    /*
     if (activeOrder && activeOrder.status !== 'completed') {
       toast.error('Payment Pending', 'Cannot free table. The bill has not been paid at the counter yet.');
       return;
     }
+    */
     setConfirmModalTitle('Free Table?');
     setConfirmModalSub(`Are you sure you want to make Table ${selectedTable.number} free and available?`);
     setConfirmModalAction(() => async () => {
