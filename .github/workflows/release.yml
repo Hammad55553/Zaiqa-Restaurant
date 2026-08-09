@@ -21,6 +21,13 @@ jobs:
         with:
           node-version: 20
 
+      - name: Create server .env from secrets
+        run: |
+          cat > server/.env <<EOF
+          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          EOF
+
       - name: Install Web Dependencies
         working-directory: web
         run: npm ci
@@ -75,6 +82,14 @@ jobs:
         with:
           node-version: 20
 
+      - name: Create server .env from secrets
+        shell: bash
+        run: |
+          cat > server/.env <<EOF
+          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          EOF
+
       - name: Install Web Dependencies
         working-directory: web
         run: npm ci
@@ -112,6 +127,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+
+      - name: Create server .env from secrets
+        run: |
+          cat > server/.env <<EOF
+          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          EOF
 
       - name: Install Web Dependencies
         working-directory: web

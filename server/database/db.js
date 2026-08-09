@@ -59,6 +59,9 @@ const initDb = () => {
       attempts INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
+    // Add retry-tracking columns for existing installs (idempotent).
+    db.run(`ALTER TABLE sync_queue ADD COLUMN last_error TEXT`, () => {});
+    db.run(`ALTER TABLE sync_queue ADD COLUMN next_retry_at DATETIME`, () => {});
 
     // Settings Table
     db.run(`CREATE TABLE IF NOT EXISTS settings (

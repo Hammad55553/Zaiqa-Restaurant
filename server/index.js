@@ -1,8 +1,17 @@
 const path = require('path');
-const envPath = process.env.ELECTRON_APP_PATH
+const fs = require('fs');
+// Load .env from the folder this server is actually running from FIRST.
+// This is critical for OTA updates: when the server runs from
+// userData/updates/server/, __dirname points there, so a freshly-pushed
+// .env (with an updated Supabase key) is used instead of the stale bundled one.
+// Fall back to the bundled app path only if a co-located .env isn't present.
+const localEnvPath = path.join(__dirname, '.env');
+const bundledEnvPath = process.env.ELECTRON_APP_PATH
   ? path.join(process.env.ELECTRON_APP_PATH, 'server/.env')
-  : path.join(__dirname, '.env');
+  : localEnvPath;
+const envPath = fs.existsSync(localEnvPath) ? localEnvPath : bundledEnvPath;
 require('dotenv').config({ path: envPath });
+console.log('🔧 Loaded environment from:', envPath);
 const express = require('express');
 const cors = require('cors');
 const os = require('os');
@@ -257,21 +266,30 @@ app.use('/assets', express.static(path.join(__dirname, '../mobile/assets')));
 initDb();
 
 // ── Start Supabase Sync Worker ────────────────────────────────────────────────
-const { startSyncWorker, triggerSyncNow } = require('./services/syncWorker');
+const { startSyncWorker, triggerSyncNow, retryAllNow } = require('./services/syncWorker');
 startSyncWorker();
+
+// On startup, reset any previously stuck (failed/dead) tasks and push them once.
+// This drains the backlog that built up before the Supabase key was fixed.
+retryAllNow().catch((err) =>
+  console.error('❌ Startup retry-all failed:', err.message)
+);
 
 // ── Sync Status & Force Sync ──────────────────────────────────────────────────
 const { db } = require('./database/db');
 app.get('/api/sync/status', (req, res) => {
   db.get(`SELECT COUNT(*) as pending FROM sync_queue WHERE status='pending'`, (err, row1) => {
     db.get(`SELECT COUNT(*) as failed FROM sync_queue WHERE status='failed'`, (err2, row2) => {
-      db.get(`SELECT MAX(created_at) as last_activity FROM sync_queue`, (err3, row3) => {
-        res.json({
-          pending: row1?.pending || 0,
-          failed: row2?.failed || 0,
-          lastActivity: row3?.last_activity || null,
-          workerRunning: true,
-          timestamp: new Date().toISOString()
+      db.get(`SELECT COUNT(*) as dead FROM sync_queue WHERE status='dead'`, (errD, rowD) => {
+        db.get(`SELECT MAX(created_at) as last_activity FROM sync_queue`, (err3, row3) => {
+          res.json({
+            pending: row1?.pending || 0,
+            failed: row2?.failed || 0,
+            dead: rowD?.dead || 0,
+            lastActivity: row3?.last_activity || null,
+            workerRunning: true,
+            timestamp: new Date().toISOString()
+          });
         });
       });
     });
@@ -282,6 +300,16 @@ app.post('/api/sync/force', async (req, res) => {
   try {
     await triggerSyncNow();
     res.json({ success: true, message: 'Sync triggered' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Reset ALL failed/dead tasks back to pending and sync immediately.
+app.post('/api/sync/retry-all', async (req, res) => {
+  try {
+    const count = await retryAllNow();
+    res.json({ success: true, reset: count, message: `Retried ${count} stuck task(s)` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
