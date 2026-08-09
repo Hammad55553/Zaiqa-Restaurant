@@ -1,46 +1,57 @@
-const { createClient } = require('@supabase/supabase-js');
-const ws = require('ws');
+// Supabase client for background sync.
+// This must NEVER crash the whole server — the POS has to keep working even if
+// Supabase/ws fail to load. So everything here is wrapped in try/catch and we
+// export a client that may be null; callers already handle sync errors.
 
-// Supabase project URL. Can be overridden via env for dev/prod projects.
+let createClient = null;
+try {
+  ({ createClient } = require('@supabase/supabase-js'));
+} catch (e) {
+  console.error('⚠️ @supabase/supabase-js not available — sync disabled:', e.message);
+}
+
+// ws is optional; if it isn't resolvable, let supabase-js use its default transport.
+let ws = null;
+try {
+  ws = require('ws');
+} catch (e) {
+  console.warn('⚠️ ws module not available — using default realtime transport.');
+}
+
 const SUPABASE_URL =
   process.env.SUPABASE_URL || 'https://pbhfxcjdupukgdpbeusc.supabase.co';
 
-// IMPORTANT: This server runs inside the trusted desktop admin app only.
-// Use the SERVICE_ROLE key so writes bypass Row Level Security (RLS).
-// The service_role key must NEVER be shipped in the mobile app or any client
-// that runs on a customer device — keep it in the desktop server's .env only.
-//
-// Priority:
-//   1. SUPABASE_SERVICE_ROLE_KEY  (correct choice for this backend)
-//   2. SUPABASE_KEY               (generic override)
-//   3. publishable/anon fallback  (will FAIL to write if RLS is enabled)
+// Prefer the service_role key (bypasses RLS). Desktop server only.
 const SERVICE_ROLE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
 
 const PUBLISHABLE_FALLBACK = 'sb_publishable_cqyt1JDiEdiZGLwkRfH2Vw_d4XaJ1Vv';
-
 const SUPABASE_KEY = SERVICE_ROLE_KEY || PUBLISHABLE_FALLBACK;
 
 if (!SERVICE_ROLE_KEY) {
   console.warn(
-    '⚠️ SUPABASE_SERVICE_ROLE_KEY not set — falling back to the publishable (anon) key.\n' +
-    '   If your tables have Row Level Security enabled, all sync writes will be rejected.\n' +
-    '   Add SUPABASE_SERVICE_ROLE_KEY to server/.env to fix syncing.'
+    '⚠️ SUPABASE_SERVICE_ROLE_KEY not set — falling back to the publishable key.\n' +
+    '   Sync writes may be rejected by RLS. Add the key to server/.env.'
   );
 }
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
-  auth: {
-    persistSession: false,
-    autoRefreshToken: false,
-  },
-  realtime: {
-    transport: ws,
-  },
-});
+let supabase = null;
+try {
+  if (createClient) {
+    const options = {
+      auth: { persistSession: false, autoRefreshToken: false },
+    };
+    // Only set a custom transport if ws loaded successfully.
+    if (ws) options.realtime = { transport: ws };
 
-console.log(
-  `✅ Supabase Client initialized (${SERVICE_ROLE_KEY ? 'service_role' : 'publishable/anon'} key).`
-);
+    supabase = createClient(SUPABASE_URL, SUPABASE_KEY, options);
+    console.log(
+      `✅ Supabase Client initialized (${SERVICE_ROLE_KEY ? 'service_role' : 'publishable/anon'} key).`
+    );
+  }
+} catch (e) {
+  console.error('⚠️ Failed to initialize Supabase client — sync disabled:', e.message);
+  supabase = null;
+}
 
 module.exports = { supabase };

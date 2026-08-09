@@ -37,6 +37,9 @@ function stopSyncWorker() {
  */
 async function processQueue() {
   if (isSyncing) return;
+  // If the Supabase client failed to initialize, skip syncing entirely so the
+  // POS server keeps running normally (offline mode).
+  if (!supabase) return;
   isSyncing = true;
 
   try {

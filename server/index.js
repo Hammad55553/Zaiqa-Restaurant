@@ -266,14 +266,25 @@ app.use('/assets', express.static(path.join(__dirname, '../mobile/assets')));
 initDb();
 
 // ── Start Supabase Sync Worker ────────────────────────────────────────────────
-const { startSyncWorker, triggerSyncNow, retryAllNow } = require('./services/syncWorker');
-startSyncWorker();
+// Wrapped so a sync/Supabase problem can NEVER prevent the POS server from
+// starting — the local POS must always come up.
+let triggerSyncNow = async () => ({ skipped: true });
+let retryAllNow = async () => 0;
+try {
+  const syncWorker = require('./services/syncWorker');
+  triggerSyncNow = syncWorker.triggerSyncNow;
+  retryAllNow = syncWorker.retryAllNow;
+  syncWorker.startSyncWorker();
 
-// On startup, reset any previously stuck (failed/dead) tasks and push them once.
-// This drains the backlog that built up before the Supabase key was fixed.
-retryAllNow().catch((err) =>
-  console.error('❌ Startup retry-all failed:', err.message)
-);
+  // Delay the one-time backlog retry so the DB's ALTER TABLE columns are ready.
+  setTimeout(() => {
+    retryAllNow().catch((err) =>
+      console.error('❌ Startup retry-all failed:', err.message)
+    );
+  }, 8000);
+} catch (err) {
+  console.error('⚠️ Sync worker failed to start — POS will run offline:', err.message);
+}
 
 // ── Sync Status & Force Sync ──────────────────────────────────────────────────
 const { db } = require('./database/db');
