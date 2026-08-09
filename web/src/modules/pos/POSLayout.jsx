@@ -233,7 +233,11 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
             activeOrders.forEach(order => {
               const t = dbTables.find(tb => tb.number === order.table_number);
               if (t) {
-                t.status = 'dining';
+                // Preserve an explicit "reserved" status — a reserved table with
+                // an advance order should stay reserved, not flip to dining.
+                if (t.status !== 'reserved') {
+                  t.status = 'dining';
+                }
                 t.startTime = order.created_at ? new Date(order.created_at + 'Z').toISOString() : new Date().toISOString();
               }
             });
@@ -1315,6 +1319,13 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
       }
       setTables(prev => prev.map(t => t.id === selectedTable.id ? updatedTable : t));
       setSelectedTable(updatedTable);
+      // Persist the chosen status (e.g. reserved) to the server so the 10s
+      // polling loop doesn't revert it back to available/dining.
+      fetch(`${API_BASE}/tables/${selectedTable.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: confirmStatus }),
+      }).catch(() => {});
     }
 
     try {
