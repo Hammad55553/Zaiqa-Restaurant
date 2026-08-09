@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, Lock, ShieldCheck, Key, AlertCircle, Loader2, FileText, Database, History, RefreshCw, Trash2 } from 'lucide-react';
+import { Settings as SettingsIcon, Lock, ShieldCheck, Key, AlertCircle, Loader2, FileText, Database, History, RefreshCw, Trash2, Printer } from 'lucide-react';
+import { listPrinters, getPrinterSettings, savePrinterSettings, isDesktopPrint } from '../../utils/printService';
 import packageJson from '../../../package.json';
 import { getOfflineItem, setOfflineItem } from '../../utils/offlineDB';
 import { restoreFromTrash, deletePermanentlyFromTrash } from '../../utils/trashDB';
@@ -27,6 +28,28 @@ const Settings = () => {
     );
     const [connectionStatus, setConnectionStatus] = useState('idle'); // 'idle', 'testing', 'success', 'failed'
     const [serverDetails, setServerDetails] = useState(null);
+
+    // Printer setup state
+    const [availablePrinters, setAvailablePrinters] = useState([]);
+    const [printerPrefs, setPrinterPrefs] = useState(getPrinterSettings());
+    const [loadingPrinters, setLoadingPrinters] = useState(false);
+
+    const refreshPrinters = async () => {
+        setLoadingPrinters(true);
+        const list = await listPrinters();
+        setAvailablePrinters(list);
+        setLoadingPrinters(false);
+    };
+
+    useEffect(() => {
+        if (activeTab === 'printers') refreshPrinters();
+    }, [activeTab]);
+
+    const handleSavePrinters = (prefs) => {
+        setPrinterPrefs(prefs);
+        savePrinterSettings(prefs);
+        showToast('Printer settings saved.', 'success');
+    };
     const [isLoading, setIsLoading] = useState(false);
     const [toastMessage, setToastMessage] = useState(null);
 
@@ -393,6 +416,13 @@ const Settings = () => {
                     >
                         <Database size={18} />
                         Server Connection
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('printers')}
+                        style={{ width: '100%', padding: '14px', background: activeTab === 'printers' ? '#fff7ed' : 'transparent', border: 'none', borderRadius: '10px', color: activeTab === 'printers' ? '#ea580c' : '#64748b', fontWeight: 800, textAlign: 'left', display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', transition: '0.2s' }}
+                    >
+                        <Printer size={18} />
+                        Printer Setup
                     </button>
 
                     {/* Inline Update Checker */}
@@ -943,6 +973,72 @@ const Settings = () => {
                                     </div>
                                 )}
                             </div>
+                        </div>
+                    ) : activeTab === 'printers' ? (
+                        <div style={{ animation: 'fadeIn 0.3s ease', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                            <div style={{ marginBottom: '4px', paddingBottom: '20px', borderBottom: '1px solid #f1f5f9' }}>
+                                <h3 style={{ fontSize: '1.2rem', fontWeight: 900, color: '#1e293b', marginBottom: '8px' }}>Printer Setup</h3>
+                                <p style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>Ek dafa set karo — kaunsa bill kis printer pe nikle. Phir har print seedha usi printer pe jaayega, bina dialog ke.</p>
+                            </div>
+
+                            {!isDesktopPrint() ? (
+                                <div style={{ padding: '16px', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: '12px', color: '#92400e', fontSize: '0.85rem', fontWeight: 700 }}>
+                                    Silent printing sirf Desktop App (.exe) mein chalti hai. Browser mein normal print dialog aayega.
+                                </div>
+                            ) : (
+                                <>
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                        <button
+                                            type="button"
+                                            onClick={refreshPrinters}
+                                            style={{ padding: '8px 16px', background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '10px', fontWeight: 800, cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                                        >
+                                            <RefreshCw size={14} /> {loadingPrinters ? 'Loading...' : 'Refresh Printers'}
+                                        </button>
+                                    </div>
+
+                                    {availablePrinters.length === 0 && !loadingPrinters && (
+                                        <div style={{ padding: '16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '12px', color: '#991b1b', fontSize: '0.85rem', fontWeight: 700 }}>
+                                            Koi printer nahi mila. Printer connect karo aur "Refresh Printers" dabao.
+                                        </div>
+                                    )}
+
+                                    {/* Bill printer */}
+                                    <div>
+                                        <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 900, color: '#475569', textTransform: 'uppercase', marginBottom: '10px' }}>Customer Bill Printer</label>
+                                        <select
+                                            value={printerPrefs.billPrinter || ''}
+                                            onChange={(e) => handleSavePrinters({ ...printerPrefs, billPrinter: e.target.value })}
+                                            style={{ width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid #cbd5e1', fontSize: '0.95rem', fontWeight: 700, background: '#fafafa' }}
+                                        >
+                                            <option value="">-- Printer chuno --</option>
+                                            {availablePrinters.map(p => (
+                                                <option key={p.name} value={p.name}>{p.displayName}{p.isDefault ? ' (Default)' : ''}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {/* KOT printer */}
+                                    <div>
+                                        <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 900, color: '#475569', textTransform: 'uppercase', marginBottom: '10px' }}>Kitchen Slip (KOT) Printer</label>
+                                        <select
+                                            value={printerPrefs.kotPrinter || ''}
+                                            onChange={(e) => handleSavePrinters({ ...printerPrefs, kotPrinter: e.target.value })}
+                                            style={{ width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid #cbd5e1', fontSize: '0.95rem', fontWeight: 700, background: '#fafafa' }}
+                                        >
+                                            <option value="">-- Printer chuno --</option>
+                                            {availablePrinters.map(p => (
+                                                <option key={p.name} value={p.name}>{p.displayName}{p.isDefault ? ' (Default)' : ''}</option>
+                                            ))}
+                                        </select>
+                                        <p style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600, marginTop: '6px' }}>Agar bill aur kitchen ek hi printer pe chahiye to dono mein same printer chuno.</p>
+                                    </div>
+
+                                    <div style={{ padding: '14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px', color: '#166534', fontSize: '0.8rem', fontWeight: 700 }}>
+                                        ✓ Settings apne aap save ho jaati hain. Dubara badalna ho to yahin aa kar printer change kar do.
+                                    </div>
+                                </>
+                            )}
                         </div>
                     ) : activeTab === 'server' ? (
                         <div style={{ animation: 'fadeIn 0.3s ease', display: 'flex', flexDirection: 'column', gap: '30px' }}>

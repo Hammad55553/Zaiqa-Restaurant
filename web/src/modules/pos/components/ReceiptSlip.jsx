@@ -400,7 +400,7 @@ const ReceiptSlip = ({ printData, isPreview = false }) => {
                 {(item.price * item.qty).toFixed(0)}
               </span>
             </div>
-            <div style={{ fontSize: '12px', color: '#000', paddingLeft: '30px', fontWeight: 'normal' }}>
+            <div style={{ fontSize: '12px', color: '#000', paddingLeft: '30px', fontWeight: 'bold' }}>
               Rs. {item.price}
             </div>
           </div>

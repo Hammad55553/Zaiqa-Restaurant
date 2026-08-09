@@ -1,5 +1,5 @@
 console.log('main.js starting...');
-const { app, BrowserWindow, Menu } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain } = require('electron');
 console.log('Electron imported, app =', typeof app);
 const path = require('path');
 const fs = require('fs');
@@ -25,7 +25,8 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
-      webSecurity: false
+      webSecurity: false,
+      preload: path.join(__dirname, 'preload.js')
     },
     title: 'Zaiqah POS',
     backgroundColor: '#0f172a'
@@ -102,6 +103,68 @@ app.whenReady().then(() => {
   }
   
   
+  // ── Printing IPC ────────────────────────────────────────────────────────────
+  // List connected printers for the settings page.
+  ipcMain.handle('get-printers', async () => {
+    try {
+      const wc = mainWindow && mainWindow.webContents;
+      if (!wc) return [];
+      // getPrintersAsync is available in newer Electron; fall back to sync.
+      const printers = wc.getPrintersAsync
+        ? await wc.getPrintersAsync()
+        : wc.getPrinters();
+      return (printers || []).map(p => ({
+        name: p.name,
+        displayName: p.displayName || p.name,
+        isDefault: !!p.isDefault,
+      }));
+    } catch (err) {
+      console.error('get-printers failed:', err);
+      return [];
+    }
+  });
+
+  // Silently print raw HTML to a specific printer, with no dialog.
+  // Renders the HTML in a hidden offscreen window, prints, then closes it.
+  ipcMain.handle('silent-print', async (event, opts = {}) => {
+    const { html, deviceName, copies = 1 } = opts;
+    if (!html) return { ok: false, error: 'No HTML to print' };
+
+    return new Promise((resolve) => {
+      let printWin = new BrowserWindow({
+        show: false,
+        webPreferences: { offscreen: false, sandbox: true },
+      });
+
+      const cleanup = () => {
+        if (printWin && !printWin.isDestroyed()) printWin.close();
+        printWin = null;
+      };
+
+      printWin.webContents.once('did-finish-load', () => {
+        const printOptions = {
+          silent: true,
+          printBackground: true,
+          copies: Math.max(1, Number(copies) || 1),
+        };
+        if (deviceName) printOptions.deviceName = deviceName;
+
+        printWin.webContents.print(printOptions, (success, failureReason) => {
+          cleanup();
+          resolve({ ok: success, error: success ? null : failureReason });
+        });
+      });
+
+      printWin.webContents.once('did-fail-load', (e, code, desc) => {
+        cleanup();
+        resolve({ ok: false, error: `Load failed: ${desc}` });
+      });
+
+      // Load the HTML directly as a data URL.
+      printWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+    });
+  });
+
   createWindow();
 
   app.on('activate', () => {

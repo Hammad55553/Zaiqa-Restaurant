@@ -13,6 +13,7 @@ import Logo from '../../assets/ziqahh.png';
 import { API_BASE, WS_URL } from '../../config';
 import { syncService } from '../../services/syncService';
 import { getOfflineItem, setOfflineItem, removeOfflineItem } from '../../utils/offlineDB';
+import { printReceipt } from '../../utils/printService';
 import { moveToTrash } from '../../utils/trashDB';
 import CancelRequestsPanel from './components/CancelRequestsPanel';
 
@@ -937,10 +938,10 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
 
     setPrintData(data);
 
-    // Render receipt off-screen, then trigger browser print (goes to thermal printer)
+    // Render receipt off-screen, then print. On desktop this goes silently to the
+    // assigned Bill printer; in a browser it falls back to the print dialog.
     setTimeout(() => {
-      window.print();
-      // Wait 1.2s after printing starts to clear printData, preventing blank captures in Safari/Chrome
+      printReceipt('bill', receiptRef.current);
       setTimeout(() => {
         setPrintData(null);
       }, 5000);
@@ -979,7 +980,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
     setLastPrintedOrderId(orderId);
 
     setTimeout(() => {
-      window.print();
+      printReceipt('kot', receiptRef.current);
       setTimeout(() => {
         setPrintData(null);
         updateKOTStatus(orderId, 'success', null, true);
@@ -1004,7 +1005,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
     };
     setPrintData(data);
     setTimeout(() => {
-      window.print();
+      printReceipt('kot', receiptRef.current);
       setTimeout(() => setPrintData(null), 1000);
     }, 300);
   };
@@ -1150,19 +1151,10 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
       if (printMode !== 'none') {
         setPrintData(printDataObj);
         setTimeout(() => {
-          window.print();
-          if (printMode === 'double') {
-            setTimeout(() => {
-              window.print();
-              setTimeout(() => {
-                setPrintData(null);
-              }, 5000);
-            }, 1000);
-          } else {
-            setTimeout(() => {
-              setPrintData(null);
-            }, 5000);
-          }
+          printReceipt('bill', receiptRef.current, printMode === 'double' ? 2 : 1);
+          setTimeout(() => {
+            setPrintData(null);
+          }, 5000);
         }, 300);
       }
 
@@ -1761,12 +1753,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
       setPrintData(printDataObj);
 
       setTimeout(() => {
-        window.print();
-        if (printMode === 'double') {
-          setTimeout(() => {
-            window.print();
-          }, 1200);
-        }
+        printReceipt('bill', receiptRef.current, printMode === 'double' ? 2 : 1);
         setTimeout(() => {
           setPrintData(null);
         }, 5000);
@@ -1813,7 +1800,7 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
       isEstimate: isEstimate,
     });
     setTimeout(() => {
-      window.print();
+      printReceipt('bill', receiptRef.current);
       setTimeout(() => {
         setPrintData(null);
       }, 5000);
