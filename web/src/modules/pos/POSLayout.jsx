@@ -987,6 +987,58 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
     }, 300);
   };
 
+  // Reprint a kitchen slip on demand WITHOUT touching the printed registry
+  // (this is a re-print of items already sent, not a new send).
+  const reprintKOT = (itemsToPrint, label = 'REPRINT') => {
+    if (!itemsToPrint || itemsToPrint.length === 0) {
+      showToast('No items to print on this order.', 'info');
+      return;
+    }
+    const data = {
+      isKOT: true,
+      orderId: activeOrderId,
+      date: new Date().toISOString(),
+      table: selectedTable,
+      items: itemsToPrint,
+      reprintLabel: label,
+    };
+    setPrintData(data);
+    setTimeout(() => {
+      window.print();
+      setTimeout(() => setPrintData(null), 1000);
+    }, 300);
+  };
+
+  // Reprint the FULL order (every item currently in the cart, sent or not).
+  const reprintFullKOT = () => {
+    const items = cartItems.map(i => ({
+      id: i.id || i.item_id,
+      name: i.name || i.item_name,
+      price: i.price || 0,
+      qty: i.qty || i.quantity || 0,
+      notes: i.notes || i.item_notes || '',
+    }));
+    reprintKOT(items, 'REPRINT — FULL ORDER');
+  };
+
+  // Reprint ONLY the new/unsent items still in the cart.
+  const reprintNewItemsKOT = () => {
+    const items = cartItems
+      .filter(i => !i.sent)
+      .map(i => ({
+        id: i.id || i.item_id,
+        name: i.name || i.item_name,
+        price: i.price || 0,
+        qty: i.qty || i.quantity || 0,
+        notes: i.notes || i.item_notes || '',
+      }));
+    if (items.length === 0) {
+      showToast('No new (unsent) items to print.', 'info');
+      return;
+    }
+    reprintKOT(items, 'REPRINT — NEW ITEMS');
+  };
+
   const handleCheckout = () => {
     if (!activeOrderId || !selectedTable) return;
     setIsCheckoutModalOpen(true);
@@ -2643,6 +2695,24 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
                     </button>
                   )}
                 </div>
+
+                {/* Reprint Kitchen Slip (KOT) — on demand, whenever needed */}
+                {!isDelivery && activeOrderId && (
+                  <div className="w-full mt-2 flex gap-2">
+                    <button
+                      onClick={reprintFullKOT}
+                      className="flex-1 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-xl border border-blue-100 transition-all flex items-center justify-center gap-2 text-[11px] uppercase tracking-wider"
+                    >
+                      <Printer size={14} /> Reprint Full KOT
+                    </button>
+                    <button
+                      onClick={reprintNewItemsKOT}
+                      className="flex-1 py-2.5 bg-orange-50 hover:bg-orange-100 text-orange-700 font-bold rounded-xl border border-orange-100 transition-all flex items-center justify-center gap-2 text-[11px] uppercase tracking-wider"
+                    >
+                      <Printer size={14} /> Reprint New Items
+                    </button>
+                  </div>
+                )}
 
                 {/* Cancel Order - danger zone, shown only when order exists */}
                 {activeOrderId && (

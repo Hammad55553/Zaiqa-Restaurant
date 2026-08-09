@@ -26,6 +26,7 @@ const ReceiptSlip = ({ printData, isPreview = false }) => {
     payment_status,
     isEstimate,
     isKOT,
+    reprintLabel,
     printCount,
     kotStatus,
     kotReason
@@ -100,6 +101,21 @@ const ReceiptSlip = ({ printData, isPreview = false }) => {
         }}>
           * KITCHEN COPY *
         </div>
+
+        {reprintLabel && (
+          <div style={{
+            textAlign: 'center',
+            fontWeight: 'bold',
+            fontSize: '12px',
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
+            marginBottom: '1.5mm',
+            border: '1px dashed #000',
+            padding: '1mm',
+          }}>
+            {reprintLabel}
+          </div>
+        )}
 
         <div style={{ ...row, marginBottom: '0.5mm', fontSize: '11px' }}>
           <span>ORDER: <strong>#{orderId || 'PENDING'}</strong></span>
