@@ -89,6 +89,14 @@ const ReceiptSlip = ({ printData, isPreview = false }) => {
     const kotSolid = { borderTop: '1px solid #000', margin: '0.5mm 0' };
     return (
       <div style={{ ...wrap, padding: isPreview ? '1mm 4mm 15mm 4mm' : '1mm 4mm 15mm 0.5mm' }}>
+        {/* LOGO on kitchen slip */}
+        <div style={{ textAlign: 'center', marginTop: '1mm', marginBottom: '1.5mm' }}>
+          <img
+            src={Logo}
+            alt="Zaiqa Mahal Logo"
+            style={{ width: '18mm', height: '18mm', objectFit: 'contain', display: 'block', margin: '0 auto', filter: 'grayscale(100%) contrast(400%) brightness(85%)' }}
+          />
+        </div>
         <div style={{
           textAlign: 'center',
           fontWeight: 'black',
