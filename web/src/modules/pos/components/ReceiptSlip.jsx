@@ -171,16 +171,18 @@ const ReceiptSlip = ({ printData, isPreview = false }) => {
 
       {isEstimate && (
         <div style={{
+          width: '100%',
+          boxSizing: 'border-box',
           textAlign: 'center',
-          border: '1px solid #000',
+          border: '1.5px solid #000',
           padding: '1mm',
-          fontWeight: '600',
+          fontWeight: '700',
           fontSize: '13px',
           textTransform: 'uppercase',
           letterSpacing: '1px',
+          marginTop: '1mm',
           marginBottom: '2mm',
-          backgroundColor: '#000',
-          color: '#fff'
+          color: '#000'
         }}>
           *** ESTIMATE SLIP ***
         </div>

@@ -187,9 +187,9 @@ router.patch('/:id/status', (req, res) => {
                   if (!errIng && ingredients) {
                     ingredients.forEach(ing => {
                       const totalRequired = ing.quantity_required * item.quantity;
-                      db.run(`UPDATE stock_items SET quantity = quantity - ? WHERE id = ?`, [totalRequired, ing.stock_item_id], (err2) => {
+                      db.run(`UPDATE stock_items SET quantity = MAX(0, quantity - ?) WHERE id = ?`, [totalRequired, ing.stock_item_id], (err2) => {
                         if (!err2) {
-                          db.run(`INSERT INTO stock_logs (item_id, action, qty_changed, remarks) VALUES (?, 'remove', ?, ?)`, 
+                          db.run(`INSERT INTO stock_logs (item_id, action, qty_changed, remarks) VALUES (?, 'remove', ?, ?)`,
                             [ing.stock_item_id, totalRequired, `Preparing started for Order #${id} (${item.item_name} x${item.quantity})`]);
                         }
                       });
@@ -292,7 +292,7 @@ router.patch('/:id/items', (req, res) => {
             if (!err && ingredients && ingredients.length > 0) {
               ingredients.forEach(ing => {
                 const totalRequired = ing.quantity_required * (item.quantity || item.qty);
-                db.run(`UPDATE stock_items SET quantity = quantity - ? WHERE id = ?`, [totalRequired, ing.stock_item_id]);
+                db.run(`UPDATE stock_items SET quantity = MAX(0, quantity - ?) WHERE id = ?`, [totalRequired, ing.stock_item_id]);
                 db.run(`INSERT INTO stock_logs (item_id, action, qty_changed, remarks) VALUES (?, 'remove', ?, ?)`,
                   [ing.stock_item_id, totalRequired, `Appended to Order #${id} (${item.item_name || item.name})`]
                 );
@@ -440,7 +440,7 @@ router.put('/:id/sync', (req, res) => {
                     ingredients.forEach(ing => {
                       const totalDiff = ing.quantity_required * Math.abs(diff);
                       if (diff > 0) {
-                        db.run(`UPDATE stock_items SET quantity = quantity - ? WHERE id = ?`, [totalDiff, ing.stock_item_id]);
+                        db.run(`UPDATE stock_items SET quantity = MAX(0, quantity - ?) WHERE id = ?`, [totalDiff, ing.stock_item_id]);
                         db.run(`INSERT INTO stock_logs (item_id, action, qty_changed, remarks) VALUES (?, 'remove', ?, ?)`, [ing.stock_item_id, totalDiff, `Increased qty in Order #${id}`]);
                       } else {
                         db.run(`UPDATE stock_items SET quantity = quantity + ? WHERE id = ?`, [totalDiff, ing.stock_item_id]);
@@ -471,7 +471,7 @@ router.put('/:id/sync', (req, res) => {
                   if (!err && ingredients) {
                     ingredients.forEach(ing => {
                       const totalRequired = ing.quantity_required * incoming.qty;
-                      db.run(`UPDATE stock_items SET quantity = quantity - ? WHERE id = ?`, [totalRequired, ing.stock_item_id]);
+                      db.run(`UPDATE stock_items SET quantity = MAX(0, quantity - ?) WHERE id = ?`, [totalRequired, ing.stock_item_id]);
                       db.run(`INSERT INTO stock_logs (item_id, action, qty_changed, remarks) VALUES (?, 'remove', ?, ?)`, [ing.stock_item_id, totalRequired, `Added to Order #${id}`]);
                     });
                   }

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Package, Plus, Pencil, Trash2, X, Check, Search,
-  Tag, ChevronDown, Loader2, AlertCircle, UtensilsCrossed, CheckSquare, Square
+  Tag, ChevronDown, Loader2, AlertCircle, UtensilsCrossed, CheckSquare, Square, Upload
 } from 'lucide-react';
 import { API_BASE } from '../../config';
 
@@ -595,6 +595,49 @@ const InventorySystem = () => {
                   </div>
                 ))}
               </div>
+              {/* Upload from laptop/computer */}
+              <label
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  padding: '10px 14px', borderRadius: 12, border: '1.5px dashed #f97316',
+                  background: '#fff7ed', color: '#ea580c', fontSize: 13, fontWeight: 700,
+                  cursor: 'pointer', marginBottom: 12,
+                }}
+              >
+                <Upload size={16} /> Upload from Computer
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const file = e.target.files && e.target.files[0];
+                    if (!file) return;
+                    if (file.size > 2 * 1024 * 1024) {
+                      showErrorToast('Image 2MB se chhoti honi chahiye. Choti image chuno.');
+                      return;
+                    }
+                    const reader = new FileReader();
+                    reader.onload = () => setForm(p => ({ ...p, image: reader.result }));
+                    reader.onerror = () => showErrorToast('Image parhne mein masla. Dobara koshish karo.');
+                    reader.readAsDataURL(file);
+                  }}
+                />
+              </label>
+
+              {/* Preview of chosen image */}
+              {form.image && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                  <img src={form.image} alt="preview" style={{ width: 56, height: 56, borderRadius: 10, objectFit: 'cover', border: '1px solid #e4e4e7' }} />
+                  <button
+                    type="button"
+                    onClick={() => setForm(p => ({ ...p, image: '' }))}
+                    style={{ background: '#fef2f2', border: 'none', color: '#ef4444', padding: '6px 12px', borderRadius: 10, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}
+                  >
+                    Remove Image
+                  </button>
+                </div>
+              )}
+
               <Input label="Or Enter Custom Image URL" value={form.image} onChange={e => setForm(p => ({ ...p, image: e.target.value }))} placeholder="https://..." />
             </div>
 

@@ -1044,7 +1044,27 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
     setIsCheckoutModalOpen(true);
   };
 
-  const executeCheckout = async (customerPhone = '', paymentStatus = 'PAID', shouldClearTable = true, printMode = 'single') => {
+  // After a successful cancel, free the table locally and return to the floor.
+  // The backend already sets the table to 'available'; this keeps the UI in sync
+  // immediately instead of waiting for the 10s poll.
+  const finishAfterCancel = () => {
+    if (selectedTable) {
+      setTables(prev => prev.map(t =>
+        t.id === selectedTable.id
+          ? { ...t, status: 'available', startTime: undefined }
+          : t
+      ));
+    }
+    setCartItems([]);
+    setActiveOrderId(null);
+    setActiveOrderStatus('pending');
+    setActiveOrderPaymentStatus('NONE');
+    setSelectedTable(null);
+    setView('floor');
+    setRefreshKey(k => k + 1);
+  };
+
+  const executeCheckout = async (customerPhone = '', paymentStatus = 'PAID', shouldClearTable = true, printMode = 'single', khataInfo = null) => {
     try {
 
       // Calculate totals for invoice record
@@ -1071,6 +1091,25 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
         const resData = await response.json();
         if (resData.invoice_number) {
           serverInvoiceNum = resData.invoice_number;
+        }
+      }
+
+      // Khata (dine-in credit): put this bill on the chosen customer's ledger.
+      // Runs only for dine-in checkout — delivery uses its own flow untouched.
+      if (khataInfo && khataInfo.customerId) {
+        try {
+          await fetch(`${API_BASE}/customers/${khataInfo.customerId}/ledger`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'credit',
+              amount: tot,
+              note: `Dine-in Bill ${serverInvoiceNum} (Table ${selectedTable?.number || 'N/A'})`,
+            }),
+          });
+          showToast(`Bill khata pe daal diya: ${khataInfo.customerName}`, 'success');
+        } catch (e) {
+          showToast('Khata pe daalne mein masla — customer balance manually check karo.', 'error');
         }
       }
 
@@ -2728,8 +2767,8 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
                             body: JSON.stringify({ refund_raw: false, log_waste: false, reason: 'Cancelled at POS' })
                           }).then(r => r.json()).then(d => {
                             if (d.success) {
-                              setCartItems([]); setActiveOrderId(null); setActiveOrderStatus('pending');
-                              showToast('Order cancelled.', 'success'); setRefreshKey(k => k + 1);
+                              finishAfterCancel();
+                              showToast('Order cancelled. Table freed.', 'success');
                             } else { showToast(d.error || 'Failed to cancel', 'error'); }
                           }).catch(() => showToast('Network error', 'error'));
                         }}
@@ -2749,8 +2788,8 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
                             body: JSON.stringify({ refund_raw: true, log_waste: true, reason: `Cancelled by ${currentUser?.role}` })
                           }).then(r => r.json()).then(d => {
                             if (d.success) {
-                              setCartItems([]); setActiveOrderId(null); setActiveOrderStatus('pending');
-                              showToast('Order cancelled. Stock refunded.', 'success'); setRefreshKey(k => k + 1);
+                              finishAfterCancel();
+                              showToast('Order cancelled. Stock refunded. Table freed.', 'success');
                             } else { showToast(d.error || 'Failed to cancel', 'error'); }
                           }).catch(() => showToast('Network error', 'error'));
                         }}
@@ -2776,8 +2815,8 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
                             body: JSON.stringify({ refund_raw: true, log_waste: true, reason: 'Admin force-cancelled (ready)' })
                           }).then(r => r.json()).then(d => {
                             if (d.success) {
-                              setCartItems([]); setActiveOrderId(null); setActiveOrderStatus('pending');
-                              showToast('Order cancelled. Food logged as waste.', 'success'); setRefreshKey(k => k + 1);
+                              finishAfterCancel();
+                              showToast('Order cancelled. Food logged as waste. Table freed.', 'success');
                             } else { showToast(d.error || 'Failed to cancel', 'error'); }
                           }).catch(() => showToast('Network error', 'error'));
                         }}
@@ -2811,6 +2850,15 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
   }
 
   if (view === 'order') {
+    // Bill total for this table's current cart (used for khata / checkout).
+    const _isSvc = (i) => i.name === 'Service Charges' || i.item_name === 'Service Charges';
+    const _sub = cartItems.filter(i => !_isSvc(i)).reduce((s, it) => s + (it.price * it.qty), 0);
+    const _tax = applyTax ? cartItems.filter(i => !_isSvc(i)).reduce((s, it) => {
+      const rate = (it.taxRateOverride !== undefined && it.taxRateOverride !== null && it.taxRateOverride !== '')
+        ? Number(it.taxRateOverride) : globalGstRate;
+      return s + (it.price * it.qty) * (rate / 100);
+    }, 0) : 0;
+    const orderTotal = _sub + _tax + (applyServiceCharges ? Number(serviceCharges || 0) : 0);
     return (
       <div className="flex flex-col h-full bg-[#f8f9fc] p-2 lg:p-4 gap-3 lg:gap-4">
 
@@ -3054,6 +3102,8 @@ const POSLayout = ({ currentUser, globalDirectSelectDeliveryId, onClearGlobalDir
           setIsCheckoutModalOpen={setIsCheckoutModalOpen}
           executeCheckout={executeCheckout}
           selectedTable={selectedTable}
+          customers={allDBCustomers}
+          billTotal={orderTotal}
         />
 
         {/* Customer Registration Modal component */}
