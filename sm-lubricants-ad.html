@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="ur">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SM Lubricants — Video Ad</title>
+<style>
+  :root{
+    --navy:#152449;
+    --navy2:#0e1a37;
+    --red:#c8102e;
+    --gold:#e6b422;
+    --paper:#eef1f5;
+    --ink:#1a2440;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{background:#05070f;font-family:"Segoe UI",Tahoma,Arial,sans-serif;overflow:hidden}
+
+  /* Stage: 1080x1920 vertical (Reel/WhatsApp). Scaled to fit screen. */
+  #stage{
+    position:relative;
+    width:1080px;height:1920px;
+    margin:0 auto;
+    transform-origin:top center;
+    background:
+      radial-gradient(1200px 800px at 50% -10%, #1c3573 0%, transparent 60%),
+      linear-gradient(160deg,#0b1330 0%, #060b1e 55%, #04081a 100%);
+    overflow:hidden;
+    color:#fff;
+  }
+
+  /* subtle moving grid */
+  #stage::before{
+    content:"";position:absolute;inset:-20%;
+    background-image:linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),
+                     linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px);
+    background-size:60px 60px;
+    animation:drift 20s linear infinite;opacity:.5;
+  }
+  @keyframes drift{to{transform:translate(60px,60px)}}
+
+  /* golden slow orbs */
+  .orb{position:absolute;border-radius:50%;filter:blur(40px);opacity:.35;mix-blend-mode:screen}
+  .orb.a{width:520px;height:520px;background:#2f5bd0;top:-120px;left:-160px;animation:float1 12s ease-in-out infinite}
+  .orb.b{width:420px;height:420px;background:#c8102e;bottom:-140px;right:-120px;animation:float2 14s ease-in-out infinite}
+  @keyframes float1{50%{transform:translate(80px,60px)}}
+  @keyframes float2{50%{transform:translate(-70px,-50px)}}
+
+  .scene{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:0;padding:70px}
+  .scene.show{opacity:1}
+
+  .urdu{font-family:"Jameel Noori Nastaleeq","Noto Nastaliq Urdu","Segoe UI",serif;direction:rtl}
+
+  /* ---------- SCENE 1: BRAND INTRO ---------- */
+  .logo-wrap{display:flex;flex-direction:column;align-items:center;gap:26px;transform:translateY(30px);opacity:0;animation:pop .9s .3s forwards cubic-bezier(.2,.9,.25,1.3)}
+  .badge{
+    width:300px;height:300px;border-radius:50%;
+    background:radial-gradient(circle at 35% 30%,#20356e,#0c1533);
+    border:6px solid var(--gold);
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 0 60px rgba(230,180,34,.35),inset 0 0 40px rgba(0,0,0,.5);
+    position:relative;
+  }
+  .badge .drop{width:150px;height:190px;position:relative}
+  .badge svg{width:100%;height:100%;filter:drop-shadow(0 6px 14px rgba(0,0,0,.5))}
+  .brand-name{font-size:96px;font-weight:800;letter-spacing:2px;text-align:center;line-height:1}
+  .brand-name .sm{color:var(--gold)}
+  .brand-name .lub{color:#fff}
+  .tagline{font-size:40px;color:#cdd6ea;letter-spacing:3px;text-transform:uppercase;margin-top:6px}
+  .tagline-ur{font-size:52px;color:var(--gold);margin-top:18px}
+  .sweep{position:absolute;top:0;left:-60%;width:60%;height:100%;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.25),transparent);
+    animation:sweep 2.4s 1s infinite}
+  @keyframes sweep{to{left:130%}}
+  @keyframes pop{to{transform:translateY(0);opacity:1}}
+
+  /* ---------- SCENE 2: PRODUCTS ---------- */
+  .prod-title{font-size:66px;font-weight:800;color:#fff;text-align:center;margin-bottom:10px}
+  .prod-sub{font-size:44px;color:var(--gold);margin-bottom:50px}
+  .bottles{display:flex;gap:26px;align-items:flex-end;justify-content:center;flex-wrap:wrap;max-width:940px}
+  .bottle{
+    width:190px;height:300px;border-radius:20px 20px 14px 14px;
+    position:relative;box-shadow:0 20px 40px rgba(0,0,0,.5);
+    transform:translateY(60px);opacity:0;
+    display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
+    padding-top:18px;
+  }
+  .bottle .cap{position:absolute;top:-26px;width:70px;height:34px;border-radius:8px 8px 4px 4px;background:#0c1533}
+  .bottle .lbl{width:150px;background:#fff;border-radius:8px;padding:12px 8px;text-align:center;margin-top:24px}
+  .bottle .lbl .mob{font-size:26px;font-weight:800;color:#0033a0}
+  .bottle .lbl .ty{font-size:19px;font-weight:700;color:#c8102e;line-height:1.1;margin-top:2px}
+  .bottle .lbl .gr{font-size:30px;font-weight:900;color:#111;margin-top:6px}
+  .b1{background:linear-gradient(160deg,#8a8f99,#5b606b)}
+  .b2{background:linear-gradient(160deg,#3a4150,#1f2530)}
+  .b3{background:linear-gradient(160deg,#2b3550,#141b2c)}
+  .b4{background:linear-gradient(160deg,#4a5060,#2a3040)}
+  .b5{background:linear-gradient(160deg,#d0202e,#7c0f18)}
+  .b5 .cap{background:#1b3a8a}
+
+  /* ---------- SCENE 3: MAP ---------- */
+  .map-head{font-size:56px;font-weight:800;text-align:center;margin-bottom:4px}
+  .map-head .accent{color:var(--gold)}
+  .map-sub{font-size:36px;color:#cdd6ea;margin-bottom:26px}
+  .mapbox{width:960px;height:1200px;position:relative}
+  .mapbox svg{width:100%;height:100%}
+  .pin{opacity:0;transform:translateY(-14px)}
+  .card{opacity:0}
+
+  /* ---------- SCENE 4: OUTRO ---------- */
+  .outro-badge{width:230px;height:230px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#20356e,#0c1533);border:6px solid var(--gold);display:flex;align-items:center;justify-content:center;box-shadow:0 0 60px rgba(230,180,34,.4);margin-bottom:36px;transform:scale(.7);opacity:0;animation:pop2 .8s .2s forwards}
+  @keyframes pop2{to{transform:scale(1);opacity:1}}
+  .outro-badge svg{width:120px;height:150px}
+  .outro-name{font-size:88px;font-weight:800}
+  .outro-name .sm{color:var(--gold)}
+  .outro-tag{font-size:48px;color:#cdd6ea;margin-top:14px}
+  .outro-tag-ur{font-size:56px;color:var(--gold);margin-top:22px}
+  .districts{font-size:34px;color:#aeb9d6;margin-top:40px;text-align:center;line-height:1.6}
+
+  /* controls (hidden while recording) */
+  #ctl{position:fixed;left:12px;bottom:12px;z-index:99;display:flex;gap:8px}
+  #ctl button{background:#152449;color:#fff;border:1px solid #375;padding:10px 16px;border-radius:8px;font-size:15px;cursor:pointer}
+  #ctl button:hover{background:#c8102e}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="orb a"></div>
+  <div class="orb b"></div>
+
+  <!-- SCENE 1 -->
+  <div class="scene" id="s1">
+    <div class="logo-wrap">
+      <div class="badge">
+        <div class="sweep"></div>
+        <div class="drop">
+          <svg viewBox="0 0 100 130"><path d="M50 4 C 50 4, 92 66, 92 92 A42 38 0 1 1 8 92 C 8 66, 50 4, 50 4 Z" fill="#e6b422"/><path d="M50 30 C 50 30, 74 74, 74 92 A24 22 0 1 1 26 92 C 26 74, 50 30, 50 30 Z" fill="#fff" opacity=".25"/></svg>
+        </div>
+      </div>
+      <div class="brand-name"><span class="sm">SM</span> <span class="lub">LUBRICANTS</span></div>
+      <div class="tagline">Authorized Mobil Dealer</div>
+      <div class="tagline-ur urdu">اعلیٰ معیار، بھرپور تحفظ</div>
+    </div>
+  </div>
+
+  <!-- SCENE 2 -->
+  <div class="scene" id="s2">
+    <div class="prod-title">Genuine Mobil Oils</div>
+    <div class="prod-sub urdu">اصل موبل انجن آئل</div>
+    <div class="bottles">
+      <div class="bottle b1"><div class="cap"></div><div class="lbl"><div class="mob">Mobil 1</div><div class="ty">Triple Action</div><div class="gr">5W-30</div></div></div>
+      <div class="bottle b2"><div class="cap"></div><div class="lbl"><div class="mob">Mobil Super</div><div class="ty">All-In-One</div><div class="gr">5W-30</div></div></div>
+      <div class="bottle b3"><div class="cap"></div><div class="lbl"><div class="mob">Mobil Super</div><div class="ty">Friction Fighter</div><div class="gr">5W-30</div></div></div>
+      <div class="bottle b4"><div class="cap"></div><div class="lbl"><div class="mob">Mobil Super</div><div class="ty">Friction Fighter</div><div class="gr">10W-40</div></div></div>
+      <div class="bottle b5"><div class="cap"></div><div class="lbl"><div class="mob">Mobil Special</div><div class="ty">Engine Protection</div><div class="gr">20W-50</div></div></div>
+    </div>
+  </div>
+
+  <!-- SCENE 3: MAP -->
+  <div class="scene" id="s3">
+    <div class="map-head">Bahawalnagar <span class="accent">District</span></div>
+    <div class="map-sub">Retail Network — Dealer Locations</div>
+    <div class="mapbox">
+      <svg viewBox="0 0 960 1200" id="mapsvg"></svg>
+    </div>
+  </div>
+
+  <!-- SCENE 4 -->
+  <div class="scene" id="s4">
+    <div class="outro-badge">
+      <svg viewBox="0 0 100 130"><path d="M50 4 C 50 4, 92 66, 92 92 A42 38 0 1 1 8 92 C 8 66, 50 4, 50 4 Z" fill="#e6b422"/></svg>
+    </div>
+    <div class="outro-name"><span class="sm">SM</span> LUBRICANTS</div>
+    <div class="outro-tag">Trusted Across Bahawalnagar</div>
+    <div class="outro-tag-ur urdu">آپ کے قریب، ہر شہر میں</div>
+    <div class="districts urdu">بہاولنگر سٹی • ہارون آباد • چشتیاں • فورٹ عباس</div>
+  </div>
+</div>
+
+<div id="ctl">
+  <button onclick="play()">▶ Replay</button>
+  <button onclick="rec()">● Record video</button>
+</div>
+
+<script>
+/* ---------- fit stage to screen ---------- */
+function fit(){
+  const s=document.getElementById('stage');
+  const sc=Math.min(window.innerWidth/1080, window.innerHeight/1920);
+  s.style.transform='scale('+sc+')';
+}
+window.addEventListener('resize',fit);fit();
+
+/* ---------- build map (SVG) ---------- */
+const dealers = [
+  {city:'Bahawalnagar City', ur:'بہاولنگر سٹی', x:470, y:250,
+   shops:['Imran Oil Point','Auto Zone']},
+  {city:'Haroonabad', ur:'ہارون آباد', x:200, y:420,
+   shops:['Mehboob Autos','Ghouria Autos','New Waqar Autos','Subhan Autos']},
+  {city:'Chishtian', ur:'چشتیاں', x:760, y:470,
+   shops:['Chaudhry Autos','Al Madina Oil Trader','New Millat Autos','Master Autos','Faisal Oil Trader']},
+  {city:'Fort Abbas', ur:'فورٹ عباس', x:470, y:820,
+   shops:['New National Autos','SM Lubricants']},
+];
+
+function oilPin(x,y,id){
+  // teardrop pin with an oil-drop icon inside (NOT a fuel pump)
+  return `
+  <g class="pin" id="${id}" transform="translate(${x},${y})">
+    <path d="M0 0 C -34 -60 -46 -80 -46 -108 A46 46 0 1 1 46 -108 C 46 -80 34 -60 0 0 Z" fill="#152449" stroke="#e6b422" stroke-width="4"/>
+    <circle cx="0" cy="-108" r="34" fill="#c8102e"/>
+    <path d="M0 -130 C 0 -130, 16 -112, 16 -102 A16 15 0 1 1 -16 -102 C -16 -112, 0 -130, 0 -130 Z" fill="#fff"/>
+  </g>`;
+}
+
+function card(d){
+  const w=300, lh=34, pad=18;
+  const h = 92 + d.shops.length*lh;
+  let cx = d.x + 60, cy = d.y - 150;
+  if(cx + w > 950) cx = d.x - w - 60;
+  if(cy < 10) cy = 10;
+  let rows = d.shops.map((s,i)=>`<text x="${cx+pad}" y="${cy+92+i*lh}" fill="#12203f" font-size="24" font-weight="600">${s}</text>`).join('');
+  return `
+  <g class="card" id="c-${d.city.replace(/\s/g,'')}">
+    <line x1="${d.x}" y1="${d.y-108}" x2="${cx<d.x?cx+w:cx}" y2="${cy+40}" stroke="#e6b422" stroke-width="3" stroke-dasharray="6 5"/>
+    <rect x="${cx}" y="${cy}" width="${w}" height="${h}" rx="16" fill="#ffffff" opacity=".97"/>
+    <rect x="${cx}" y="${cy}" width="${w}" height="52" rx="16" fill="#152449"/>
+    <rect x="${cx}" y="${cy+30}" width="${w}" height="22" fill="#152449"/>
+    <rect x="${cx}" y="${cy+52}" width="${w}" height="5" fill="#c8102e"/>
+    <text x="${cx+w/2}" y="${cy+36}" fill="#fff" font-size="27" font-weight="800" text-anchor="middle">${d.city}</text>
+    ${rows}
+  </g>`;
+}
+
+function buildMap(){
+  const svg=document.getElementById('mapsvg');
+  // stylised district shape
+  let s = `
+  <defs>
+    <linearGradient id="land" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f4f1e6"/><stop offset="1" stop-color="#e4ddc7"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="960" height="1200" rx="28" fill="#0c1533"/>
+  <path d="M120 260 Q 300 150 520 200 Q 760 150 860 320 Q 900 520 800 700
+           Q 840 900 640 1000 Q 460 1120 300 1000 Q 120 940 150 740
+           Q 90 520 120 260 Z" fill="url(#land)" stroke="#c9be9a" stroke-width="3"/>
+  <!-- Sutlej river -->
+  <path d="M60 560 Q 300 500 520 560 Q 740 620 940 540" fill="none" stroke="#6fb0d6" stroke-width="16" opacity=".7" stroke-linecap="round"/>
+  <text x="600" y="540" fill="#3f7fa0" font-size="22" font-style="italic" transform="rotate(-4 600 540)">Sutlej River</text>
+  <text x="470" y="640" fill="#5a6070" font-size="26" font-weight="700" text-anchor="middle">BAHAWALNAGAR</text>
+  <circle cx="418" cy="628" r="6" fill="#333"/>
+  `;
+  dealers.forEach((d,i)=> s += card(d));
+  dealers.forEach((d,i)=> s += oilPin(d.x,d.y,'p'+i));
+  svg.innerHTML = s;
+}
+buildMap();
+
+/* ---------- animation timeline ---------- */
+function q(id){return document.getElementById(id);}
+function anim(el,kf,opt){return el.animate(kf,Object.assign({fill:'forwards',easing:'cubic-bezier(.2,.8,.25,1)'},opt));}
+let timers=[];
+function clearAll(){timers.forEach(t=>clearTimeout(t));timers=[];}
+function at(ms,fn){timers.push(setTimeout(fn,ms));}
+
+const scenes=['s1','s2','s3','s4'];
+function showOnly(id){scenes.forEach(x=>q(x).classList.toggle('show', x===id));}
+
+function play(){
+  clearAll();
+  // reset
+  scenes.forEach(x=>{q(x).classList.remove('show');});
+  // SCENE 1  (0 - 3.2s)
+  at(0,()=>showOnly('s1'));
+  // SCENE 2  (3.2 - 7.0s)
+  at(3200,()=>{
+    showOnly('s2');
+    document.querySelectorAll('#s2 .bottle').forEach((b,i)=>{
+      anim(b,[{transform:'translateY(60px)',opacity:0},{transform:'translateY(0)',opacity:1}],{duration:600,delay:i*180});
+    });
+  });
+  // SCENE 3 MAP (7.0 - 15.5s)
+  at(7000,()=>{
+    showOnly('s3');
+    dealers.forEach((d,i)=>{
+      const pin=q('p'+i), c=q('c-'+d.city.replace(/\s/g,''));
+      at(300+i*900,()=>{
+        anim(pin,[{opacity:0,transform:pin.getAttribute('transform')+' translateY(-14px)'},{opacity:1,transform:pin.getAttribute('transform')+' translateY(0)'}],{duration:500});
+        anim(c,[{opacity:0},{opacity:1}],{duration:600,delay:200});
+      });
+    });
+  });
+  // SCENE 4 (15.5 - 19s)
+  at(15500,()=>showOnly('s4'));
+}
+window.addEventListener('load',()=>setTimeout(play,300));
+
+/* ---------- optional recorder (WebM) ---------- */
+async function rec(){
+  const stage=document.getElementById('stage');
+  alert('Recording 19s. Screen ko chalne dein, video download ho jayegi.');
+  // Use captureStream on a canvas mirror is complex; simplest is screen capture:
+  try{
+    const stream=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:30},audio:false});
+    const rc=new MediaRecorder(stream,{mimeType:'video/webm'});
+    const chunks=[];
+    rc.ondataavailable=e=>chunks.push(e.data);
+    rc.onstop=()=>{
+      const blob=new Blob(chunks,{type:'video/webm'});
+      const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+      a.download='sm-lubricants-ad.webm';a.click();
+      stream.getTracks().forEach(t=>t.stop());
+    };
+    rc.start();play();
+    setTimeout(()=>rc.stop(),19500);
+  }catch(e){alert('Screen recording cancel ho gayi.');}
+}
+</script>
+</body>
+</html>

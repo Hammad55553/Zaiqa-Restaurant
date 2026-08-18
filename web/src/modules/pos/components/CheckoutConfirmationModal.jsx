@@ -147,10 +147,10 @@ const CheckoutConfirmationModal = ({
                 <BookUser size={16} className="text-blue-600" />
                 <div>
                   <label className="block text-xs font-extrabold text-zinc-800 uppercase tracking-wide">
-                    Khata Pe Daalo
+                    Add to Khata Ledger
                   </label>
                   <span className="text-[9px] text-zinc-400 font-bold block leading-tight mt-0.5">
-                    Bill customer ke udhaar khate mein
+                    Add bill to customer's credit ledger
                   </span>
                 </div>
               </div>
@@ -178,7 +178,7 @@ const CheckoutConfirmationModal = ({
                     <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
                     <input
                       type="text"
-                      placeholder="Customer naam ya phone se dhoondo"
+                      placeholder="Search customer by name or phone"
                       value={khataSearch}
                       onChange={(e) => setKhataSearch(e.target.value)}
                       className="w-full pl-9 pr-3 py-2 bg-white border border-blue-200 rounded-xl text-xs font-bold text-zinc-800 placeholder-zinc-400 focus:outline-none focus:border-blue-500"
@@ -199,7 +199,7 @@ const CheckoutConfirmationModal = ({
                       </div>
                     )}
                     {khataSearch.trim().length > 0 && khataMatches.length === 0 && (
-                      <p className="text-[10px] text-zinc-400 font-bold mt-1 pl-1">Koi customer nahi mila. Pehle Khata Hub mein register karo.</p>
+                      <p className="text-[10px] text-zinc-400 font-bold mt-1 pl-1">No customer found. Register them in Khata Hub first.</p>
                     )}
                   </div>
                 )}
@@ -241,7 +241,7 @@ const CheckoutConfirmationModal = ({
             <button
               onClick={() => {
                 if (khataOn && !khataCustomer) {
-                  alert('Khata ke liye pehle customer chuno, ya Khata toggle band karo.');
+                  alert('Select a customer for Khata first, or turn off the Khata toggle.');
                   return;
                 }
                 // If khata is on, force the bill stamp to PENDING (udhaar).

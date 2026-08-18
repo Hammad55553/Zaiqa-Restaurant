@@ -44,15 +44,18 @@ const StaffPerformance = () => {
   const getFilteredOrders = (username) => {
     let filtered = orders.filter(o => o.created_by === username);
 
-    // Apply Date Filter
-    const todayStr = new Date().toISOString().split('T')[0];
-    const sevenDaysAgo = new Date();
+    // Apply Date Filter based on local timezone date parsing
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const sevenDaysAgo = new Date(today);
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const thirtyDaysAgo = new Date();
+
+    const thirtyDaysAgo = new Date(today);
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     if (dateFilter === 'today') {
-      filtered = filtered.filter(o => o.created_at && o.created_at.startsWith(todayStr));
+      filtered = filtered.filter(o => o.created_at && new Date(o.created_at) >= today);
     } else if (dateFilter === 'weekly') {
       filtered = filtered.filter(o => o.created_at && new Date(o.created_at) >= sevenDaysAgo);
     } else if (dateFilter === 'monthly') {
@@ -74,10 +77,10 @@ const StaffPerformance = () => {
     const cancelledCount = userOrders.filter(o => o.status === 'cancelled').length;
     const pendingCount = userOrders.filter(o => o.status === 'pending' || o.status === 'preparing' || o.status === 'ready').length;
 
-    // Payment breakdowns
-    const cashSales = completedOrders.filter(o => !o.payment_method || o.payment_method === 'cash').reduce((sum, o) => sum + (o.total_amount || 0), 0);
-    const onlineSales = completedOrders.filter(o => o.payment_method === 'online' || o.payment_method === 'card' || o.payment_method === 'bank').reduce((sum, o) => sum + (o.total_amount || 0), 0);
-    const khataSales = completedOrders.filter(o => o.payment_method === 'khata').reduce((sum, o) => sum + (o.total_amount || 0), 0);
+    // Payment breakdowns based on payment_status instead of payment_method
+    const cashSales = completedOrders.filter(o => !o.payment_status || o.payment_status === 'PAID' || o.payment_status === 'CASH ON DELIVERY' || o.payment_status === 'NONE').reduce((sum, o) => sum + (o.total_amount || 0), 0);
+    const onlineSales = completedOrders.filter(o => o.payment_status === 'ONLINE PAID' || o.payment_status === 'BANK TRANSFER').reduce((sum, o) => sum + (o.total_amount || 0), 0);
+    const khataSales = completedOrders.filter(o => o.payment_status === 'PENDING').reduce((sum, o) => sum + (o.total_amount || 0), 0);
 
     // Rank evaluation
     let rank = 'Active Member';

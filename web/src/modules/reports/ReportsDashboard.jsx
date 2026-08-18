@@ -972,7 +972,7 @@ const ReportsDashboard = () => {
             {orders.length === 0 && (
               <div style={{ textAlign: 'center', padding: 60, color: '#a1a1aa' }}>
                 <ShoppingBag size={40} style={{ opacity: 0.3, margin: '0 auto 12px', display: 'block' }} />
-                <div style={{ fontWeight: 700 }}>Koi order nahi mila</div>
+                <div style={{ fontWeight: 700 }}>No orders found</div>
               </div>
             )}
 
@@ -1042,7 +1042,7 @@ const ReportsDashboard = () => {
             {topItems.length === 0 ? (
               <div style={{ textAlign: 'center', padding: 60, color: '#a1a1aa' }}>
                 <UtensilsCrossed size={40} style={{ opacity: 0.3, margin: '0 auto 12px', display: 'block' }} />
-                <div style={{ fontWeight: 700 }}>Koi data nahi abhi</div>
+                <div style={{ fontWeight: 700 }}>No data available yet</div>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

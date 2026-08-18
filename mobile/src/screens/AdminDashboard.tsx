@@ -18,6 +18,7 @@ import {
   Alert,
   DeviceEventEmitter,
   Platform,
+  TextInput,
 } from 'react-native';
 import ViewShot from 'react-native-view-shot';
 import {
@@ -39,12 +40,19 @@ import {
   X,
   User,
   Bell,
+  ClipboardList,
+  Users as UsersIcon,
+  Settings,
+  CheckCircle,
+  AlertTriangle,
+  Truck,
+  MessageSquare,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import RNShare from 'react-native-share';
 import RNPrint from 'react-native-print';
-import { API_BASE } from '../config';
+import { API_BASE, serverIP, setServerIP } from '../config';
 import { useToast } from '../components/Toast';
 import { supabase } from '../lib/supabase';
 
@@ -54,8 +62,13 @@ import TablesTab from '../components/admin/TablesTab';
 import StockTab from '../components/admin/StockTab';
 import ExpensesTab from '../components/admin/ExpensesTab';
 import ReportsTab from '../components/admin/ReportsTab';
+import OrdersTab, { OrderStatus } from '../components/admin/OrdersTab';
+import UsersTab, { StaffUser, UserFormData } from '../components/admin/UsersTab';
+import StaffPerformance from '../components/admin/StaffPerformance';
 import NotificationsModal from '../components/admin/NotificationsModal';
 import ReceiptSlipModal from '../components/admin/ReceiptSlipModal';
+import SuppliersTab from '../components/admin/SuppliersTab';
+import ChatTab from '../components/admin/ChatTab';
 
 const toBase64 = (str: string) => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
@@ -387,7 +400,7 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
   const insets = useSafeAreaInsets();
   const toast = useToast();
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'tables' | 'stock' | 'expenses' | 'reports'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'tables' | 'stock' | 'suppliers' | 'expenses' | 'reports' | 'performance' | 'users' | 'chat'>('overview');
   const [onlineMode, setOnlineMode] = useState<boolean>(true);
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
@@ -410,6 +423,8 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
   const [stockLogs, setStockLogs] = useState<any[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [users, setUsers] = useState<StaffUser[]>([]);
+  const [usersLoading, setUsersLoading] = useState<boolean>(false);
 
   // Stats
   const [stats, setStats] = useState({
@@ -423,6 +438,12 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
   // Notifications
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotificationsModal, setShowNotificationsModal] = useState<boolean>(false);
+
+  // Settings State
+  const [showSettings, setShowSettings] = useState<boolean>(false);
+  const [serverIPInput, setServerIPInput] = useState<string>('');
+  const [isTestingConn, setIsTestingConn] = useState<boolean>(false);
+  const [connStatus, setConnStatus] = useState<'success' | 'failed' | null>(null);
 
   // Sidebar Controls
   const openSidebar = () => {
@@ -442,11 +463,54 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
     }).start(() => setSidebarOpen(false));
   };
 
+  const handleSaveIP = async () => {
+    try {
+      await setServerIP(serverIPInput);
+      setConnStatus(null);
+      Alert.alert('Configuration Saved', `Server IP updated to: ${serverIPInput}`);
+      fetchData(true);
+    } catch (e) {
+      Alert.alert('Error', 'Failed to save server IP');
+    }
+  };
+
+  const handleTestConnection = async () => {
+    setIsTestingConn(true);
+    setConnStatus(null);
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+      const testUrl = `http://${serverIPInput}:5005/api/health`;
+      const res = await fetch(testUrl, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        setConnStatus('success');
+      } else {
+        setConnStatus('failed');
+      }
+    } catch (err) {
+      setConnStatus('failed');
+    } finally {
+      setIsTestingConn(false);
+    }
+  };
+
+  const openSettings = () => {
+    setServerIPInput(serverIP);
+    setShowSettings(true);
+  };
+
   // Handle Back Button
   useEffect(() => {
     const backAction = () => {
       if (sidebarOpen) {
         closeSidebar();
+        return true;
+      }
+      if (showSettings) {
+        setShowSettings(false);
         return true;
       }
       if (activeTab !== 'overview') {
@@ -459,7 +523,7 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
 
     const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
     return () => backHandler.remove();
-  }, [activeTab, sidebarOpen]);
+  }, [activeTab, sidebarOpen, showSettings]);
 
   // Notifications Effect
   useEffect(() => {
@@ -613,6 +677,151 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
     }
   }, [onlineMode]);
 
+  // Fetch staff / users list
+  const fetchUsers = useCallback(async () => {
+    setUsersLoading(true);
+    try {
+      if (onlineMode) {
+        const { data, error } = await supabase.from('users').select('id, username, name, role, permissions');
+        if (error) throw error;
+        setUsers(
+          (data || []).map((u: any) => ({
+            ...u,
+            permissions:
+              typeof u.permissions === 'string'
+                ? (() => {
+                    try {
+                      return JSON.parse(u.permissions);
+                    } catch {
+                      return [];
+                    }
+                  })()
+                : u.permissions || [],
+          })),
+        );
+      } else {
+        const res = await fetch(`${API_BASE}/users`);
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        setUsers(data || []);
+      }
+    } catch (err) {
+      toast.error('Sync Error', 'Staff list load nahi ho saki.');
+    } finally {
+      setUsersLoading(false);
+    }
+  }, [onlineMode]);
+
+  // ── Order action handlers ────────────────────────────────────────────
+  const handleChangeOrderStatus = async (order: any, newStatus: OrderStatus) => {
+    try {
+      if (onlineMode) {
+        const { error } = await supabase.from('orders').update({ status: newStatus }).eq('id', order.id);
+        if (error) throw error;
+      } else {
+        const res = await fetch(`${API_BASE}/orders/${order.id}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus }),
+        });
+        if (!res.ok) throw new Error();
+      }
+      setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: newStatus } : o)));
+      toast.success('Order Updated', `Order #${order.id} → ${newStatus.toUpperCase()}`);
+    } catch {
+      toast.error('Update Failed', 'Order status change nahi hua.');
+    }
+  };
+
+  const handleCancelOrder = async (order: any) => {
+    try {
+      if (onlineMode) {
+        const { error } = await supabase.from('orders').update({ status: 'cancelled' }).eq('id', order.id);
+        if (error) throw error;
+        setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: 'cancelled' } : o)));
+      } else {
+        const res = await fetch(`${API_BASE}/orders/${order.id}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'cancelled' }),
+        });
+        if (!res.ok) throw new Error();
+        setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: 'cancelled' } : o)));
+      }
+      toast.success('Order Cancelled', `Order #${order.id} cancel kar diya.`);
+    } catch {
+      toast.error('Cancel Failed', 'Order cancel nahi hua.');
+    }
+  };
+
+  const handleTogglePayment = async (order: any, paid: boolean) => {
+    const newPayment = paid ? 'paid' : 'unpaid';
+    try {
+      if (onlineMode) {
+        const { error } = await supabase.from('orders').update({ payment_status: newPayment }).eq('id', order.id);
+        if (error) throw error;
+      } else {
+        const res = await fetch(`${API_BASE}/orders/${order.id}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ payment_status: newPayment }),
+        });
+        if (!res.ok) throw new Error();
+      }
+      setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, payment_status: newPayment } : o)));
+      toast.success('Payment Updated', `Order #${order.id} → ${newPayment.toUpperCase()}`);
+    } catch {
+      toast.error('Update Failed', 'Payment status change nahi hua.');
+    }
+  };
+
+  // ── User / Staff CRUD handlers ───────────────────────────────────────
+  const handleSaveUser = async (data: UserFormData, isEdit: boolean) => {
+    try {
+      const res = await fetch(
+        isEdit ? `${API_BASE}/users/${data.id}` : `${API_BASE}/users`,
+        {
+          method: isEdit ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: data.username,
+            name: data.name,
+            role: data.role,
+            permissions: [],
+            ...(data.password ? { password: data.password } : {}),
+            ...(data.reset_pin ? { reset_pin: true } : {}),
+          }),
+        },
+      );
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e.error || 'Failed');
+      }
+      toast.success(isEdit ? 'Staff Updated' : 'Staff Added', `${data.name || data.username} saved.`);
+      fetchUsers();
+    } catch (err: any) {
+      toast.error('Save Failed', err.message || 'Staff save nahi hua.');
+    }
+  };
+
+  const handleDeleteUser = async (user: StaffUser) => {
+    try {
+      const res = await fetch(`${API_BASE}/users/${user.id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error();
+      setUsers((prev) => prev.filter((u) => u.id !== user.id));
+      toast.success('Staff Deleted', `${user.name || user.username} hata diya.`);
+    } catch {
+      toast.error('Delete Failed', 'Staff delete nahi hua.');
+    }
+  };
+
+  // Load users when Users tab opens (or mode changes while it's open)
+  useEffect(() => {
+    if (activeTab === 'users') {
+      fetchUsers();
+    }
+  }, [activeTab, fetchUsers]);
+
   // Recalculate statistics when datasets change
   useEffect(() => {
     const totalSales = orders
@@ -634,7 +843,8 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
 
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+    fetchUsers();
+  }, [fetchData, fetchUsers]);
 
   // Download Report handler
   const handleDownloadReport = async () => {
@@ -720,14 +930,28 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
           <View style={{ flex: 1 }}>
             <Text style={styles.headerTitle} numberOfLines={1}>
               {activeTab === 'overview' && 'DASHBOARD'}
+              {activeTab === 'orders' && 'LIVE ORDERS'}
               {activeTab === 'tables' && 'TABLE MAP'}
               {activeTab === 'stock' && 'INVENTORY'}
+              {activeTab === 'suppliers' && 'SUPPLIERS & PURCHASES'}
               {activeTab === 'expenses' && 'EXPENSES'}
+              {activeTab === 'chat' && 'BROADCAST CHAT'}
               {activeTab === 'reports' && 'REPORTS'}
+              {activeTab === 'performance' && 'STAFF PERFORMANCE'}
+              {activeTab === 'users' && 'STAFF / USERS'}
             </Text>
             <Text style={styles.headerSub} numberOfLines={1}>{(name || username || '').toUpperCase()}</Text>
           </View>
         </View>
+
+        {/* Settings Button */}
+        <TouchableOpacity
+          style={[styles.refreshBtn, { marginRight: 8 }]}
+          onPress={openSettings}
+          activeOpacity={0.7}
+        >
+          <Settings size={18} color="#0f172a" />
+        </TouchableOpacity>
 
         {/* Notification Bell Button */}
         <TouchableOpacity
@@ -777,6 +1001,16 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
             />
           )}
 
+          {activeTab === 'orders' && (
+            <OrdersTab
+              orders={orders}
+              onChangeStatus={handleChangeOrderStatus}
+              onCancelOrder={handleCancelOrder}
+              onTogglePayment={handleTogglePayment}
+              onSelectOrder={setSelectedOrderForSlip}
+            />
+          )}
+
           {activeTab === 'tables' && (
             <TablesTab tables={tables} />
           )}
@@ -790,6 +1024,14 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
             />
           )}
 
+          {activeTab === 'suppliers' && (
+            <SuppliersTab onRefresh={refreshing} />
+          )}
+
+          {activeTab === 'chat' && (
+            <ChatTab currentUser={{ username, role: 'admin', name }} />
+          )}
+
           {activeTab === 'expenses' && (
             <ExpensesTab expenses={expenses} />
           )}
@@ -797,8 +1039,23 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
           {activeTab === 'reports' && (
             <ReportsTab
               stats={stats}
+              orders={orders}
+              users={users}
               onDownloadReport={handleDownloadReport}
               onPrintReportPDF={handlePrintReportPDF}
+            />
+          )}
+
+          {activeTab === 'performance' && (
+            <StaffPerformance onRefresh={refreshing} />
+          )}
+
+          {activeTab === 'users' && (
+            <UsersTab
+              users={users}
+              loading={usersLoading}
+              onSaveUser={handleSaveUser}
+              onDeleteUser={handleDeleteUser}
             />
           )}
         </ScrollView>
@@ -833,13 +1090,21 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
             </View>
 
             {/* Navigation Options */}
-            <View style={styles.sidebarNav}>
+            <ScrollView style={{ flex: 1, marginTop: 10 }} contentContainerStyle={{ gap: 4, paddingBottom: 20 }} showsVerticalScrollIndicator={false}>
               <TouchableOpacity
                 style={[styles.navItem, activeTab === 'overview' && styles.navItemActive]}
                 onPress={() => { console.log('👉 [Sidebar] Clicking Overview'); setActiveTab('overview'); closeSidebar(); }}
               >
                 <TrendingUp size={20} color={activeTab === 'overview' ? '#f97316' : '#64748b'} />
                 <Text style={[styles.navItemText, activeTab === 'overview' && styles.navItemTextActive]}>Overview Dashboard</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.navItem, activeTab === 'orders' && styles.navItemActive]}
+                onPress={() => { setActiveTab('orders'); closeSidebar(); }}
+              >
+                <ClipboardList size={20} color={activeTab === 'orders' ? '#f97316' : '#64748b'} />
+                <Text style={[styles.navItemText, activeTab === 'orders' && styles.navItemTextActive]}>Live Orders</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -859,6 +1124,22 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
               </TouchableOpacity>
 
               <TouchableOpacity
+                style={[styles.navItem, activeTab === 'suppliers' && styles.navItemActive]}
+                onPress={() => { console.log('👉 [Sidebar] Clicking Suppliers'); setActiveTab('suppliers'); closeSidebar(); }}
+              >
+                <Truck size={20} color={activeTab === 'suppliers' ? '#f97316' : '#64748b'} />
+                <Text style={[styles.navItemText, activeTab === 'suppliers' && styles.navItemTextActive]}>Suppliers & Purchases</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.navItem, activeTab === 'chat' && styles.navItemActive]}
+                onPress={() => { console.log('👉 [Sidebar] Clicking Chat'); setActiveTab('chat'); closeSidebar(); }}
+              >
+                <MessageSquare size={20} color={activeTab === 'chat' ? '#f97316' : '#64748b'} />
+                <Text style={[styles.navItemText, activeTab === 'chat' && styles.navItemTextActive]}>Broadcast Chat</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
                 style={[styles.navItem, activeTab === 'expenses' && styles.navItemActive]}
                 onPress={() => { console.log('👉 [Sidebar] Clicking Expenses'); setActiveTab('expenses'); closeSidebar(); }}
               >
@@ -871,9 +1152,27 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
                 onPress={() => { console.log('👉 [Sidebar] Clicking Reports'); setActiveTab('reports'); closeSidebar(); }}
               >
                 <FileText size={20} color={activeTab === 'reports' ? '#f97316' : '#64748b'} />
-                <Text style={[styles.navItemText, activeTab === 'reports' && styles.navItemTextActive]}>Sales Reports</Text>
+                <Text style={[styles.navItemText, activeTab === 'reports' && styles.navItemTextActive]}>Sales & Staff Reports</Text>
               </TouchableOpacity>
-            </View>
+
+              <TouchableOpacity
+                style={[styles.navItem, activeTab === 'performance' && styles.navItemActive]}
+                onPress={() => { setActiveTab('performance'); closeSidebar(); }}
+                activeOpacity={0.7}
+              >
+                <TrendingUp size={20} color={activeTab === 'performance' ? '#f97316' : '#64748b'} />
+                <Text style={[styles.navItemText, activeTab === 'performance' && styles.navItemTextActive]}>Staff Performance</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.navItem, activeTab === 'users' && styles.navItemActive]}
+                onPress={() => { setActiveTab('users'); closeSidebar(); }}
+                activeOpacity={0.7}
+              >
+                <UsersIcon size={20} color={activeTab === 'users' ? '#f97316' : '#64748b'} />
+                <Text style={[styles.navItemText, activeTab === 'users' && styles.navItemTextActive]}>Staff / Users</Text>
+              </TouchableOpacity>
+            </ScrollView>
 
             {/* Sidebar Footer with Status Switch & Logout */}
             <View style={[styles.sidebarFooter, { paddingBottom: insets.bottom + 20 }]}>
@@ -910,6 +1209,76 @@ export default function AdminDashboard({ username, name, onLogout }: AdminDashbo
         order={selectedOrderForSlip}
         onClose={() => setSelectedOrderForSlip(null)}
       />
+
+      {/* SETTINGS MODAL */}
+      <Modal
+        visible={showSettings}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowSettings(false)}
+      >
+        <View style={styles.exitModalOverlay}>
+          <View style={[styles.exitModalCard, { width: '95%', alignItems: 'stretch' }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <Text style={{ fontSize: 18, fontWeight: '900', color: '#0f172a' }}>Server Config</Text>
+              <TouchableOpacity onPress={() => setShowSettings(false)}>
+                <X size={24} color="#0f172a" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ marginBottom: 16 }}>
+              <Text style={{ fontSize: 11, fontWeight: '800', color: '#64748b', marginBottom: 8, textTransform: 'uppercase' }}>Server IP Address</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, paddingHorizontal: 14, height: 50 }}>
+                <Wifi size={18} color="#64748b" style={{ marginRight: 10 }} />
+                <TextInput
+                  placeholder="e.g. 192.168.1.100"
+                  placeholderTextColor="#9ca3af"
+                  value={serverIPInput}
+                  onChangeText={setServerIPInput}
+                  style={{ flex: 1, fontSize: 14, color: '#0f172a', fontWeight: '700' }}
+                />
+              </View>
+            </View>
+
+            {connStatus === 'success' && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#dcfce7', padding: 12, borderRadius: 10, marginBottom: 16 }}>
+                <CheckCircle size={16} color="#16a34a" style={{ marginRight: 6 }} />
+                <Text style={{ color: '#15803d', fontSize: 12, fontWeight: '700' }}>Connected successfully to server!</Text>
+              </View>
+            )}
+            {connStatus === 'failed' && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#fee2e2', padding: 12, borderRadius: 10, marginBottom: 16 }}>
+                <AlertTriangle size={16} color="#dc2626" style={{ marginRight: 6 }} />
+                <Text style={{ color: '#b91c1c', fontSize: 12, fontWeight: '700' }}>Failed to connect. Verify IP.</Text>
+              </View>
+            )}
+
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 10 }}>
+              <TouchableOpacity
+                style={{ flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: '#f1f5f9', alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}
+                onPress={handleTestConnection}
+                disabled={isTestingConn}
+              >
+                {isTestingConn ? (
+                  <ActivityIndicator size="small" color="#64748b" />
+                ) : (
+                  <>
+                    <RefreshCw size={14} color="#475569" style={{ marginRight: 6 }} />
+                    <Text style={{ fontSize: 13, fontWeight: '800', color: '#475569' }}>Test</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={{ flex: 1.5, paddingVertical: 14, borderRadius: 12, backgroundColor: '#f97316', alignItems: 'center', justifyContent: 'center' }} 
+                onPress={handleSaveIP}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '800', color: '#ffffff' }}>Save Config</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* NOTIFICATIONS MODAL */}
       <NotificationsModal

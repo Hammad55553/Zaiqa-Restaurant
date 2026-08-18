@@ -8,7 +8,7 @@ const fmtVal = (val) => {
 };
 
 const BarChart = ({ data }) => {
-  if (!data || data.length === 0) return <div style={{ color: '#a1a1aa', fontSize: 13, textAlign: 'center', padding: 20 }}>Koi data nahi</div>;
+  if (!data || data.length === 0) return <div style={{ color: '#a1a1aa', fontSize: 13, textAlign: 'center', padding: 20 }}>No data available</div>;
   const max = Math.max(...data.map(d => d.revenue), 1);
   
   return (

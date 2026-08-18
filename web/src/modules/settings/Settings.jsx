@@ -999,7 +999,7 @@ const Settings = () => {
 
                                     {availablePrinters.length === 0 && !loadingPrinters && (
                                         <div style={{ padding: '16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '12px', color: '#991b1b', fontSize: '0.85rem', fontWeight: 700 }}>
-                                            Koi printer nahi mila. Printer connect karo aur "Refresh Printers" dabao.
+                                            No printer found. Connect a printer and click "Refresh Printers".
                                         </div>
                                     )}
 
